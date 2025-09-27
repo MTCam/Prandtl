@@ -87,7 +87,7 @@ TestCases/Euler/2D/Nagashima_Ramjet/TR0/Paraview*
 TestCases/Euler/2D/CircularCylinderAcoustics
 TestCases/Euler/2D/SphericalTwoWalls
 
-libs/metis-5.1.0/
+#libs/metis-5.1.0/
 
 [Bb][Uu][Ii][Ll][Dd]/
 
