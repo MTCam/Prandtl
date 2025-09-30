@@ -25,7 +25,7 @@
         "refined_trigger_t": 5.0,
         "print_interval": 10,
         "output_file_path" : "../../TestCases/Euler/2D/Nagashima_Ramjet/TR0",
-        "ParaView_folder" : "ParaView",
+        "paraview_folder" : "ParaView",
 
         "checkpoint_dt": 0.02,
         "checkpoints_folder": "Checkpoints",
@@ -38,7 +38,7 @@
 
         "clock_simulation": true,
         "variable_dt": false,
-        "dt": 4e-8,
+        "dt": 1.0e-7,
         "cfl": 1.0,
         "final_time": 0.1,
 
@@ -47,7 +47,7 @@
 
         "ser_ref_levels": 0,
 
-        "mesh_file": "../../TestCases/Euler/2D/Nagashima_Ramjet/TR0/Nagashima_TR0_11kQuad_v2.msh",
+        "mesh_file": "../../TestCases/Euler/2D/Nagashima_Ramjet/TR0/Nagashima_TR0_10kQuad_v2.msh",
         "conditions":
         {
             "initial_conditions":

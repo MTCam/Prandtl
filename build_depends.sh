@@ -25,7 +25,7 @@ cd ../../../
 # --- Step 2: Build METIS 5 ---
 echo "--- Building METIS ---"
 cd libs/metis-5.1.0/
-make clean
+make distclean
 make BUILDDIR=lib config
 make BUILDDIR=lib
 cp lib/libmetis/libmetis.a lib
@@ -34,7 +34,7 @@ cd ../../
 # --- Step 3: Build Parallel MFEM ---
 echo "--- Building Parallel MFEM ---"
 cd libs/mfem/
-make clean
+make distclean
 make parallel -j4 MFEM_USE_METIS_5=YES METIS_DIR="$(cd ../metis-5.1.0/ && pwd)" HYPRE_DIR="$(cd ../hypre/src/hypre && pwd)"
 cd ../../
 
@@ -42,7 +42,7 @@ cd ../../
 if [ "$IS_HPC" = false ]; then
 echo "--- Building GLVis ---"
 cd glvis/
-make clean
+make distclean
 make MFEM_DIR="$(cd ../libs/mfem && pwd)" -j4
 cd ../
 fi

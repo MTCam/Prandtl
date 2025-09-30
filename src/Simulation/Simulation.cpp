@@ -108,7 +108,7 @@ void Simulation::LoadConfig(const std::string &config_file_path)
     cfl = runtime.value("cfl", 1.0);
     print_interval = runtime.value("print_interval", 10);
     output_file_path = runtime["output_file_path"].get<std::string>();
-    ParaView_folder = runtime.value("ParaView_folder", "ParaView");
+    paraview_folder = runtime.value("paraview_folder", "ParaView");
     checkpoint_dt = runtime.value("checkpoint_dt", 0.01);
     checkpoints_folder = output_file_path + "/" + runtime.value("checkpoints_folder", "Checkpoints");
     checkpoint_load = runtime.value("checkpoint_load", false);
@@ -830,7 +830,7 @@ void Simulation::LoadConfig(const std::string &config_file_path)
     {
         if (paraview)
         {
-            pd = std::make_unique<ParaViewDataCollection>(ParaView_folder, pmesh.get());
+            pd = std::make_unique<ParaViewDataCollection>(paraview_folder, pmesh.get());
             pd->SetPrefixPath(output_file_path);
 #ifdef AXISYMMETRIC
             pd->RegisterField("Density", rho_axi.get());

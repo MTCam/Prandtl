@@ -1,8 +1,8 @@
 #!/bin/bash
 #----------------------------------------------------
 #SBATCH -J Prandtl_InletBuzz    	# Job Name
-#SBATCH -o ${SLURM_JOB_NAME}.o%j	# Output File
-#SBATCH -e ${SLURM_JOB_NAME}.e%j	# Error File
+#SBATCH -o Prandtl_InletBuzz.o%j	# Output File
+#SBATCH -e Prandtl_InletBuzz.e%j	# Error File
 #SBATCH -p spr				        # Queue (partition) name
 #SBATCH -N 1				        # Nodes
 #SBATCH -n 112				        # Cores

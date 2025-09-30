@@ -38,7 +38,7 @@ private:
     std::shared_ptr<PhysicsConstants> physicsConstants;
 
     std::string output_file_path;
-    std::string ParaView_folder;
+    std::string paraview_folder;
     std::string checkpoints_folder;
 
     real_t t, t_final, dt, dt_real;

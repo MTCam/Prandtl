@@ -23,7 +23,7 @@
         "refined_trigger_t": 0.5,
         "print_interval": 10,
         "output_file_path" : "../../TestCases/Euler/2D/DoubleMachReflection",
-        "ParaView_folder" : "ParaView",
+        "paraview_folder" : "ParaView",
 
         "checkpoint_dt": 0.02,
         "checkpoints_folder": "Checkpoints",
