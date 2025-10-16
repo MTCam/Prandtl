@@ -46,11 +46,11 @@ jobs:
           fi
           echo "MFEM_SRC=$MFEM_SRC" | tee -a $GITHUB_ENV
 
-    - name: Build dependency submodules (HYPRE, METIS, MFEM)
+      - name: Build dependency submodules (HYPRE, METIS, MFEM)
         run: |
           bash ./build_depends.sh
 
-    - name: Show built dependency libs (debug)
+      - name: Show built dependency libs (debug)
         if: always()
         run: |
           ls -lh libs/mfem/* 2>/dev/null || true
@@ -58,7 +58,7 @@ jobs:
           ls -lh libs/hypre/src/hypre/lib 2>/dev/null || true
           ls -lh libs/metis-5.1.0/lib 2>/dev/null || true
 
-    - name: Configure Prandtl
+      - name: Configure Prandtl
         env:
           CC: ${{ env.CC }}
           CXX: ${{ env.CXX }}
