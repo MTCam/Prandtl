@@ -1,0 +1,52 @@
+name: CI Quick
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  build-test:
+    runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      matrix:
+        compiler: [gcc-12, clang-16]
+    env:
+      CMAKE_BUILD_TYPE: RelWithDebInfo
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build ccache ${{ matrix.compiler }} \
+                                  cmake pkg-config
+          echo "CC=${{ matrix.compiler%%-* }}" >> $GITHUB_ENV
+          echo "CXX=${{ matrix.compiler%%-* }}++" >> $GITHUB_ENV
+      - name: Configure
+        run: |
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE} \
+            -DBUILD_TESTING=ON \
+            -DPRANDTL_QUICK=ON
+      - name: Build
+        run: cmake --build build -- -k 0
+      - name: Smoke tests
+        run: ctest --test-dir build -L smoke -j2 --output-on-failure
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: junit-and-logs-${{ matrix.compiler }}
+          path: |
+            build/Testing/**/Test.xml
+            build/CMakeCache.txt
+            build/*.log
+  lint:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check formatting
+        run: |
+          pipx install cmakelang
+          find . -name '*.cmake' -o -name 'CMakeLists.txt' | xargs cmake-format --check
+          find . -regex '.*\.\(h\|hpp\|cc\|cpp\)$' | xargs clang-format -Werror --dry-run

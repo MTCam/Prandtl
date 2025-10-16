@@ -1,0 +1,32 @@
+name: Nightly Matrix
+on:
+  schedule: [{ cron: "17 3 * * *" }]
+  workflow_dispatch:
+
+jobs:
+  mfem-matrix:
+    runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      matrix:
+        mfem: [4.6.0, develop]
+        backend: [serial, openmp]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Provision deps (Spack)
+        run: |
+          git clone --depth=1 https://github.com/spack/spack.git ~/spack
+          . ~/spack/share/spack/setup-env.sh
+          spack compiler find
+          spack install mfem@${{ matrix.mfem }} +${{ matrix.backend }} ~cuda ~hip
+          spack load mfem@${{ matrix.mfem }}
+          echo "MFEM_DIR=$(spack location -i mfem@${{ matrix.mfem }})" >> $GITHUB_ENV
+      - name: Configure
+        run: |
+          cmake -S . -B build -G Ninja \
+            -DMFEM_DIR=${MFEM_DIR} \
+            -DBUILD_TESTING=ON
+      - name: Build
+        run: cmake --build build
+      - name: Integration tests
+        run: ctest --test-dir build -L integration -j2 --output-on-failure

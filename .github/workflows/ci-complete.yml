@@ -1,0 +1,35 @@
+name: CI Complete
+on:
+  pull_request:
+    types: [opened, synchronize, labeled]
+jobs:
+  asan-ubsan:
+    if: contains(github.event.pull_request.labels.*.name, 'full-ci')
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y ninja-build clang lld
+      - name: Configure (ASan/UBSan)
+        env:
+          CC: clang
+          CXX: clang++
+        run: |
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DCMAKE_C_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer" \
+            -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer" \
+            -DBUILD_TESTING=ON
+      - name: Build
+        run: cmake --build build
+      - name: Tests (unit+smoke)
+        run: ctest --test-dir build -L "(smoke|unit)" -j2 --output-on-failure
+
+  clang-tidy:
+    if: contains(github.event.pull_request.labels.*.name, 'full-ci')
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ZedThree/clang-tidy-review@v0.21.0
+        with:
+          build_dir: build
+          cmake_command: cmake -S . -B build -G Ninja -DBUILD_TESTING=OFF
