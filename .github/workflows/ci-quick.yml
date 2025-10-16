@@ -17,7 +17,9 @@ jobs:
         uses: actions/checkout@v4
         with:
           submodules: recursive
-
+          fetch-depth: 0
+      - name: Show submodule SHAs (debug)
+        run: git submodule status --recursive
       - name: Install toolchain and deps (MPI, hypre, metis)
         run: |
           sudo apt-get update
@@ -36,7 +38,7 @@ jobs:
         run: |
           set -euo pipefail
           MFEM_SRC=""
-          for d in external/mfem third_party/mfem mfem submodules/mfem; do
+          for d in libs/mfem external/mfem third_party/mfem mfem submodules/mfem; do
             if [[ -d "$d" ]]; then MFEM_SRC="$d"; break; fi
           done
           if [[ -z "$MFEM_SRC" ]]; then
