@@ -64,9 +64,9 @@ jobs:
           CXX: ${{ env.CXX }}
           FC: ${{ env.FC }}
           # These paths match your script’s build outputs
-          MFEM_DIR="$(pwd)/libs/mfem"
-          HYPRE_DIR="$(cd libs/hypre/src/hypre && pwd)"
-          METIS_DIR="$(cd libs/metis-5.1.0 && pwd)"
+          MFEM_DIR: ${{ github.workspace }}/libs/mfem
+          HYPRE_DIR: ${{ github.workspace }}/libs/hypre/src/hypre
+          METIS_DIR: ${{ github.workspace }}/libs/metis-5.1.0
         run: |
           cmake -S . -B build -G Ninja \
             -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE} \
