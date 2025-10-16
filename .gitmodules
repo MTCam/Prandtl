@@ -1,9 +1,9 @@
 [submodule "libs/mfem"]
 	path = libs/mfem
-	url = git@github.com:mfem/mfem.git
+	url = https://github.com/mfem/mfem.git
 [submodule "glvis"]
 	path = glvis
-	url = git@github.com:GLVis/glvis.git
+	url = https://github.com/GLVis/glvis.git
 [submodule "libs/hypre"]
 	path = libs/hypre
-	url = git@github.com:hypre-space/hypre.git
+	url = https://github.com/hypre-space/hypre.git
