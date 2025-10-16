@@ -28,10 +28,6 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y ninja-build ccache ${{ matrix.pkgs }} \
                                   cmake pkg-config
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y ninja-build ccache ${{ matrix.pkgs }} \
-                                  cmake pkg-config
       - name: Select compiler backend for MPI wrappers
         if: contains(matrix.pkgs, 'clang-16')
         run: |
