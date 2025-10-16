@@ -20,8 +20,6 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y ninja-build ccache ${{ matrix.compiler }} \
                                   cmake pkg-config
-          echo "CC=${{ matrix.compiler%%-* }}" >> $GITHUB_ENV
-          echo "CXX=${{ matrix.compiler%%-* }}++" >> $GITHUB_ENV
       - name: Configure
         env:
           CC: ${{ matrix.cc }}
