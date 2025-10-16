@@ -48,6 +48,14 @@ jobs:
 
       - name: Build dependency submodules (HYPRE, METIS, MFEM)
         run: |
+          # Make 'module' available so build_depends.sh sees IS_HPC=true and skips GLVis
+          if [ -f /etc/profile.d/modules.sh ]; then
+            source /etc/profile.d/modules.sh
+          else
+            # Fallback stub if modules.sh isn't present
+            module() { return 0; }
+            export -f module
+          fi
           bash ./build_depends.sh
 
       - name: Show built dependency libs (debug)
