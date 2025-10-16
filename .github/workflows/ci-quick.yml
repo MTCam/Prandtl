@@ -15,7 +15,6 @@ jobs:
             cc: mpicc
             cxx: mpicxx
             pkgs: "gcc-12 g++-12 mpich libmpich-dev"
-        include:
           - name: "MPICH/Clang16"
             cc: mpicc
             cxx: mpicxx
