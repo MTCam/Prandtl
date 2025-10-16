@@ -10,7 +10,16 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        compiler: [gcc-12, clang-16]
+        include:
+          - name: "MPICH/GCC12"
+            cc: mpicc
+            cxx: mpicxx
+            pkgs: "gcc-12 g++-12 mpich libmpich-dev"
+        include:
+          - name: "MPICH/Clang16"
+            cc: mpicc
+            cxx: mpicxx
+            pkgs: "clang-16 lld-16 mpich libmpich-dev"
     env:
       CMAKE_BUILD_TYPE: RelWithDebInfo
     steps:
@@ -18,8 +27,18 @@ jobs:
       - name: Install deps
         run: |
           sudo apt-get update
-          sudo apt-get install -y ninja-build ccache ${{ matrix.compiler }} \
+          sudo apt-get install -y ninja-build ccache ${{ matrix.pkgs }} \
                                   cmake pkg-config
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build ccache ${{ matrix.pkgs }} \
+                                  cmake pkg-config
+      - name: Select compiler backend for MPI wrappers
+        if: contains(matrix.pkgs, 'clang-16')
+        run: |
+          # Tell MPICH wrappers to use clang
+          echo "MPICH_CC=clang-16" >> $GITHUB_ENV
+          echo "MPICH_CXX=clang++-16" >> $GITHUB_ENV
       - name: Configure
         env:
           CC: ${{ matrix.cc }}
