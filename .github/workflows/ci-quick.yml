@@ -7,7 +7,7 @@ on:
 
 jobs:
   build-test:
-    name: Ubuntu 22.04 • MPICH + GCC-12
+    name: Ubuntu/GCC
     runs-on: ubuntu-22.04
     env:
       CMAKE_BUILD_TYPE: RelWithDebInfo
@@ -68,6 +68,7 @@ jobs:
 
       - name: Configure Prandtl
         env:
+          CONFIG_FILE: compile_config.json
           CC: ${{ env.CC }}
           CXX: ${{ env.CXX }}
           FC: ${{ env.FC }}
@@ -77,6 +78,7 @@ jobs:
           METIS_DIR: ${{ github.workspace }}/libs/metis-5.1.0
         run: |
           cmake -S . -B build -G Ninja \
+            -DCONFIG_FILE=${CONFIG_FILE} \
             -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE} \
             -DBUILD_TESTING=ON \
             -DMFEM_DIR="${MFEM_DIR}" \
