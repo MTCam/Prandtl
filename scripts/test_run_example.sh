@@ -121,7 +121,7 @@ run_one() {
   ( cd "${work}" && ../Prandtl -c "${patched}" )
 
   # Basic regression hook: ensure at least one file in out/
-  if ! find "${outdir}" -type f -maxdepth 1 | head -n 1 >/dev/null; then
+  if ! find "${outdir}" -type f -maxdepth 1 -print -quit | grep -q .; then
     echo "ERROR: No output files produced in ${outdir}" >&2
     return 2
   fi
