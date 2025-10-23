@@ -76,7 +76,7 @@ cp -f "${EXE}" "${RUNDIR}/Prandtl"
 run_one() {
   local cfg_rel="$1"
   local cfg_abs
-  cfg_abs="$(realpath -m "${cfg_rel}")"
+  cfg_abs="$(cd "$(dirname "${cfg_rel}")" && pwd)/$(basename "${cfg_rel}")"
 
   if [[ ! -f "${cfg_abs}" ]]; then
     echo "ERROR: config not found: ${cfg_rel}" >&2
@@ -90,6 +90,7 @@ run_one() {
   local exname
   exname="$(basename "$(dirname "${cfg_abs}")")"   # e.g., LidDrivenCavity
   local work="${RUNDIR}/${exname}"
+  rm -rf "${work}"
   mkdir -p "${work}"
   local outdir="${work}/out"
   mkdir -p "${outdir}"
@@ -106,6 +107,7 @@ run_one() {
         | .visualize = true
         | .paraview  = true
         | .visit     = false
+        | .nancheck  = true
         | .vis_steps = (((($N/2)|floor) | if .==0 then 1 else . end))
         | .variable_dt = false
         | ( if (.dt? | isnum) then .
@@ -120,8 +122,8 @@ run_one() {
   # Run from the per-example dir; keep your “two levels down” invariant
   ( cd "${work}" && ../Prandtl -c "${patched}" )
 
-  # Basic regression hook: ensure at least one file in out/
-  if ! find "${outdir}" -type f -maxdepth 1 -print -quit | grep -q .; then
+  # Basic regression hook: ensure at least one file in out/Paraview
+  if ! find "${outdir}/Paraview" -type f -maxdepth 1 -print -quit | grep -q .; then
     echo "ERROR: No output files produced in ${outdir}" >&2
     return 2
   fi
