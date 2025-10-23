@@ -41,7 +41,7 @@ jobs:
             if [[ -d "$d" ]]; then MFEM_SRC="$d"; break; fi
           done
           if [[ -z "$MFEM_SRC" ]]; then
-            echo "ERROR: Could not find MFEM submodule. Expected one of: external/mfem, third_party/mfem, mfem, submodules/mfem" >&2
+            echo "ERROR: Could not find MFEM submodule. Expected one of: libs/mfem, external/mfem, third_party/mfem, mfem, submodules/mfem" >&2
             exit 1
           fi
           echo "MFEM_SRC=$MFEM_SRC" | tee -a $GITHUB_ENV
