@@ -122,8 +122,8 @@ run_one() {
   # Run from the per-example dir; keep your “two levels down” invariant
   ( cd "${work}" && ../Prandtl -c "${patched}" )
 
-  # Basic regression hook: ensure at least one file in out/Paraview
-  if ! find "${outdir}/Paraview" -type f -maxdepth 1 -print -quit | grep -q .; then
+  # Basic regression hook: ensure at least one file in out/ParaView
+  if ! find "${outdir}/ParaView" -type f -maxdepth 1 -print -quit | grep -q .; then
     echo "ERROR: No output files produced in ${outdir}" >&2
     return 2
   fi
