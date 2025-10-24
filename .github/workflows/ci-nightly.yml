@@ -84,8 +84,10 @@ jobs:
         run: |
           mkdir -p coverage
           # Exclude vendored libs
-          gcovr -r . --xml -o coverage/coverage.xml --exclude-directories 'libs/.*'
-          gcovr -r . --html --html-details -o coverage/index.html --exclude-directories 'libs/.*'
+          gcovr -r . \
+            --xml -o coverage/coverage.xml \
+            --html --html-details -o coverage/index.html \
+            --exclude-directories 'libs/.*'
 
       - name: Upload coverage & logs & outputs
         if: always()
