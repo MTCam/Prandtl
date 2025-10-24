@@ -26,7 +26,7 @@ jobs:
           sudo apt-get install -y \
             gcc-12 g++-12 gfortran-12 \
             mpich libmpich-dev environment-modules \
-            cmake ninja-build pkg-config ccache
+            cmake ninja-build pkg-config ccache jq
           echo "CC=mpicc"   >> $GITHUB_ENV
           echo "CXX=mpicxx" >> $GITHUB_ENV
           echo "FC=mpifort" >> $GITHUB_ENV
@@ -88,7 +88,13 @@ jobs:
       - name: Build Prandtl
         run: cmake --build build -- -k 0
 
-      - name: Smoke tests
+      - name: Example smoke test (LidDrivenCavity)
+        run: |
+          scripts/test_run_example.sh \
+            -c TestCases/NavierStokes/2D/LidDrivenCavity/config.json \
+            -n 100
+
+      - name: Unit smoke tests
         run: ctest --test-dir build -L smoke -j2 --output-on-failure
 
       - name: Upload quick artifacts (logs)
