@@ -1,32 +1,100 @@
-name: Nightly Matrix
+name: Nightly
+
 on:
-  schedule: [{ cron: "17 3 * * *" }]
+  schedule:
+    - cron: "17 3 * * *"   # 03:17 UTC nightly
   workflow_dispatch:
 
 jobs:
-  mfem-matrix:
+  nightly:
+    name: Ubuntu/MPICH/GCC/Coverage/Examples
     runs-on: ubuntu-22.04
-    strategy:
-      fail-fast: false
-      matrix:
-        mfem: [4.6.0, develop]
-        backend: [serial, openmp]
+    env:
+      CMAKE_BUILD_TYPE: RelWithDebInfo
     steps:
-      - uses: actions/checkout@v4
-      - name: Provision deps (Spack)
+      - name: Checkout (with submodules)
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Show submodule SHAs (debug)
+        run: git submodule status --recursive
+
+      - name: Toolchain & deps
         run: |
-          git clone --depth=1 https://github.com/spack/spack.git ~/spack
-          . ~/spack/share/spack/setup-env.sh
-          spack compiler find
-          spack install mfem@${{ matrix.mfem }} +${{ matrix.backend }} ~cuda ~hip
-          spack load mfem@${{ matrix.mfem }}
-          echo "MFEM_DIR=$(spack location -i mfem@${{ matrix.mfem }})" >> $GITHUB_ENV
-      - name: Configure
+          sudo apt-get update
+          sudo apt-get install -y \
+            gcc-12 g++-12 gfortran-12 \
+            mpich libmpich-dev environment-modules \
+            cmake ninja-build pkg-config ccache \
+            gcovr jq
+          echo "CC=mpicc"   >> $GITHUB_ENV
+          echo "CXX=mpicxx" >> $GITHUB_ENV
+          echo "FC=mpifort" >> $GITHUB_ENV
+
+      - name: Build dependency submodules (HYPRE, METIS, MFEM)
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -f /etc/profile.d/modules.sh ]; then
+            source /etc/profile.d/modules.sh
+          else
+            module() { return 0; }; export -f module
+          fi
+          bash ./build_depends.sh
+
+      - name: Configure Prandtl (coverage flags)
+        env:
+          MFEM_DIR: ${{ github.workspace }}/libs/mfem
+          HYPRE_DIR: ${{ github.workspace }}/libs/hypre/src/hypre
+          METIS_DIR: ${{ github.workspace }}/libs/metis-5.1.0
         run: |
           cmake -S . -B build -G Ninja \
-            -DMFEM_DIR=${MFEM_DIR} \
-            -DBUILD_TESTING=ON
+            -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE} \
+            -DBUILD_TESTING=ON \
+            -DMFEM_DIR="${MFEM_DIR}" \
+            -DHYPRE_DIR="${HYPRE_DIR}" \
+            -DMETIS_DIR="${METIS_DIR}" \
+            -DCMAKE_C_FLAGS="--coverage" \
+            -DCMAKE_CXX_FLAGS="--coverage" \
+            -DCMAKE_EXE_LINKER_FLAGS="--coverage"
+
       - name: Build
-        run: cmake --build build
-      - name: Integration tests
-        run: ctest --test-dir build -L integration -j2 --output-on-failure
+        run: cmake --build build -- -k 0
+
+      - name: CTest (unit + smoke + mpi + integration)
+        run: ctest --test-dir build -L "(unit|smoke|mpi|integration)" -j2 --output-on-failure
+
+      - name: Example set (broader, 150–200 steps)
+        run: |
+          cat > examples-nightly.txt <<'EOF'
+          TestCases/NavierStokes/2D/LidDrivenCavity/config.json
+          TestCases/NavierStokes/3D/TaylorGreenVortex/config.json
+          TestCases/Euler/1D/SodShockTube/config.json
+          TestCases/Euler/1D/ShuOsherShock/config.json
+          TestCases/Euler/2D/IsentropicVortex/config.json
+          TestCases/Euler/2D/DoubleMachReflection/config.json
+          TestCases/Euler/2D/KelvinHelmholtzInstability/config.json
+          TestCases/Euler/2D/ForwardFacingStep/config.json
+          EOF
+          scripts/test_run_example.sh -l examples-nightly.txt -n 200
+
+      - name: Coverage (gcovr XML + HTML)
+        run: |
+          mkdir -p coverage
+          # Exclude vendored libs
+          gcovr -r . --xml -o coverage/coverage.xml --exclude-directories 'libs/.*'
+          gcovr -r . --html --html-details -o coverage/index.html --exclude-directories 'libs/.*'
+
+      - name: Upload coverage & logs & outputs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: prandtl-nightly
+          path: |
+            coverage/**
+            build/Testing/**/Test.xml
+            build/CMakeCache.txt
+            build/**/*.log
+            Run1/Run2/**/out/**
