@@ -93,6 +93,9 @@ jobs:
           scripts/test_run_example.sh \
             -c TestCases/NavierStokes/2D/LidDrivenCavity/config.json \
             -n 100
+          scripts/test_run_example.sh \
+            -c TestCases/Euler/2D/IsentropicVortex/config.json \
+            -n 100
 
       - name: Unit smoke tests
         run: ctest --test-dir build -L smoke -j2 --output-on-failure
