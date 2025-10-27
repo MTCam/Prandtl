@@ -120,7 +120,7 @@ run_one() {
   ' "${cfg_abs}" > "${patched}"
 
   # Run from the per-example dir; keep your “two levels down” invariant
-  ( cd "${work}" && ../Prandtl -c "${patched}" )
+  ( cd "${work}" && mpiexec -n 2 ../Prandtl -c "${patched}" )
 
   # Basic regression hook: ensure at least one file in out/ParaView
   if ! find "${outdir}/ParaView" -type f -maxdepth 1 -print -quit | grep -q .; then
