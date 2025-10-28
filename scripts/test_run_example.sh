@@ -117,7 +117,9 @@ run_one() {
 
   # Create a patched config inside work/
   local patched="${work}/config.patched.json"
-
+  if [[ "${NSTEPS}" == "0" ]]; then
+      NSTEPS=100
+  fi
   jq --argjson N "${NSTEPS}" --arg out "${outdir}" '
     def isnum: type=="number";
     . as $root
@@ -135,9 +137,10 @@ run_one() {
         | .variable_dt = false
         | ( if (.dt? | isnum) then .
             elif (.final_time? | isnum) then (.dt = (.final_time / $N))
-            else (.dt = 0.000001)
-          end )
+            else (.dt = 0.0000001)
+            end )
         | .final_time = (.dt * $N)
+        | .initial_save_dt = (.dt * .vis_steps)
         | .output_file_path = $out
         | .checkpoint_load = false
       )
