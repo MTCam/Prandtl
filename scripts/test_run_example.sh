@@ -117,10 +117,11 @@ run_one() {
 
   # Create a patched config inside work/
   local patched="${work}/config.patched.json"
-  if [[ "${NSTEPS}" == "0" ]]; then
-      NSTEPS=100
+  local nsteps="${NSTEPS}"
+  if [[ "${nsteps}" == "0" ]]; then
+      nsteps=100
   fi
-  jq --argjson N "${NSTEPS}" --arg out "${outdir}" '
+  jq --argjson N "${nsteps}" --arg out "${outdir}" '
     def isnum: type=="number";
     . as $root
     | ($root.runTime // {}) as $rt
