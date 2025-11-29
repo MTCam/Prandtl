@@ -7,3 +7,6 @@
 [submodule "libs/hypre"]
 	path = libs/hypre
 	url = https://github.com/hypre-space/hypre.git
+[submodule "libs/Mutationpp"]
+	path = libs/Mutationpp
+	url = https://github.com/mutationpp/Mutationpp.git
