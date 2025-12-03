@@ -10,6 +10,9 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 project(Prandtl)
 
+option(PARABOLIC "Enable Compressible Navier-Stokes Solver" OFF)
+option(SUBCELL_FV_BLENDING "Enable subcell blending" ON)
+
 find_package(MPI REQUIRED)
 include_directories(${MPI_CXX_INCLUDE_PATH})
 set(MPI_CXX_LIBRARIES ${MPI_CXX_LIBRARIES})
@@ -48,6 +51,14 @@ add_executable(${PROJECT_NAME} main.cpp)
 target_compile_definitions(${PROJECT_NAME}
     PRIVATE ${COMPILE_DEFINES_LIST}
 )
+
+if(PARABOLIC)
+  target_compile_definitions(${PROJECT_NAME} PRIVATE PARABOLIC)
+endif()                                            
+
+if(SUBCELL_FV_BLENDING)
+  target_compile_definitions(${PROJECT_NAME} PRIVATE SUBCELL_FV_BLENDING)
+endif()
 
 target_sources(${PROJECT_NAME}
     PRIVATE src/Operators/DGSEMOperator.cpp 
