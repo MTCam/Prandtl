@@ -182,6 +182,10 @@ jobs:
         with:
           name: prandtl-quick-logs
           path: |
-            build/Testing/**/Test.xml
-            build/CMakeCache.txt
-            build/**/*.log
+            build-euler/Testing/**/Test.xml
+            build-euler/CMakeCache.txt
+            build-euler/**/*.log
+            build-cns/Testing/**/Test.xml
+            build-cns/CMakeCache.txt
+            build-cns/**/*.log
+            RegressionTests
