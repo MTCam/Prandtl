@@ -143,6 +143,7 @@ jobs:
 
       - name: Example regression test (Cyclic - IsentropicVortex)
         run: |
+          rm -rf RegressionTests/IsentropicVortex
           scripts/run_regression_test.sh \
             -b "$(pwd)/build-euler" \
             -c TestCases/Euler/2D/IsentropicVortex/config.json
@@ -152,6 +153,7 @@ jobs:
 
       - name: Example regression test (Gold standard - IsentropicVortex)
         run: |
+          rm -rf RegressionTests/IsentropicVortex
           scripts/run_regression_test.sh \
             -t "0.001" \
             -n "500" \
@@ -161,6 +163,7 @@ jobs:
 
       - name: Example regression test (Gold standard - LidDrivenCavity)
         run: |
+          rm -rf RegressionTests/LidDrivenCavity
           scripts/run_regression_test.sh \
             -t "0.0001" \
             -n "4000" \
