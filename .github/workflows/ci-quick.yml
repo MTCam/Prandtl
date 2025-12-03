@@ -141,7 +141,7 @@ jobs:
             -c TestCases/NavierStokes/2D/LidDrivenCavity/config.json \
             -n 100
 
-      - name: Example regression test (Cyclic case: IsentropicVortex)
+      - name: Example regression test (Cyclic - IsentropicVortex)
         run: |
           scripts/run_regression_test.sh \
             -b "$(pwd)/build-euler" \
@@ -150,7 +150,7 @@ jobs:
           python ../../scripts/compare_viz.py ParaView/ParaView.pvd --fields Density --atol 5e-5 --rtol 2e-6
           cd -
 
-      - name: Example regression test (Gold standard: IsentropicVortex)
+      - name: Example regression test (Gold standard - IsentropicVortex)
         run: |
           scripts/run_regression_test.sh \
             -d "0.00001" \
