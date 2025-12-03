@@ -54,7 +54,7 @@ target_compile_definitions(${PROJECT_NAME}
 
 if(PARABOLIC)
   target_compile_definitions(${PROJECT_NAME} PRIVATE PARABOLIC)
-endif()                                            
+endif()
 
 if(SUBCELL_FV_BLENDING)
   target_compile_definitions(${PROJECT_NAME} PRIVATE SUBCELL_FV_BLENDING)

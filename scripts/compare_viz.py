@@ -4,11 +4,15 @@
 Compare two visualization files (VTK family) field-by-field with tolerances.
 
 Usage:
-  # direct files
+  # direct PVTU, VTU files
   python3 scripts/compare_viz.py out/ParaView/step_00000.vtu out/ParaView/step_00100.vtu \
       --fields rho,u,v,p --rtol 1e-10 --atol 1e-12
 
-  # PVD convenience: pass a single .pvd and it will compare first vs last dataset
+  # direct PVD (compares data for each/all timesteps!)
+  python3 scripts/compare_viz.py case1_out/ParaView/case.pvd case2_out/ParaView/case.pvd \
+      --fields rho,u,v,p --rtol 1e-10 --atol 1e-12
+
+  # PVD convenience (e.g. for cyclic cases): pass a single .pvd and it will compare first vs last dataset
   python3 scripts/compare_viz.py out/ParaView/case.pvd --fields rho,u,v,p
 
 Exit codes:
@@ -32,7 +36,7 @@ except Exception:
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Compare two VTK viz files with tolerances.")
     p.add_argument("inputs", nargs="+",
-                   help="Two viz files (e.g., first.vtu last.vtu) OR a single .pvd (first vs last inside).")
+                   help="Two viz files of type pvtu, pvd, or vtu. OR a single PVD to compare first vs. last.")
     p.add_argument("--fields", default="", help="Comma-separated list of fields to compare (empty = all common).")
     p.add_argument("--exclude-fields", default="", help="Comma-separated list of fields to ignore.")
     p.add_argument("--rtol", type=float, default=1e-10, help="Relative tolerance.")
@@ -195,6 +199,13 @@ def _load_mesh(path: str) -> 'MeshAdapter':
     import pyvista as pv
     # pyvista wraps vtkXML{P,U}UnstructuredGridReader internally
     mesh = pv.read(path)
+
+    # For parallel XML files (.pvtu, etc.) pyvista may return a MultiBlock.
+    # Collapse to a single UnstructuredGrid so the rest of the script can
+    # treat it like a normal mesh.
+    if isinstance(mesh, pv.MultiBlock):
+        mesh = mesh.combine()   # merges all blocks into one unstructured grid
+
     # Create a fake meshio-like object interface so the rest of the script works
     class MeshAdapter:
         def __init__(self, m):
@@ -202,6 +213,7 @@ def _load_mesh(path: str) -> 'MeshAdapter':
             self.points = np.array(m.points)
             # pyvista stores both point_data and cell_data
             self.point_data = {k: np.array(v) for k, v in m.point_data.items()}
+            # store as a list of blocks to match the expectations of _stack_cell_data
             self.cell_data = {k: [np.array(v)] for k, v in m.cell_data.items()}
             self.cells = []
     return MeshAdapter(mesh)
@@ -221,6 +233,19 @@ def _from_pvd(pvd_path: str) -> Tuple[str, str]:
     last = sets[-1].attrib.get("file")
     base = os.path.dirname(pvd_path)
     return os.path.join(base, first), os.path.join(base, last)
+
+
+def _list_from_pvd(pvd_path: str) -> List[str]:
+    """Return a list of dataset paths from a .pvd file, in file order."""
+    if ET is None:
+        raise RuntimeError("xml parser unavailable; cannot read .pvd")
+    tree = ET.parse(pvd_path)
+    root = tree.getroot()
+    sets = root.findall(".//DataSet")
+    if not sets:
+        raise RuntimeError("No DataSet entries in PVD.")
+    base = os.path.dirname(pvd_path)
+    return [os.path.join(base, ds.attrib.get("file")) for ds in sets]
 
 
 def compare_files(f0: str, f1: str, fields: List[str], exclude: List[str],
@@ -315,12 +340,13 @@ def compare_files(f0: str, f1: str, fields: List[str], exclude: List[str],
 
     return results["ok"], results
 
-
 def main():
     args = parse_args()
     inputs = args.inputs
 
-    # PVD convenience: one arg -> first vs last inside .pvd
+    pairs: List[Tuple[str, str]] = []
+
+    # Case 1: single .pvd -> compare first vs last inside it
     if len(inputs) == 1 and inputs[0].lower().endswith(".pvd"):
         pvd = inputs[0]
         try:
@@ -328,32 +354,80 @@ def main():
         except Exception as e:
             print(f"ERROR reading PVD: {e}", file=sys.stderr)
             return 2
+        pairs.append((f0, f1))
+
+    # Case 2: two .pvd files -> compare timestep-by-timestep
+    elif (
+        len(inputs) == 2
+        and inputs[0].lower().endswith(".pvd")
+        and inputs[1].lower().endswith(".pvd")
+    ):
+        pvd0, pvd1 = inputs
+        try:
+            seq0 = _list_from_pvd(pvd0)
+            seq1 = _list_from_pvd(pvd1)
+        except Exception as e:
+            print(f"ERROR reading PVDs: {e}", file=sys.stderr)
+            return 2
+
+        if len(seq0) != len(seq1):
+            print(
+                f"ERROR: PVD files have different number of datasets "
+                f"({len(seq0)} vs {len(seq1)}).",
+                file=sys.stderr,
+            )
+            return 2
+
+        pairs = list(zip(seq0, seq1))
+
+    # Case 3: two direct files (vtu/pvtu/etc.)
     elif len(inputs) == 2:
-        f0, f1 = inputs
+        pairs.append((inputs[0], inputs[1]))
+
     else:
-        print("ERROR: Provide either two files or a single .pvd.", file=sys.stderr)
+        print(
+            "ERROR: Provide either two files, two .pvd files, or a single .pvd.",
+            file=sys.stderr,
+        )
         return 2
 
-    if not (os.path.exists(f0) and os.path.exists(f1)):
-        print(f"ERROR: files not found: {f0}, {f1}", file=sys.stderr)
-        return 2
+    # Parse field selection
+    fields = [f.strip() for f in args.fields.split(",") if f.strip()]
+    excludes = [f.strip() for f in args.exclude_fields.split(",") if f.strip()]
 
-    fields = [s for s in args.fields.split(",") if s]
-    excludes = [s for s in args.exclude_fields.split(",") if s]
-    # Auto-exclude common VTK internals that cause shape surprises
-    excludes += ["vtkOriginalPointIds", "vtkGhostType", "vtkProcessId"]
+    overall_ok = True
+    all_results: List[Dict] = []
 
-    ok, results = compare_files(
-        f0, f1, fields=fields, exclude=excludes,
-        rtol=args.rtol, atol=args.atol,
-        compare_cells=args.compare_cells, quiet=args.quiet
-    )
+    for i, (f0, f1) in enumerate(pairs):
+        if not args.quiet and len(pairs) > 1:
+            print(f"\n=== Comparison {i}: {f0}  vs  {f1} ===")
+
+        ok, results = compare_files(
+            f0,
+            f1,
+            fields=fields,
+            exclude=excludes,
+            rtol=args.rtol,
+            atol=args.atol,
+            compare_cells=args.compare_cells,
+            quiet=args.quiet,
+        )
+        overall_ok = overall_ok and ok
+        all_results.append({"file0": f0, "file1": f1, "results": results})
 
     if args.json_out:
         with open(args.json_out, "w") as f:
-            json.dump(results, f, indent=2)
+            if len(all_results) == 1:
+                # Backwards-compatible: emit the single comparison's results only
+                json.dump(all_results[0]["results"], f, indent=2)
+            else:
+                json.dump(
+                    {"overall_ok": overall_ok, "comparisons": all_results},
+                    f,
+                    indent=2,
+                )
 
-    return 0 if ok else 1
+    return 0 if overall_ok else 1
 
 
 if __name__ == "__main__":

@@ -153,13 +153,20 @@ jobs:
       - name: Example regression test (Gold standard - IsentropicVortex)
         run: |
           scripts/run_regression_test.sh \
-            -d "0.00001" \
-            -n "1000" \
+            -t "0.001" \
+            -n "500" \
             -b "$(pwd)/build-euler" \
             -c TestCases/Euler/2D/IsentropicVortex/config.json
-          cd RegressionTests/IsentropicVortex
-          python ../../scripts/compare_viz.py ParaView/ParaView.pvd --fields Density --atol 5e-5 --rtol 2e-6
-          cd -
+          python scripts/compare_viz.py RegressionTests/IsentropicVortex/ParaView/Cycle000500/data.pvtu TestCases/GoldenData/IsentropicVortex/Cycle000500/data.pvtu --atol 1e-15 --rtol 1e-15
+
+      - name: Example regression test (Gold standard - LidDrivenCavity)
+        run: |
+          scripts/run_regression_test.sh \
+            -t "0.0001" \
+            -n "4000" \
+            -b "$(pwd)/build-cns" \
+            -c TestCases/NavierStokes/2D/LidDrivenCavity/config.json
+          python scripts/compare_viz.py RegressionTests/LidDrivenCavity/ParaView/Cycle004000/data.pvtu TestCases/GoldenData/LidDrivenCavity/Cycle04000/data.pvtu --atol 1e-15 --rtol 1e-15
 
       - name: Unit smoke tests (Euler)
         run: ctest --test-dir build-euler -L euler-smoke -j2 --output-on-failure

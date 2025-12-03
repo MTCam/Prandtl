@@ -37,9 +37,9 @@ usage() {
   cat <<EOF
 Usage: $0 [-n STEPS] [-b BUILDDIR] [-e EXECUTABLE] [-o RUNDIR] (-c CONFIG.json | -l LIST.txt)
 
-  -n STEPS      Number of steps to run (default: ${NSTEPS})
-  -t TIMESTEP   Fixed timestep size (default: .0001)
-  -d CFL        Fixed CFL (default: None=fixed timestep)
+  -n STEPS      Number of steps to run (default: None, use case default)
+  -t TIMESTEP   Fixed timestep size (default: None, use case default)
+  -d CFL        Fixed CFL (default: None, use case default)
   -b BUILDDIR   Build directory (default: ${BUILDDIR})
   -e EXECUTABLE Path to Prandtl executable (default: ${EXE})
   -o RUNDIR     Directory to run in (default: ${RUNDIR})
@@ -162,7 +162,7 @@ else
         | .checkpoint_load = false
       )
   ' "${cfg_abs}" > "${patched}"
-fi    
+fi
   # Run from the per-example dir; keep your “two levels down” invariant
   # Run example (isolate failures; do NOT exit on first error)
   set +e
