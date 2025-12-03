@@ -253,9 +253,18 @@ def compare_files(f0: str, f1: str, fields: List[str], exclude: List[str],
     m0 = _load_mesh(f0)
     m1 = _load_mesh(f1)
 
-    # Canonicalize point ordering
-    idx0, pts0_sorted = _canonicalize_points(m0.points)
-    idx1, pts1_sorted = _canonicalize_points(m1.points)
+    pts0 = np.asarray(m0.points)
+    pts1 = np.asarray(m1.points)
+
+    if pts0.shape == pts1.shape and np.allclose(pts0, pts1, rtol=0.0, atol=2e-15):
+        idx0 = np.arange(pts0.shape[0])
+        idx1 = np.arange(pts1.shape[0])
+        pts0_sorted = pts0
+        pts1_sorted = pts1
+    else:
+        # Canonicalize point ordering
+        idx0, pts0_sorted = _canonicalize_points(m0.points)
+        idx1, pts1_sorted = _canonicalize_points(m1.points)
 
     # Quick geometry sanity (same bbox within tiny tol)
     bbox0 = np.array([pts0_sorted.min(axis=0), pts0_sorted.max(axis=0)])
@@ -265,6 +274,7 @@ def compare_files(f0: str, f1: str, fields: List[str], exclude: List[str],
     # Point data (aligned by sorted point index)
     pd0_raw = _stack_point_data(m0)
     pd1_raw = _stack_point_data(m1)
+
     pd0 = {k: v[idx0] for k, v in pd0_raw.items()}
     pd1 = {k: v[idx1] for k, v in pd1_raw.items()}
 
