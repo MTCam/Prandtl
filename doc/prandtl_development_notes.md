@@ -150,7 +150,27 @@ Therefore the accessor must:
 ---
 ## 3. Simulation Workflow and Call Sequence
 
-This section summarizes how a Prandtl simulation is constructed and advanced in time, and how the main MFEM and Prandtl objects interact during this process.
+This section summarizes how a Prandtl simulation is constructed and advanced in time, and how the main MFEM and Prandtl objects interact during this process. This section also summarizes how the conserved state is created, passed through the
+operator hierarchy, and consumed by the DGSEM kernels.
+
+At a high level:
+
+1. The solution state lives in the ParGridFunction `sol`, defined on the
+   system finite element space `vfes`. It stores all conserved variables
+   using the equation-blocked layout described in Section 2.
+
+2. During each time step, the MFEM ODE solver calls  
+   DGSEMOperator::Mult(sol, dudt).  
+   This is the top-level RHS routine and the first consumer of the conserved
+   state.
+
+3. DGSEMOperator delegates the spatial discretization to  
+   DGSEMNonlinearForm::Mult(...).  
+   This routine evaluates all DG volume, interior face, boundary face, and MPI
+   shared-face contributions, where the conserved state is accessed heavily.
+
+The subsections that follow provide detail on each of these stages and how they
+relate to Prandtl’s data structures and MFEM’s abstractions.
 
 ### 3.1 Big-Picture Simulation Workflow
 
@@ -346,3 +366,527 @@ Key observations for modernization:
 The next subsection describes boundary face terms, which follow a similar pattern
 but use specialized integrators for boundary conditions.
 
+
+### 3.5 Boundary Face Terms and Boundary Integrators
+
+Boundary faces are handled similarly to interior faces, but instead of using
+a left–right pair of element states, the DGSEMNonlinearForm applies a boundary
+condition integrator. Each integrator encodes how the "exterior" state should
+be constructed (e.g., reflective, inflow, no-slip, adiabatic).
+
+Conceptually, boundary face processing follows this pattern:
+
+1. Loop over all boundary faces in the mesh.  
+2. For each face, identify the boundary condition type from the input file.  
+3. Gather DOFs for the adjacent element (the interior side).  
+4. Create or infer the "ghost" exterior state based on the boundary condition.  
+5. Evaluate the numerical flux between interior and ghost states.  
+6. Accumulate the contribution into the dudt vector for the adjacent element.
+
+This can be summarized as:
+
+```cpp
+for each boundary face:
+    U_int = gather DOFs for the element
+    U_ext = apply boundary condition rule to construct ghost state
+    compute numerical flux = F_hat(U_int, U_ext)
+    accumulate contribution into dudt
+```
+
+Examples of boundary integrators wired into the operator include:
+
+- Symmetry boundary (reflective or axisymmetric)
+- No-slip adiabatic wall
+- Generic inflow and outflow conditions
+- Axisymmetric boundary conditions (enabled by compile-time flag AXISYMMETRIC)
+
+The DGSEMOperator registers these integrators using MFEM mechanisms such as 
+AddBdrFaceIntegrator, which adds the boundary integrator along with a marker 
+identifying which boundary faces it applies to.
+
+Modernization considerations:
+
+- Each boundary integrator contains raw accesses into the conserved state 
+  to compute velocity components, pressure, or temperature.
+- These access patterns must be rewritten to use the StateView API.
+- Many BC implementations also access physics constants directly; these 
+  will eventually route through the GasModel abstraction.
+- GPU execution requires that boundary face integrators avoid dynamic 
+  allocation and virtual dispatch inside hot loops.
+
+The next subsection completes the RHS assembly by describing the MPI 
+face-neighbor data exchange required for parallel runs.
+
+### 3.6 Parallel Execution: Face Neighbor Exchange (MPI)
+
+In parallel runs, DGSEMNonlinearForm must evaluate numerical fluxes on faces 
+shared between elements that reside on different MPI ranks. MFEM provides a 
+built-in mechanism for exchanging the necessary degrees of freedom through 
+its face-neighbor data structures.
+
+The sequence for parallel face exchange proceeds as follows:
+
+1. Identify all shared faces  
+   - MFEM partitions the mesh so each rank knows which faces touch off-rank 
+     elements.
+
+2. Pack local element DOFs into a contiguous send buffer  
+   - Each field involved in exchange (e.g., Ustate and gradients when viscous 
+     terms are enabled) is packed into MFEM’s "face neighbor" buffers.
+
+3. Exchange neighbor data using nonblocking MPI communication  
+   - MFEM handles the communication through its ParGridFunction and 
+     ParFiniteElementSpace infrastructure.
+   - After communication completes, the neighbor DOFs appear in 
+     FaceNbrData buffers.
+
+4. For each shared face:
+   - Retrieve DOFs for the on-rank element.
+   - Retrieve DOFs for the off-rank element from the FaceNbrData buffer.
+   - Apply the same numerical flux procedure as for interior faces.
+
+5. Accumulate contributions into dudt for the local element.  
+   - Only the local element is updated; the neighbor element receives 
+     its own contributions on its own rank.
+
+This process can be summarized as:
+
+```cpp
+pack local DOFs into face-neighbor send buffer
+exchange buffers across MPI ranks
+for each shared face:
+    U_left  = gather DOFs for the local element
+    U_right = gather DOFs from FaceNbrData
+    compute numerical flux = F_hat(U_left, U_right)
+    update dudt for the local element only
+```
+
+Modernization considerations:
+
+- All packing and unpacking of DOFs currently relies on the raw conserved 
+  state layout; this must be routed through StateView.
+- MPI exchange paths must avoid host-only constructs when GPU execution 
+  is enabled; no STL containers or dynamic allocation inside the loops.
+- FaceNbrData access on device is possible only if integrators are properly 
+  device-enabled and MFEM’s memory mode is set appropriately.
+- The accessor must support reading DOFs from either local Ustate or neighbor 
+  buffers without branching logic scattered across the code.
+
+With interior faces, boundary faces, and MPI exchanges covered, the next 
+subsection completes the spatial operator pipeline by outlining the 
+post-assembly update into the global dudt vector.
+
+
+## 4. Code Navigation: Where to Look in the Source
+
+This section is a practical index into the Prandtl codebase. It highlights
+the main locations where the conserved state is accessed, where MFEM
+constructs are wired together, and where upcoming refactors (StateView,
+GasModel, GPU enablement) will primarily land.
+
+The paths and function names here are meant as stable landmarks, not exact
+line numbers.
+
+---
+
+### 4.1 High-Value Locations for StateView Refactor
+
+These are the most important places to inspect and update when replacing
+raw indexing with the StateView accessor.
+
+- **Solution state layout and initial debugging**
+  - File: `Simulation.cpp`  
+  - What to look for:
+    - Construction of `vfes`, `fes`, and `sol`.  
+    - Definitions of `num_dofs_scalar` and `num_dofs_system`.  
+    - Debug blocks that directly call `sol->GetData()` and then compute
+      rho, momentum components, and energy using expressions like  
+      `sol_state[eq*num_dofs_scalar + i]`. :contentReference[oaicite:0]{index=0}  
+  - Why it matters:
+    - This code documents the implicit layout assumptions in a concentrated,
+      easy-to-read location.
+
+- **Top-level RHS operator: DGSEMOperator**
+  - File: `src/Operators/DGSEMOperator.cpp` (and header)  
+  - What to look for:
+    - The method `DGSEMOperator::Mult(const Vector &u, Vector &dudt)`. :contentReference[oaicite:1]{index=1}  
+    - Any use of density, momentum, energy, entropy, or primitive variables
+      extracted directly from the solution vector.
+    - Axisymmetric-specific code paths (`AXISYMMETRIC` conditional code).
+    - Subcell FV blending setup (`SUBCELL_FV_BLENDING`), which may read from
+      the conserved state.
+  - Why it matters:
+    - This is the first consumer of `sol` in the RHS chain and a natural
+      place to introduce StateView as the canonical way to interpret the
+      solution vector.
+
+- **DGSEM spatial discretization: DGSEMNonlinearForm**
+  - File: `src/Operators/NonlinearForm/DGSEMNonlinearForm.cpp`  
+  - What to look for:
+    - `DGSEMNonlinearForm::Mult(...)` and any helper routines that:
+      - Gather element DOFs into local vectors.  
+      - Gather face DOFs for interior and shared faces.  
+      - Access or interpret conserved variables (rho, rho*u, rho*E, etc.). :contentReference[oaicite:2]{index=2}  
+  - Why it matters:
+    - This is the primary DGSEM kernel implementation and a major hotspot.
+      All DOF access here needs to be compatible with device execution and
+      should go through StateView.
+
+- **Boundary integrators**
+  - Files: `src/Operators/Boundary/*` (or equivalent boundary integrator
+    directory)  
+  - What to look for:
+    - BC classes registered via `NS->AddBdrFaceIntegrator(...)` in
+      `Simulation.cpp` (e.g., symmetry, no-slip adiabatic walls, axisymmetry). :contentReference[oaicite:3]{index=3}  
+    - Direct extraction of primitive variables (velocity components, pressure,
+      temperature) from the conserved state using raw indexing.
+  - Why it matters:
+    - Boundary conditions frequently duplicate state access logic; StateView
+      should become the single source for that mapping so BCs stay correct
+      when state layout evolves.
+
+- **Postprocessing and visualization**
+  - File: `Simulation.cpp`  
+  - What to look for:
+    - Creation of derived fields `rho`, `mom`, `energy`, velocities `u, v, w`,
+      and pressure `p` from `sol`.  
+    - Loops that compute:  
+      - `rho(i)`  
+      - `mom(i)` and `mom(i + num_dofs_scalar)`  
+      - `energy(i)` and `p(i)` with expressions like  
+        `gammaM1 * (energy(i) - 0.5*rho(i)*V_sq)`. :contentReference[oaicite:4]{index=4}  
+  - Why it matters:
+    - These loops are explicit examples of how the state is interpreted and
+      need to remain consistent with whatever StateView defines as the
+      canonical ordering and meaning of each block.
+
+### 4.2 MFEM Wiring, Time Integration, and Operator Setup
+
+This subsection points to the places where Prandtl connects its own operators
+to MFEM’s abstractions: mesh and FE setup, operator construction, and ODE
+solver configuration.
+
+These are key landmarks when you need to understand how everything is glued
+together or where to attach new capabilities (e.g., GasModel, PA/GPU paths).
+
+- **Mesh and FE space construction**
+  - File: `Simulation.cpp`  
+  - What to look for:
+    - Creation of `mesh` (serial) and `pmesh` (parallel):  
+      construction from input mesh file, followed by `par_ref_levels`
+      uniform refinement. :contentReference[oaicite:0]{index=0}  
+    - Construction of DG FE collections:
+      - `fec`  = DG_FECollection(order, dim, btype)  
+      - `fec0` = DG_FECollection(0, dim)
+    - Construction of FE spaces:
+      - `vfes` (system space, vdim = num_equations)  
+      - `fes`  (scalar space)  
+      - `dfes` (vector space for gradients, dimension = dim)
+  - Why it matters:
+    - These constructions determine the size and structure of the solution
+      vector and all auxiliary fields (e.g., gradients, indicators).
+    - Any future PA/GPU setup that depends on element-wise data will need to
+      be consistent with these spaces.
+
+- **DGSEM operator construction**
+  - File: `Simulation.cpp`  
+  - What to look for:
+    - Construction of the physical flux object (`NavierStokesFlux`) using
+      `PhysicsConstants` (gamma, Pr, mu, R_gas, etc.). :contentReference[oaicite:1]{index=1}  
+    - Selection of numerical flux (e.g., `ChandrashekarFlux`) based on runtime
+      configuration.
+    - Construction of `DGSEMOperator` with arguments:
+      - FE spaces (`vfes`, `fes0`, etc.)  
+      - Parallel mesh (`pmesh`)  
+      - Blending coefficient fields (e.g., `alpha`)  
+      - Gradient fields (`dudx`, `dudy`, `dudz`)  
+      - DGSEM integrator object  
+      - Indicator/limiter (e.g., Persson–Peraire)  
+      - Physics constants (gamma)
+    - This is where `DGSEMNonlinearForm` is created and owned by the operator.
+  - Why it matters:
+    - This call site defines the lifetime and ownership relationships between
+      MFEM spaces, the DGSEM operator, and the nonlinear form.
+    - Any future GasModel or LTE support will likely be passed into the
+      operator here (instead of raw PhysicsConstants usage). :contentReference[oaicite:2]{index=2}  
+    - GPU/PA enablement will need to extend DGSEMOperator and its integrator
+      construction to set up device-ready data.
+
+- **Boundary condition wiring**
+  - File: `Simulation.cpp`  
+  - What to look for:
+    - Loops over boundary segments reading BC types from the runtime config.  
+    - Creation of boundary integrator instances such as:
+      - Symmetry and axisymmetric BCs  
+      - No-slip adiabatic walls (including heat and velocity boundary
+        conditions from ConditionFactory) :contentReference[oaicite:3]{index=3}  
+    - Calls to `NS->AddBdrFaceIntegrator(...)` with integrator pointers and
+      boundary marker arrays.
+  - Why it matters:
+    - This is the central registry for which BC classes are in play and how
+      they map to mesh boundary attributes.
+    - StateView and GasModel must eventually be wired into these integrators
+      so BCs use the same layout and EOS logic as the rest of the solver.
+
+- **Time integrator setup**
+  - File: `Simulation.cpp`  
+  - What to look for:
+    - Construction of an MFEM ODE solver (e.g., Forward Euler or Runge–Kutta)
+      based on runtime configuration.
+    - The call:
+      - `NS->SetTime(t);`  
+      - `ode_solver->Init(*NS);`  
+      which registers DGSEMOperator as the `TimeDependentOperator`. :contentReference[oaicite:4]{index=4}  
+    - The main time-stepping loop, where:
+      - A time step dt is chosen (possibly via CFL calculation using mesh
+        element sizes and max characteristic speeds from NS).  
+      - `ode_solver->Step(*sol, t, dt_real);` advances the solution.
+  - Why it matters:
+    - This is the only place where the ODE solver sees the PDE; it only knows
+      about `sol`, `t`, and `NS`.  
+    - Any changes to how the state is stored (e.g., device memory vs host, or
+      PA vs full assembly) must be reflected in DGSEMOperator and its
+      integration with MFEM here, not in the ODE solver.
+
+Together, these locations describe how Prandtl maps from input/runtime state
+to MFEM objects, to the DGSEM operator, and finally into time integration.
+They are the primary “wiring harness” you will revisit when introducing
+StateView, GasModel, and GPU/PA execution paths.
+
+
+
+
+### 4.3 Checklist: Locations of Raw State Indexing (rho, rhoU, rhoV, E)
+
+The following list identifies the major patterns and code regions where the
+conserved state is accessed through manual indexing. These locations are the
+primary targets for replacement with the new StateView API.
+
+This checklist is not exhaustive, but it captures all high-impact sites based
+on the current code structure.
+
+---
+
+#### Pattern 1: Direct use of sol->GetData()
+- File: `Simulation.cpp`  
+- Typical usage:
+  - `real_t* sol_state = sol->GetData();`  
+  - Access via `sol_state[eq*num_dofs_scalar + i]`  
+- Consumers:
+  - Debug printing  
+  - Derivation of rho, momentum components, energies  
+  - Velocity and pressure computation for visualization  
+- Why it matters:
+  - This code explicitly documents the assumed equation-blocked layout and
+    is tightly coupled to the indexing scheme.  
+  - All of these accesses must be replaced by StateView.
+
+---
+
+#### Pattern 2: Manual component extraction inside DGSEMOperator
+- File: `src/Operators/DGSEMOperator.cpp`  
+- Typical usage:
+  - Access to U, or Ustate (axisymmetric path)  
+  - Direct extraction of conserved components for:
+    - Entropy operations  
+    - FV blending  
+    - Primitive variable computations  
+- Why it matters:
+  - DGSEMOperator::Mult is the first consumer of the state during RHS evaluation.  
+  - All state layout assumptions must be centralized via StateView here.
+
+---
+
+#### Pattern 3: Element DOF extraction in DGSEMNonlinearForm
+- File: `src/Operators/NonlinearForm/DGSEMNonlinearForm.cpp`  
+- Typical usage patterns:
+  - Gathering element DOFs into local arrays  
+  - Gathering face-neighbor DOFs  
+  - Computing primitive variables (velocity components, kinetic energy)  
+  - Using density and momentum directly for flux evaluation  
+- Why it matters:
+  - This is the performance-critical core of the DGSEM kernel.  
+  - Raw indexing must be replaced by structured accessors suitable for PA/GPU.  
+  - Device execution requires eliminating indirect indexing and branching.
+
+---
+
+#### Pattern 4: Numerical flux classes
+- Files: `src/Fluxes/*` (e.g., Navier–Stokes flux, Chandrashekar flux)  
+- Typical usage:
+  - Extracting rho, velocity, pressure, enthalpy from the local U vector  
+  - Often uses expressions like:
+    - rho = U[0]  
+    - rho_u = U[1]  
+    - rho_v = U[2]  
+    - E = U[3]  
+- Why it matters:
+  - Flux routines operate per quadrature point and must be GPU-friendly.  
+  - These routines should ideally operate on small local views (e.g., a 
+    per-element or per-face micro-view provided by StateView).  
+  - Removing raw indexing here will greatly improve clarity and safety.
+
+---
+
+#### Pattern 5: Boundary integrators
+- Files: `src/Operators/Boundary/*`  
+- Typical usage:
+  - Extracting primitive variables from U_int for:
+    - No-slip walls  
+    - Symmetry/axisymmetric BCs  
+    - Adiabatic or isothermal boundary conditions  
+  - Manual computation of velocities, temperature, pressure  
+- Why it matters:
+  - BC code often duplicates state access logic that should be unified under 
+    StateView.  
+  - EOS usage here is inconsistent and will need GasModel integration later.
+
+---
+
+#### Pattern 6: Postprocessing (derived fields)
+- File: `Simulation.cpp`  
+- Typical usage:
+  - Loops that define fields `u`, `v`, `w`, `p`, etc., in terms of  
+    rho, momentum components, and energy:  
+    - mom(i) / rho(i)  
+    - p(i) = gammaM1 * (E(i) - 0.5*rho(i)*V_sq)  
+- Why it matters:
+  - These computations make the state layout explicit yet duplicated.  
+  - StateView should become the sole interface for accessing the conserved
+    variables, and postprocessing should rely on it just as the solver does.
+
+---
+
+This checklist should be used as an actionable guide during the StateView
+implementation. Every bullet above corresponds to a region of code that must
+be reviewed and updated so that no raw state indexing remains.
+
+
+### 4.4 EOS / Physics Touchpoints (Preparation for GasModel Integration)
+
+This subsection identifies where EOS- and physics-related logic currently
+enters the code. These locations are the primary candidates for refactoring
+toward a unified GasModel interface, as described in the development plan. :contentReference[oaicite:0]{index=0}  
+
+The goal is to replace scattered, ideal-gas-specific logic with a clean,
+encapsulated API that can later support LTE and more complex models without
+touching DGSEM internals.
+
+---
+
+#### Touchpoint 1: PhysicsConstants (global ideal-gas parameters)
+
+- File: `Simulation.cpp`  
+- What it does:
+  - Constructs `PhysicsConstants` using runtime parameters:
+    - gamma  
+    - Prandtl number  
+    - R_gas  
+    - Viscosity parameters (mu, mu0, mu_bulk, Ts, T0) :contentReference[oaicite:1]{index=1}  
+- Why it matters:
+  - PhysicsConstants is the current “poor man’s EOS,” pushed throughout the
+    solver wherever thermodynamic quantities are needed.
+  - GasModel will eventually supersede this pattern; PhysicsConstants can be
+    reduced to a container of model configuration parameters, not the EOS
+    interface itself.
+
+---
+
+#### Touchpoint 2: Navier–Stokes flux construction
+
+- Files: `Simulation.cpp`, `src/Fluxes/*`  
+- What to look for:
+  - Construction of `NavierStokesFlux` with PhysicsConstants (gamma, Pr,
+    mu, R_gas, etc.). :contentReference[oaicite:2]{index=2}  
+  - Use of these parameters to compute inviscid and viscous fluxes, sound
+    speed, or other derived quantities.
+- Why it matters:
+  - Flux routines implicitly assume an ideal-gas EOS and a particular
+    relationship between conserved and primitive variables.
+  - GasModel should become the authoritative source for:
+    - Pressure
+    - Temperature
+    - Sound speed
+    - Enthalpy and related closures
+
+---
+
+#### Touchpoint 3: Numerical fluxes (Riemann solvers)
+
+- Files: `src/Fluxes/*` (e.g., Chandrashekar flux)  
+- What to look for:
+  - Use of gamma and other ideal-gas assumptions inside numerical flux
+    evaluation:
+    - Reconstruction of primitive variables from U  
+    - Computation of Roe-type averages, wave speeds, etc.
+- Why it matters:
+  - Numerical fluxes currently embed EOS details directly.
+  - After GasModel integration, these should:
+    - Accept primitive/conserved data in a layout-independent way (via
+      StateView or thin local views).  
+    - Query EOS properties through GasModel instead of recomputing them
+      ad hoc.
+
+---
+
+#### Touchpoint 4: Entropy-related and primitive-variable computations
+
+- Files: `src/Operators/DGSEMOperator.cpp`, `src/Operators/NonlinearForm/DGSEMNonlinearForm.cpp`  
+- What to look for:
+  - Computation of:
+    - Entropy or entropy variables  
+    - Pressure, temperature, and internal energy from U  
+  - Direct use of gamma or other ideal-gas constants in these formulas.
+- Why it matters:
+  - These are precisely the calculations that will diverge from simple
+    ideal-gas behavior under LTE or more advanced models.
+  - GasModel should eventually host these transformations:
+    - cons → prim and prim → cons  
+    - EOS closures needed by entropy/viscous terms
+
+---
+
+#### Touchpoint 5: Boundary conditions with thermodynamic logic
+
+- Files: `src/Operators/Boundary/*`  
+- What to look for:
+  - BCs that:
+    - Enforce isothermal walls  
+    - Use temperature or pressure directly  
+    - Depend on gamma or R_gas to build ghost states
+- Why it matters:
+  - BC code currently mixes:
+    - State layout assumptions  
+    - EOS-specific formulas  
+    - Geometry and boundary logic  
+  - Under GasModel, BCs should:
+    - Use StateView for layout  
+    - Call GasModel for thermodynamic relations  
+    - Focus only on spatial/boundary semantics (e.g., no-slip, adiabatic)
+
+---
+
+#### Touchpoint 6: Mutation++ and future LTE/NLTE models
+
+- Current status:
+  - Mutation++ is not yet wired through Prandtl’s MFEM-based solver, but the
+    development plan anticipates its use for LTE (and later NLTE) modeling. :contentReference[oaicite:3]{index=3}  
+- Constraints:
+  - Mutation++ cannot be called from GPU kernels.  
+  - Any Mutation++ usage must remain host-side or be converted into tabulated
+    data passed to device kernels.
+- Why it matters:
+  - GasModel must be designed with this constraint in mind:
+    - Clearly separate host-only EOS evaluation from device-side usage.  
+    - Provide interfaces that can be backed by:
+      - Analytical ideal-gas models  
+      - Mutation++-driven LTE tables  
+      - Future mixture models
+
+---
+
+In summary, all EOS/physics logic that currently uses PhysicsConstants or
+hard-coded ideal-gas formulas should eventually route through GasModel.
+StateView will first stabilize state layout; GasModel will then provide a
+single, GPU-aware interface for all thermodynamic operations without forcing
+changes to DGSEMOperator or DGSEMNonlinearForm.
