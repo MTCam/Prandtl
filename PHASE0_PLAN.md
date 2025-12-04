@@ -14,28 +14,28 @@
 
 ### Steps
 - **Development process**
-  - [ ] Make an Issue to track Phase 0 readiness work
+  - [x] Make an Issue to track Phase 0 readiness work
   - [x] Make a top-level branch to track Phase 0 development
-  - [ ] Make a top-level branch to encapsulate LTE (Track A) development
+  - [x] Make a top-level branch to encapsulate LTE (Track A) development
   - [x] Make a top-level branch to encapsulate GPU (Track B) development 
   - [x] Make an integration branch to test Track A/B integration
-  - [ ] Create a (draft) PR that closes the readiness Issue
+  - [x] Create a (draft) PR that closes the readiness Issue
 
-- [ ] **Prepare baseline tests (Euler, ideal gas)**
+- [x] **Prepare baseline tests (Euler, ideal gas)**
   - [x] 1D Sod shock tube
   - [x] 2D Euler test
-  - [ ] CNS Problem with nontrivial BCs
-  - [ ] Record conserved quantities and expected profiles
+  - [x] CNS Problem with nontrivial BCs
+  - [x] Record conserved quantities and expected profiles
   
-- [ ] Add regression testing infrastructure
+- [x] Add regression testing infrastructure
 - [x] Document the development plan
-- [ ] Discuss working agreement, branching model, PR coordination  
+- [x] Discuss working agreement, branching model, PR coordination  
 
 ### Deliverables
-- [ ] Merge-ready PR for Phase 0  
+- [x] Merge-ready PR for Phase 0  
 - [x] Integration branch for combined Track A+B testing  
 - [x] Initial version of development plan text  
-- [ ] Regression tests to protect correctness  
+- [x] Regression tests to protect correctness  
 
 ### Outcomes
 - Team readiness for coordinated multi-track development  
