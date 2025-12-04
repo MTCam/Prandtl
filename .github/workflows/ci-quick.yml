@@ -169,7 +169,7 @@ jobs:
             -n "4000" \
             -b "$(pwd)/build-cns" \
             -c TestCases/NavierStokes/2D/LidDrivenCavity/config.json
-          python scripts/compare_viz.py RegressionTests/LidDrivenCavity/ParaView/Cycle004000/data.pvtu TestCases/GoldenData/LidDrivenCavity/Cycle04000/data.pvtu --atol 1e-13 --rtol 1e-13
+          python scripts/compare_viz.py RegressionTests/LidDrivenCavity/ParaView/Cycle004000/data.pvtu TestCases/GoldenData/LidDrivenCavity/Cycle004000/data.pvtu --atol 1e-13 --rtol 1e-13
 
       - name: Unit smoke tests (Euler)
         run: ctest --test-dir build-euler -L euler-smoke -j2 --output-on-failure
