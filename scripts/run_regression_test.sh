@@ -28,12 +28,18 @@ EXE="${BUILDDIR}/Prandtl"
 RUNDIR="${TOP}/RegressionTests"
 LISTFILE=""
 ONECFG=""
+CFL=""
+DT=0.0001
+NSTEPS_OVERRIDE=0
+DT_OVERRIDE=0
 
 usage() {
   cat <<EOF
 Usage: $0 [-n STEPS] [-b BUILDDIR] [-e EXECUTABLE] [-o RUNDIR] (-c CONFIG.json | -l LIST.txt)
 
-  -n STEPS      Number of steps to run (default: ${NSTEPS})
+  -n STEPS      Number of steps to run (default: None, use case default)
+  -t TIMESTEP   Fixed timestep size (default: None, use case default)
+  -d CFL        Fixed CFL (default: None, use case default)
   -b BUILDDIR   Build directory (default: ${BUILDDIR})
   -e EXECUTABLE Path to Prandtl executable (default: ${EXE})
   -o RUNDIR     Directory to run in (default: ${RUNDIR})
@@ -47,17 +53,19 @@ EOF
 }
 
 # ---- Parse args
-while getopts ":n:b:e:o:c:l:h" opt; do
+while getopts ":n:t:d:b:e:o:c:l:h" opt; do
   case $opt in
-    n) NSTEPS="${OPTARG}";;
-    b) BUILDDIR="${OPTARG}"; EXE="${BUILDDIR}/Prandtl";;
-    e) EXE="${OPTARG}";;
-    o) RUNDIR="${OPTARG}";;
-    c) ONECFG="${OPTARG}";;
-    l) LISTFILE="${OPTARG}";;
-    h) usage; exit 0;;
-    \?) echo "Unknown option -$OPTARG" >&2; usage; exit 2;;
-    :)  echo "Option -$OPTARG requires an argument." >&2; usage; exit 2;;
+      n) NSTEPS="${OPTARG}"; NSTEPS_OVERRIDE=1;;
+      t) DT="${OPTARG}"; DT_OVERRIDE=1;;
+      d) CFL="${OPTARG}"; echo "Fixed CFL mode not yet implemented!";;
+      b) BUILDDIR="${OPTARG}"; EXE="${BUILDDIR}/Prandtl";;
+      e) EXE="${OPTARG}";;
+      o) RUNDIR="${OPTARG}";;
+      c) ONECFG="${OPTARG}";;
+      l) LISTFILE="${OPTARG}";;
+      h) usage; exit 0;;
+      \?) echo "Unknown option -$OPTARG" >&2; usage; exit 2;;
+      :)  echo "Option -$OPTARG requires an argument." >&2; usage; exit 2;;
   esac
 done
 
@@ -119,7 +127,28 @@ run_one() {
   if [[ "${nsteps}" == "0" ]]; then
       nsteps=100
   fi
-  jq --argjson N "${nsteps}" '
+if [[ "${NSTEPS_OVERRIDE}" -eq 1 && "${DT_OVERRIDE}" -eq 1 ]]; then
+  jq --argjson N "${nsteps}" \
+     --argjson DT "${DT}" '
+    def isnum: type=="number";
+    . as $root
+    | ($root.runTime // {}) as $rt
+    | .runTime = (
+        $rt
+        | .visualize = true
+        | .paraview  = true
+        | .visit     = false
+        | .nancheck  = true
+        | .output_file_path = "./"
+        | .checkpoint_load = false
+        | .variable_dt = false
+        | .dt = $DT
+        | .final_time = ($N * $DT)
+      )
+  ' "${cfg_abs}" > "${patched}"
+else
+  jq --argjson N "${nsteps}" \
+     --argjson DT "${DT}" '
     def isnum: type=="number";
     . as $root
     | ($root.runTime // {}) as $rt
@@ -133,7 +162,7 @@ run_one() {
         | .checkpoint_load = false
       )
   ' "${cfg_abs}" > "${patched}"
-
+fi
   # Run from the per-example dir; keep your “two levels down” invariant
   # Run example (isolate failures; do NOT exit on first error)
   set +e
