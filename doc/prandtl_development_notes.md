@@ -890,3 +890,167 @@ hard-coded ideal-gas formulas should eventually route through GasModel.
 StateView will first stabilize state layout; GasModel will then provide a
 single, GPU-aware interface for all thermodynamic operations without forcing
 changes to DGSEMOperator or DGSEMNonlinearForm.
+
+## Proposed State Accessor:
+```cpp
+#pragma once
+
+// Prandtl StateLayout and StateView
+// Lightweight, header-only, device-friendly indexing utilities for the
+// equation-blocked conserved state vector.
+//
+// Layout assumption (canonical):
+//     U = [rho | rho*u_x | rho*u_y | rho*u_z | rho*E | scalars...]
+// Each block has length = num_dofs_scalar.
+// Scalar blocks begin at equation index (dim + 2).
+
+namespace Prandtl
+{
+
+using real_t = double;
+
+// -----------------------------------------------------------------------------
+// StateLayout: describes how the conserved state is organized.
+// This is the single source of truth for equation ordering.
+// -----------------------------------------------------------------------------
+struct StateLayout
+{
+    int dim;              // spatial dimension (1,2,3)
+    int num_equations;    // total number of conserved components
+    int num_dofs_scalar;  // DOFs per scalar field (size of one block)
+
+    // Equation indices (0-based)
+    int eq_rho;
+    int eq_mom[3];
+    int eq_energy;
+    int eq_scalar0;       // index of first scalar component
+    int num_scalars;
+
+    StateLayout()
+        : dim(0),
+          num_equations(0),
+          num_dofs_scalar(0),
+          eq_rho(0),
+          eq_energy(0),
+          eq_scalar0(-1),
+          num_scalars(0)
+    {
+        eq_mom[0] = eq_mom[1] = eq_mom[2] = -1;
+    }
+
+    // Canonical ordering:
+    //   [rho, rho*u_0, ..., rho*u_(dim-1), rho*E, scalars...]
+    StateLayout(int dim_,
+                int num_dofs_scalar_,
+                int num_scalars_ = 0)
+        : dim(dim_),
+          num_equations(dim_ + 2 + num_scalars_),
+          num_dofs_scalar(num_dofs_scalar_),
+          eq_rho(0),
+          eq_energy(dim_ + 1),
+          eq_scalar0(num_scalars_ > 0 ? (dim_ + 2) : -1),
+          num_scalars(num_scalars_)
+    {
+        // Momentum components follow density
+        for (int d = 0; d < 3; ++d)
+        {
+            eq_mom[d] = (d < dim_) ? (1 + d) : -1;
+        }
+    }
+
+    // Total size of the global state vector
+    int TotalSize() const
+    {
+        return num_equations * num_dofs_scalar;
+    }
+
+    // Flat index = equation block * block size + dof
+    inline int index(int equation, int dof) const
+    {
+        return equation * num_dofs_scalar + dof;
+    }
+};
+
+
+// -----------------------------------------------------------------------------
+// StateView<T>: typed view over a raw pointer + a StateLayout.
+// T may be real_t or const real_t.
+// -----------------------------------------------------------------------------
+template <typename T>
+struct StateView
+{
+    T* data;                      // raw pointer into equation-blocked storage
+    const StateLayout* layout;    // pointer to layout metadata
+
+    StateView() : data(nullptr), layout(nullptr) {}
+
+    StateView(T* data_,
+              const StateLayout& layout_)
+        : data(data_), layout(&layout_)
+    { }
+
+    inline bool is_valid() const
+    {
+        return (data != nullptr) && (layout != nullptr);
+    }
+
+    // Generic access by equation index
+    inline T& u(int equation, int dof) const
+    {
+        return data[ layout->index(equation, dof) ];
+    }
+
+    // Named accessors ---------------------------------------------------------
+
+    inline T& rho(int dof) const
+    {
+        return u(layout->eq_rho, dof);
+    }
+
+    inline T& mom(int component, int dof) const
+    {
+        return u(layout->eq_mom[component], dof);
+    }
+
+    inline T& mom_x(int dof) const
+    {
+        return u(layout->eq_mom[0], dof);
+    }
+
+    inline T& mom_y(int dof) const
+    {
+        return u(layout->eq_mom[1], dof);
+    }
+
+    inline T& mom_z(int dof) const
+    {
+        return u(layout->eq_mom[2], dof);
+    }
+
+    inline T& energy(int dof) const
+    {
+        return u(layout->eq_energy, dof);
+    }
+
+    inline T& scalar(int k, int dof) const
+    {
+        return u(layout->eq_scalar0 + k, dof);
+    }
+
+    // Convenience: get all components at a dof
+    inline void at_dof(int dof,
+                       T& rho_out,
+                       T mom_out[3],
+                       T& energy_out) const
+    {
+        rho_out = rho(dof);
+        for (int d = 0; d < layout->dim; ++d)
+        {
+            mom_out[d] = mom(d, dof);
+        }
+        energy_out = energy(dof);
+    }
+};
+
+} // namespace Prandtl
+```
