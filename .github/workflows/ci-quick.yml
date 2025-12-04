@@ -177,7 +177,7 @@ jobs:
         run: ctest --test-dir build-cns -L cns-smoke -j2 --output-on-failure
 
       - name: Upload quick artifacts (logs)
-        if: always()
+        if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: prandtl-quick-logs
