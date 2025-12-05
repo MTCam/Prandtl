@@ -12,6 +12,7 @@ project(Prandtl)
 
 option(PARABOLIC "Enable Compressible Navier-Stokes Solver" OFF)
 option(SUBCELL_FV_BLENDING "Enable subcell blending" ON)
+option(BUILD_TESTING "Build unit tests" ON)
 
 find_package(MPI REQUIRED)
 include_directories(${MPI_CXX_INCLUDE_PATH})
@@ -143,4 +144,7 @@ target_link_directories(${PROJECT_NAME}
 
 target_link_libraries(${PROJECT_NAME} mfem HYPRE metis MPI::MPI_CXX)
 
-
+if (BUILD_TESTING)
+  include(CTest)
+  add_subdirectory(tests)
+endif()
