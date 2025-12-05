@@ -218,22 +218,22 @@ struct FieldStateView
         return u(layout->eq_mass, dof);
     }
 
-    MFEM_HOST_DEVICE inline T& mom(int component, int dof) const
+    MFEM_HOST_DEVICE inline T& momentum(int component, int dof) const
     {
         return u(layout->eq_mom[component], dof);
     }
 
-    MFEM_HOST_DEVICE inline T& mom_x(int dof) const
+    MFEM_HOST_DEVICE inline T& momentum_x(int dof) const
     {
         return u(layout->eq_mom[0], dof);
     }
 
-    MFEM_HOST_DEVICE inline T& mom_y(int dof) const
+    MFEM_HOST_DEVICE inline T& momentum_y(int dof) const
     {
         return u(layout->eq_mom[1], dof);
     }
 
-    MFEM_HOST_DEVICE inline T& mom_z(int dof) const
+    MFEM_HOST_DEVICE inline T& momentum_z(int dof) const
     {
         return u(layout->eq_mom[2], dof);
     }
