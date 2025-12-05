@@ -115,9 +115,9 @@ jobs:
           python ../../scripts/compare_viz.py ParaView/ParaView.pvd --fields Density --atol 5e-5 --rtol 2e-6
           cd -
 
-      - name: Unit smoke tests
-        run: ctest --test-dir build -L smoke -j2 --output-on-failure
-
+      - name: Unit tests
+        run: ctest --test-dir build -j2 --output-on-failure
+        
       - name: Upload quick artifacts (logs)
         if: always()
         uses: actions/upload-artifact@v4
