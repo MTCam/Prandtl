@@ -30,7 +30,7 @@ target_include_directories(state_tests
     PUBLIC ${PROJECT_SOURCE_DIR}/libs/mfem
     PUBLIC ${PROJECT_SOURCE_DIR}/libs/hypre/src/hypre/include
     PUBLIC ${PROJECT_SOURCE_DIR}/libs/metis-5.1.0/include
-)      
+)
 target_link_directories(state_tests
     PUBLIC ${PROJECT_SOURCE_DIR}/libs/mfem
     PUBLIC ${PROJECT_SOURCE_DIR}/libs/hypre/src/lib
