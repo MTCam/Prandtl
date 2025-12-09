@@ -14,7 +14,7 @@
 #include "LiftingScheme.hpp"
 #include "LiftingBR1.hpp"
 
-#include "GasState.hpp"
+#include "GasModel.hpp"
 #include "DGSEMIntegrator.hpp"
 #include "BasicOperations.hpp"
 #include "ModalBasis.hpp"

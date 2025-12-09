@@ -29,7 +29,7 @@ namespace Prandtl
 
     MFEM_HOST_DEVICE
     explicit GasModel(const PhysicsConstants &phys)
-        : eos(EOS(phys)), transport(Transport(phys))
+        : eos(EOSImpl(phys)), transport(TransportImpl(phys))
     { }
 
     // --- Thermodynamics ------------------------------------------------------

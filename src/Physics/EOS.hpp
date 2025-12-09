@@ -14,8 +14,8 @@ namespace Prandtl
   {
     PhysicsConstants phys;
     
-    MFEM_HOST_DEVICE
-    IdealSingleGasEOS() = default;
+    // MFEM_HOST_DEVICE
+    // IdealSingleGasEOS() = default;
     
     MFEM_HOST_DEVICE
     explicit IdealSingleGasEOS(const PhysicsConstants &pc)
@@ -101,7 +101,8 @@ namespace Prandtl
         const real_t rho = density(S);
         const real_t p   = pressure(S);
         // device-ready sqrt
-        return mfem::Sqrt(phys.gamma * p / rho);
+        // return mfem::Sqrt(phys.gamma * p / rho);
+        return std::sqrt(phys.gamma * p / rho);
     }
 
     // cp is constant for ideal gas
