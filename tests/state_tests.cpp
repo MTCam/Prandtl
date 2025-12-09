@@ -5,6 +5,8 @@
 #include "GasState.hpp"
 #include "gas_state_adapter.hpp"
 
+using real_t = Prandtl::real_t;
+
 TEST(LegacyState_MassMomentumEnergy)
 {
     const int dim   = 2;   // or test dim=3 in another test
@@ -109,7 +111,7 @@ TEST(DofStateView_ReadsExpectedComponents)
     Prandtl::StateLayout layout(dim, ndofs); // no scalars
     const int num_eq = dim + 2;              // rho, 3 mom, E
 
-    std::vector<double> U(num_eq * ndofs);
+    std::vector<real_t> U(num_eq * ndofs);
 
     // Fill equation-blocked storage with a simple pattern:
     //   U(eq, i) = 10*eq + i
@@ -123,7 +125,7 @@ TEST(DofStateView_ReadsExpectedComponents)
 
     for (int i = 0; i < ndofs; ++i)
     {
-        Prandtl::DofStateView<const double> S{U.data(), &layout, i};
+        Prandtl::DofStateView S{U.data(), &layout, i};
 
         // Mass
         EXPECT_CLOSE(S.mass(), 10.0 * layout.eq_mass + i, 1e-14);
@@ -151,8 +153,8 @@ TEST(FieldStateView_ReadWriteRoundTrip)
     Prandtl::StateLayout layout(dim, ndofs, num_scalars);
     const int num_eq = dim + 2 + num_scalars;
 
-    std::vector<double> U(num_eq * ndofs, 0.0);
-    Prandtl::FieldStateView<double> S{U.data(), &layout};
+    std::vector<real_t> U(num_eq * ndofs, 0.0);
+    Prandtl::FieldStateView S{U.data(), &layout};
 
     // Write using named accessors
     for (int i = 0; i < ndofs; ++i)

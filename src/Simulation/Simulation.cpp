@@ -204,7 +204,6 @@ void Simulation::LoadConfig(const std::string &config_file_path)
         std::cerr << "Error: Invalid ODE solver specified." << std::endl;
         return;
     }
-
     flux = std::make_shared<NavierStokesFlux>(dim,
         physicsConstants->gamma, physicsConstants->Pr, physicsConstants->mu, physicsConstants->mu0,
         physicsConstants->mu_bulk, physicsConstants->R_gas, physicsConstants->Ts, physicsConstants->T0);
@@ -344,7 +343,8 @@ void Simulation::LoadConfig(const std::string &config_file_path)
 
     num_dofs_scalar = fes->GetNDofs();
     num_dofs_system = vfes->GetVSize();
-    
+    Prandtl::StateLayout state_layout(dim, num_dofs_scalar);
+
     // sol = std::make_shared<ParGridFunction>(vfes.get());
 
     if (checkpoint_load)
@@ -415,6 +415,7 @@ void Simulation::LoadConfig(const std::string &config_file_path)
     if (debug_simulation)
     {
         real_t *sol_state = sol->GetData();
+        Prandtl::FieldStateView<real_t> fields{sol_data, &state_layout };
         std::vector<std::pair<real_t, real_t>> zr(num_dofs_scalar, {0.0, 0.0});
 
         std::cout << "\n === sol state rU values after weighting by r ===\n";
@@ -443,14 +444,14 @@ void Simulation::LoadConfig(const std::string &config_file_path)
 
         for (int i = 0; i < num_dofs_scalar; ++i)
         {
-            real_t rho = sol_state[0*num_dofs_scalar+i];
-            real_t rhoU = sol_state[1*num_dofs_scalar+i];
-            real_t rhoV = sol_state[2*num_dofs_scalar+i];
-            real_t E = sol_state[3*num_dofs_scalar+i];
-            real_t z = zr[i].first;
-            real_t r = zr[i].second;
+          real_t rho = fields.mass(i);
+          real_t rhoU = fields.momentum_x(i);
+          real_t rhoV = fields.momentum_y(i);
+          real_t E = fields.energy(i);
+          real_t z = zr[i].first;
+          real_t r = zr[i].second;
 
-            std::cout << " DOF#" << std::setw(2) << i 
+          std::cout << " DOF#" << std::setw(2) << i 
                     << " (z, r) = ("<< std::fixed << std::setprecision(2) << std::setw(4) << z //std::round(z*100)/100.0
                     << ", " << std::setw(4) << std::round(r*100)/100.0 << "),  state = ["
                     << std::setw(4) << std::round(rho*100)/100.0 << ", "
@@ -806,9 +807,9 @@ void Simulation::LoadConfig(const std::string &config_file_path)
     NS->SetTime(t);
     ode_solver->Init(*NS);
 
-    rho.MakeRef(fes.get(), *sol, 0);
-    mom.MakeRef(dfes.get(), *sol, num_dofs_scalar);
-    energy.MakeRef(fes.get(), *sol, (dim + 1) * num_dofs_scalar);
+    rho.MakeRef(fes.get(), *sol, offset_mass(state_layout));
+    mom.MakeRef(dfes.get(), *sol, offset_momentum(state_layout));
+    energy.MakeRef(fes.get(), *sol, offset_energy(state_layout));
 
     u = std::make_unique<ParGridFunction>(fes.get());
     if (dim > 1)

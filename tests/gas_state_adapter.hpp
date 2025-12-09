@@ -53,5 +53,5 @@ public:
 private:
     Prandtl::StateLayout layout_;
     std::vector<real_t> data_;
-    Prandtl::FieldStateView<real_t> view_;
+    Prandtl::FieldStateView view_;
 };
