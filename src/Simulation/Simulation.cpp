@@ -155,6 +155,7 @@ void Simulation::LoadConfig(const std::string &config_file_path)
         runtime.value("Pr", 0.72),
         runtime.value("R_gas", 287.05),
         runtime.value("mu", 0.02));
+    gasModel = std::make_shared<IdealGasModel>(*physicsConstants);
 
 
     if (runtime.contains("lifting_scheme"))
@@ -343,8 +344,7 @@ void Simulation::LoadConfig(const std::string &config_file_path)
 
     num_dofs_scalar = fes->GetNDofs();
     num_dofs_system = vfes->GetVSize();
-    Prandtl::StateLayout state_layout(dim, num_dofs_scalar);
-
+    stateLayout = std::make_shared<StateLayout>(dim, num_dofs_scalar);
     // sol = std::make_shared<ParGridFunction>(vfes.get());
 
     if (checkpoint_load)
@@ -415,7 +415,7 @@ void Simulation::LoadConfig(const std::string &config_file_path)
     if (debug_simulation)
     {
         real_t *sol_state = sol->GetData();
-        Prandtl::FieldStateView<real_t> fields{sol_data, &state_layout };
+        Prandtl::FieldStateView fields{sol_state, stateLayout };
         std::vector<std::pair<real_t, real_t>> zr(num_dofs_scalar, {0.0, 0.0});
 
         std::cout << "\n === sol state rU values after weighting by r ===\n";
@@ -807,9 +807,9 @@ void Simulation::LoadConfig(const std::string &config_file_path)
     NS->SetTime(t);
     ode_solver->Init(*NS);
 
-    rho.MakeRef(fes.get(), *sol, offset_mass(state_layout));
-    mom.MakeRef(dfes.get(), *sol, offset_momentum(state_layout));
-    energy.MakeRef(fes.get(), *sol, offset_energy(state_layout));
+    rho.MakeRef(fes.get(), *sol, offset_mass(*stateLayout));
+    mom.MakeRef(dfes.get(), *sol, offset_momentum(*stateLayout));
+    energy.MakeRef(fes.get(), *sol, offset_energy(*stateLayout));
 
     u = std::make_unique<ParGridFunction>(fes.get());
     if (dim > 1)
@@ -922,22 +922,35 @@ void Simulation::Run()
 #endif
     if (Mpi::Root())
         {
-            int i = 0;  
+          int i = 0;
 #ifdef AXISYMMETRIC
-            real_t rhoi = (*rho_axi)(i);
-            real_t ui = (*u)(i);               
-            real_t vi = (*v)(i);
-            real_t pi = (*p)(i);
-
-            NS->SetAxisFloorsFromFreestream(rhoi, pi);
+          real_t rhoi = (*rho_axi)(i);
+          real_t ui = (*u)(i);               
+          real_t vi = (*v)(i);
+          real_t pi = (*p)(i);
+          
+          NS->SetAxisFloorsFromFreestream(rhoi, pi);
 #else
-            real_t rhoi = rho(i);
-            real_t ui = mom(i)/rhoi;               
-            real_t vi = mom(i + num_dofs_scalar)/rhoi;
-            real_t pi = physicsConstants->gammaM1 * (energy(i) - 0.5*rhoi*ui*ui);
+          real_t *sol_state = sol->GetData();
+          Prandtl::DofStateView dofState{sol_state, stateLayout.get(), i};
+          real_t rhoi = dofState.mass();
+          real_t ui = dofState.velocity_x();
+          real_t vi = dofState.velocity_y();
+          real_t wi = dofState.velocity_z();
+          real_t pi = gasModel->pressure(dofState);
+          // bug: incorrect calculation of kinetic energy
+          //real_t pi = physicsConstants->gammaM1 * (energy(i) - 0.5*rhoi*ui*ui);
 #endif
-            std::cout << "***  initial at dof #" << i << ":  "
-                        << "rho = " << std::round(rhoi*10000)/10000 << ",  u = " << std::round(ui*100)/100 << ",  v = " << std::round(vi*100)/100 << ",  p = " << std::round(pi*100)/100 << "\n";
+          std::cout << "***  initial at dof #" << i << ":  "
+                    << "rho = " << std::round(rhoi*10000)/10000 << ",  velocity = <"
+                    << std::round(ui*100)/100;
+          if(dim > 1){
+            std::cout << ", " << std::round(vi*100)/100;
+            if(dim > 2){
+              std::cout << ", " << std::round(wi*100)/100;
+            }
+          }
+          std::cout << ">, p = " << std::round(pi*100)/100 << std::endl;
         }
     // Visualize the initial condition?
     if (visualize)
@@ -960,21 +973,20 @@ void Simulation::Run()
 
         
 #else
+        real_t *sol_state = sol->GetData();
         for (int i = 0; i < num_dofs_scalar; i++)
-        {
-            (*u)(i) = mom(i) / rho(i);
-            V_sq = (*u)(i) * (*u)(i);
+          {
+            Prandtl::DofStateView dofState{sol_state, stateLayout.get(), i};
+            (*u)(i) = dofState.velocity_x();
             if (dim > 1)
             {
-                (*v)(i) = mom(i + num_dofs_scalar) / rho(i);
-                V_sq += (*v)(i) * (*v)(i);
-                if (dim > 2)
+              (*v)(i) = dofState.velocity_y();
+              if (dim > 2)
                 {
-                    (*w)(i) = mom(i + 2 * num_dofs_scalar) / rho(i);
-                    V_sq += (*w)(i) * (*w)(i);
+                  (*w)(i) = dofState.velocity_z();
                 }
             }
-            (*p)(i) = physicsConstants->gammaM1 * (energy(i) - 0.5 * rho(i) * V_sq);
+            (*p)(i) = gasModel->pressure(dofState);
         }
 #endif
 
@@ -1044,21 +1056,20 @@ void Simulation::Run()
         NS->RecoverStateFromWeighted(*sol, U_cons);
         ConservativeToPrimitive(U_cons, *rho_axi, *u, *v, *p);
 #else
+        real_t *sol_state = sol->GetData();
         for (int i = 0; i < num_dofs_scalar; i++)
         {       
-                (*u)(i) = mom(i) / rho(i);
-                V_sq = (*u)(i) * (*u)(i);
-                if (dim > 1)
+          Prandtl::DofStateView dofState{sol_state, stateLayout.get(), i};
+          (*u)(i) = dofState.velocity_x();
+          if (dim > 1)
+            {
+              (*v)(i) = dofState.velocity_y();
+              if (dim > 2)
                 {
-                    (*v)(i) = mom(i + num_dofs_scalar) / rho(i);
-                    V_sq += (*v)(i) * (*v)(i);
-                    if (dim > 2)
-                    {
-                        (*w)(i) = mom(i + 2 * num_dofs_scalar) / rho(i);
-                        V_sq += (*w)(i) * (*w)(i);
-                    }
+                  (*w)(i) = dofState.velocity_z();
                 }
-                (*p)(i) = physicsConstants->gammaM1 * (energy(i) - 0.5 * rho(i) * V_sq);
+            }
+          (*p)(i) = gasModel->pressure(dofState);
         }
 #endif
 

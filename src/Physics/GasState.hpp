@@ -173,22 +173,22 @@ namespace Prandtl
     // Velocity components: d = 0(x),1(y),2(z)
     MFEM_HOST_DEVICE inline real_t velocity(int d) const
     {
-      return U[ L->index(L->eq_mom[d], dof) ] / mass();
+      return momentum(d) / mass();
     }
 
     MFEM_HOST_DEVICE inline real_t velocity_x() const
     {
-        return velocity(0);
+      return momentum_x() / mass();
     }
 
     MFEM_HOST_DEVICE inline real_t velocity_y() const
     {
-        return (L->dim > 1) ? velocity(1) : real_t(0);
+      return momentum_y() / mass();
     }
 
     MFEM_HOST_DEVICE inline real_t velocity_z() const
     {
-        return (L->dim > 2) ? velocity(2) : real_t(0);
+      return momentum_z() / mass();
     }
 
     // Total energy
