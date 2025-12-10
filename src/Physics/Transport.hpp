@@ -46,6 +46,6 @@ namespace Prandtl
     }
     
   };
-  // Hrm, probably not strictly needed
-  // struct SutherlandTransport { ... } using phys.mu0, phys.T0, phys.Ts, etc.
+  // Hrm, probably not strictly needed, but would be better (explicit) design
+  // struct SutherlandTransport {***} using phys.mu0, phys.T0, phys.Ts, etc.
 }
