@@ -81,6 +81,22 @@ namespace Prandtl
         }
     }
 
+    // Set up after creation :(
+    void setup(int dim_, int num_dofs_scalar_, int num_scalars_ = 0)
+    {
+      dim = dim_;
+      num_dofs_scalar = num_dofs_scalar_;
+      eq_mass = 0;
+      eq_energy = dim_ + 1;
+      eq_scalar0 = (num_scalars_ > 0 ? (dim_ + 2) : -1);
+      num_scalars = num_scalars_;
+      // Momentum components follow mass
+      for (int d = 0; d < 3; ++d)
+        {
+          eq_mom[d] = (d < dim_) ? (1 + d) : -1;
+        }
+    }
+
     // Flat index into the equation-blocked vector
     MFEM_HOST_DEVICE inline int index(int equation, int dof) const
     {
