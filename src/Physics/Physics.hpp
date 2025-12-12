@@ -2,13 +2,18 @@
 
 #include "mfem.hpp"
 
+#ifndef MFEM_HOST_DEVICE
+#define MFEM_HOST_DEVICE
+#endif
+
 namespace Prandtl
 {
 
-using namespace mfem;
+  //using namespace mfem;
+  using real_t = mfem::real_t;
 
-struct PhysicsConstants
-{
+  struct PhysicsConstants
+  {
     const real_t gamma;
     const real_t gammaInverse;
     const real_t gammaP1;
