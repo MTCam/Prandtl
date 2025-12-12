@@ -79,7 +79,7 @@ jobs:
           ls -lh libs/hypre/src/hypre/lib 2>/dev/null || true
           ls -lh libs/metis-5.1.0/lib 2>/dev/null || true
 
-      - name: Configure Prandtl
+      - name: Configure Prandtl (Euler)
         env:
           CONFIG_FILE: compile_config.json
           CC: ${{ env.CC }}
@@ -90,40 +90,104 @@ jobs:
           HYPRE_DIR: ${{ github.workspace }}/libs/hypre/src/hypre
           METIS_DIR: ${{ github.workspace }}/libs/metis-5.1.0
         run: |
-          cmake -S . -B build -G Ninja \
+          mkdir -p build-euler
+          cmake -S . -B build-euler -G Ninja \
             -DCONFIG_FILE=${CONFIG_FILE} \
             -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE} \
             -DBUILD_TESTING=ON \
             -DMFEM_DIR="${MFEM_DIR}" \
             -DHYPRE_DIR="${HYPRE_DIR}" \
-            -DMETIS_DIR="${METIS_DIR}"
+            -DMETIS_DIR="${METIS_DIR}" \
+            -DSUBCELL_FV_BLENDING=ON
 
-      - name: Build Prandtl
-        run: cmake --build build -- -k 0
+      - name: Build Prandtl (Euler)
+        run: cmake --build build-euler -- -k 0
 
-      - name: Example smoke test (LidDrivenCavity)
+      - name: Example smoke test (Euler, IsentropicVortex)
         run: |
           scripts/test_run_example.sh \
+            -b "$(pwd)/build-euler" \
+            -c TestCases/Euler/2D/IsentropicVortex/config.json \
+            -n 100
+
+      - name: Configure Prandtl (CNS)
+        env:
+          CONFIG_FILE: compile_config.json
+          CC: ${{ env.CC }}
+          CXX: ${{ env.CXX }}
+          FC: ${{ env.FC }}
+          # These paths match your script’s build outputs
+          MFEM_DIR: ${{ github.workspace }}/libs/mfem
+          HYPRE_DIR: ${{ github.workspace }}/libs/hypre/src/hypre
+          METIS_DIR: ${{ github.workspace }}/libs/metis-5.1.0
+        run: |
+          mkdir -p build-cns
+          cmake -S . -B build-cns -G Ninja \
+            -DCONFIG_FILE=${CONFIG_FILE} \
+            -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE} \
+            -DBUILD_TESTING=ON \
+            -DMFEM_DIR="${MFEM_DIR}" \
+            -DHYPRE_DIR="${HYPRE_DIR}" \
+            -DMETIS_DIR="${METIS_DIR}" \
+            -DPARABOLIC=ON -DSUBCELL_FV_BLENDING=ON
+
+      - name: Build Prandtl (CNS)
+        run: cmake --build build-cns -- -k 0
+
+      - name: Example smoke test (CNS, LidDrivenCavity)
+        run: |
+          scripts/test_run_example.sh \
+            -b "$(pwd)/build-cns" \
             -c TestCases/NavierStokes/2D/LidDrivenCavity/config.json \
             -n 100
 
-      - name: Example regression test (IsentropicVortex)
+      - name: Example regression test (Cyclic - IsentropicVortex)
         run: |
+          rm -rf RegressionTests/IsentropicVortex
           scripts/run_regression_test.sh \
+            -b "$(pwd)/build-euler" \
             -c TestCases/Euler/2D/IsentropicVortex/config.json
           cd RegressionTests/IsentropicVortex
           python ../../scripts/compare_viz.py ParaView/ParaView.pvd --fields Density --atol 5e-5 --rtol 2e-6
           cd -
 
-      - name: Unit tests
-        run: ctest --test-dir build -j2 --output-on-failure
+      - name: Example regression test (Gold standard - IsentropicVortex)
+        run: |
+          rm -rf RegressionTests/IsentropicVortex
+          scripts/run_regression_test.sh \
+            -t "0.001" \
+            -n "500" \
+            -b "$(pwd)/build-euler" \
+            -c TestCases/Euler/2D/IsentropicVortex/config.json
+          python scripts/compare_viz.py RegressionTests/IsentropicVortex/ParaView/Cycle000500/data.pvtu TestCases/GoldenData/IsentropicVortex/Cycle000500/data.pvtu --atol 1e-13 --rtol 1e-13
+
+      - name: Example regression test (Gold standard - LidDrivenCavity)
+        run: |
+          rm -rf RegressionTests/LidDrivenCavity
+          scripts/run_regression_test.sh \
+            -t "0.0001" \
+            -n "4000" \
+            -b "$(pwd)/build-cns" \
+            -c TestCases/NavierStokes/2D/LidDrivenCavity/config.json
+          python scripts/compare_viz.py RegressionTests/LidDrivenCavity/ParaView/Cycle004000/data.pvtu TestCases/GoldenData/LidDrivenCavity/Cycle004000/data.pvtu --atol 1e-12 --rtol 1e-12
+
+      - name: Unit smoke tests (Euler)
+        run: ctest --test-dir build-euler -L euler-smoke -j2 --output-on-failure
+      - name: Unit smoke tests (CNS)
+        run: ctest --test-dir build-cns -L cns-smoke -j2 --output-on-failure
 
       - name: Upload quick artifacts (logs)
-        if: always()
+        if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: prandtl-quick-logs
           path: |
-            build/Testing/**/Test.xml
-            build/CMakeCache.txt
-            build/**/*.log
+            build-euler/Testing/**/Test.xml
+            build-euler/CMakeCache.txt
+            build-euler/**/*.log
+            build-cns/Testing/**/Test.xml
+            build-cns/CMakeCache.txt
+            build-cns/**/*.log
+            RegressionTests
+            RunTests
+ 
