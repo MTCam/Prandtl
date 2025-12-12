@@ -10,9 +10,9 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 project(Prandtl)
 
+option(BUILD_TESTING "Build unit tests" ON)
 option(PARABOLIC "Enable Compressible Navier-Stokes Solver" OFF)
 option(SUBCELL_FV_BLENDING "Enable subcell blending" ON)
-option(BUILD_TESTING "Build unit tests" ON)
 
 find_package(MPI REQUIRED)
 include_directories(${MPI_CXX_INCLUDE_PATH})
