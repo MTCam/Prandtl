@@ -37,7 +37,7 @@ message(STATUS "CONFIG_FILE = ${CONFIG_FILE}")
 if(NOT "${CONFIG_FILE}" STREQUAL "")
     message(STATUS "Parsing configuration file: ${FULL_CONFIG_PATH}")
     execute_process(
-        COMMAND python3 "${CMAKE_CURRENT_SOURCE_DIR}/parse_compile_config.py ${FULL_CONFIG_PATH}"
+        COMMAND python3 "${CMAKE_CURRENT_SOURCE_DIR}/parse_compile_config.py" "${FULL_CONFIG_PATH}"
         WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
         OUTPUT_VARIABLE COMPILE_DEFINES
         OUTPUT_STRIP_TRAILING_WHITESPACE

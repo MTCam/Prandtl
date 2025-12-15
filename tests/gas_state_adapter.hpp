@@ -1,4 +1,7 @@
+#pragma once
+
 #include <vector>
+#include <GasState.hpp>
 
 // Adapter that uses the new StateLayout + FieldStateView as a "state-like"
 // object compatible with run_basic_mass_momentum_energy_test.
