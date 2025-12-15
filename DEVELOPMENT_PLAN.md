@@ -124,14 +124,14 @@ Discussion/question points are tagged `[Q1]`, `[Q2]`, etc, and link to the
 
 ### Steps
 - **Development process**
-  - [ ] Create Issue for Track B Phase 1  
-  - [ ] Create top-level branch for device-readiness  
-  - [ ] Draft PR closing the Issue  
+  - [x] Create Issue for Track B Phase 1  
+  - [x] Create top-level branch for device-readiness  
+  - [x] Draft PR closing the Issue  
 
 - **Centralize and abstract state layout** [`[Q1]`](#q1--state-layout-stability-high-priority-before-development)
-  - [ ] Add unit tests for state
-  - [ ] Add accessors for all state components  
-  - [ ] Ensure layout supports future scalar transport `[c:A]`  
+  - [x] Add unit tests for state
+  - [x] Add accessors for all state components  
+  - [x] Ensure layout supports future scalar transport `[c:A]`  
   - [ ] Plan for persistent primitive/derived states [`[Q2]`](#q2--persistent-state-requirements)
 
 - [ ] **Make `DGSEMOperator` a thin MFEM `TimeDependentOperator`**
