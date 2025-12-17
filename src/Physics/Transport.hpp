@@ -15,9 +15,6 @@ namespace Prandtl
   {
     PhysicsConstants phys;
     
-    // MFEM_HOST_DEVICE
-    // Transport() = default;
-    
     MFEM_HOST_DEVICE
     explicit Transport(const PhysicsConstants &pc)
       : phys(pc)
@@ -31,7 +28,6 @@ namespace Prandtl
       // mu0 * T0pTs / (T + Ts) * (T / T0) * std::sqrt(T / T0);
       real_t Trel = temperature / phys.T0;
       real_t T0pTs = phys.T0 + phys.Ts;
-      // return phys.mu0 * T0pTs * Trel * mfem::Sqrt(Trel) / (temperature + phys.Ts);
       return phys.mu0 * T0pTs * Trel * std::sqrt(Trel) / (temperature + phys.Ts);
 #else
       return phys.mu;
@@ -46,6 +42,6 @@ namespace Prandtl
     }
     
   };
-  // Hrm, probably not strictly needed, but would be better (explicit) design
+  // TODO: Consider refactoring; would be better (explicit) design
   // struct SutherlandTransport {***} using phys.mu0, phys.T0, phys.Ts, etc.
 }

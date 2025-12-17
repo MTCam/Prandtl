@@ -14,9 +14,6 @@ namespace Prandtl
   {
     PhysicsConstants phys;
     
-    // MFEM_HOST_DEVICE
-    // IdealSingleGasEOS() = default;
-    
     MFEM_HOST_DEVICE
     explicit IdealSingleGasEOS(const PhysicsConstants &pc)
         : phys(pc)
@@ -100,8 +97,6 @@ namespace Prandtl
         // a^2 = gamma * p / rho
         const real_t rho = density(S);
         const real_t p   = pressure(S);
-        // device-ready sqrt
-        // return mfem::Sqrt(phys.gamma * p / rho);
         return std::sqrt(phys.gamma * p / rho);
     }
 
@@ -112,7 +107,8 @@ namespace Prandtl
         return phys.cp;
     }
 
-    // just because convenience maybe
+    // TODO: Consider whether this is needed/convenient
+    // It *can be* nice to have here, but kind of out-of-place
     MFEM_HOST_DEVICE
     void velocity(const DofStateView &S, real_t u[3]) const
     {
