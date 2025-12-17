@@ -11,6 +11,7 @@ real_t NavierStokesFlux::ComputeInviscidFlux(const Vector &state, ElementTransfo
 
 void NavierStokesFlux::ComputeViscousFlux(const Vector &state, const Vector &dqdx, const Vector &dqdy, const Vector &dqdz, DenseMatrix &flux) const
 {
+    PointStateView S{state.GetData(), stateLayout.get()};
     Conserv2Prim(state, prim, gammaM1);
 
     const real_t &drdx = dqdx(0);
@@ -32,10 +33,14 @@ void NavierStokesFlux::ComputeViscousFlux(const Vector &state, const Vector &dqd
     const real_t &dpdz = dqdz(4);
 
 #ifdef SUTHERLAND
-    mu = ComputeViscosity(prim(0), prim(num_equations - 1));
+    temperature = gasModel->eos.temperature()
+    mu = gasModel->transport.viscosity(temperature)
 #endif
-
+    real_t Cp = gasModel->eos.cp(S);
+    lambda = gasModel->transport.thermal_conductivity(mu, Cp); //  * gamma * PrInverse;
     lambda = mu * gamma * PrInverse;
+    std::cout << "1: mu = " << mu << ",Cp = " << Cp << ",lambda = " << lambda << std::endl;
+
     div = dudx + dvdy + dwdz;
     cv_dTdx = gammaM1Inverse / prim(0) * (dpdx - prim(num_equations - 1) / prim(0) * drdx);
     cv_dTdy = gammaM1Inverse / prim(0) * (dpdy - prim(num_equations - 1) / prim(0) * drdy);
@@ -60,6 +65,7 @@ void NavierStokesFlux::ComputeViscousFlux(const Vector &state, const Vector &dqd
 void NavierStokesFlux::ComputeViscousFlux(const Vector &state, const Vector &dqdx, const Vector &dqdy, DenseMatrix &flux) const
 {
     Conserv2Prim(state, prim, gammaM1);
+    PointStateView S{state.GetData(), stateLayout.get()};
 
     const real_t &drdx = dqdx(0);
     const real_t &dudx = dqdx(1);
@@ -71,37 +77,48 @@ void NavierStokesFlux::ComputeViscousFlux(const Vector &state, const Vector &dqd
     const real_t &dvdy = dqdy(2);
     const real_t &dpdy = dqdy(3);
 
+    const real_t grad_rho[2] = {drdx, drdy};
+    const real_t grad_p[2] = {dpdx, dpdy};
+    real_t grad_t[2] = {0.0, 0.0};
+
 #ifdef SUTHERLAND
-    mu = ComputeViscosity(prim(0), prim(num_equations - 1));
+    temperature = gasModel->eos.temperature()
+    mu = gasModel->transport.viscosity(temperature)
 #endif
 
-    lambda = mu * gamma * PrInverse;
+    real_t Cp = gasModel->eos.cp(S);
+    real_t kappa = gasModel->transport.thermal_conductivity(mu, Cp);
+    gasModel->eos.grad_temperature(2, S, grad_rho, grad_p, grad_t);
+
     div = dudx + dvdy;
-    cv_dTdx = gammaM1Inverse / prim(0) * (dpdx - prim(num_equations - 1) / prim(0) * drdx);
-    cv_dTdy = gammaM1Inverse / prim(0) * (dpdy - prim(num_equations - 1) / prim(0) * drdy);
 
     flux(1, 0) = mu * (2.0 * dudx - mu_bulk * div);
     flux(2, 0) = mu * (dudy + dvdx);
-    flux(3, 0) = prim(1) * flux(1, 0) + prim(2) * flux(2, 0) + lambda * cv_dTdx;
+    flux(3, 0) = prim(1) * flux(1, 0) + prim(2) * flux(2, 0) + kappa * grad_t[0];
 
     flux(1, 1) = mu * (dvdx + dudy);
     flux(2, 1) = mu * (2.0 * dvdy - mu_bulk * div);
-    flux(3, 1) = prim(1) * flux(1, 1) + prim(2) * flux(2, 1) + lambda * cv_dTdy;
+    flux(3, 1) = prim(1) * flux(1, 1) + prim(2) * flux(2, 1) + kappa * grad_t[1];
 }
 
 void NavierStokesFlux::ComputeViscousFlux(const Vector &state, const Vector &dqdx, DenseMatrix &flux) const
 {
     Conserv2Prim(state, prim, gammaM1);
+    PointStateView S{state.GetData(), stateLayout.get()};
 
     const real_t &drdx = dqdx(0);
     const real_t &dudx = dqdx(1);
     const real_t &dpdx = dqdx(2);
 
 #ifdef SUTHERLAND
-    mu = ComputeViscosity(prim(0), prim(num_equations - 1));
+    temperature = gasModel->eos.temperature()
+    mu = gasModel->transport.viscosity(temperature)
 #endif
 
+    real_t Cp = gasModel->eos.cp(S);
+    lambda = gasModel->transport.thermal_conductivity(mu, Cp); //  * gamma * PrInverse;
     lambda = mu * gamma * PrInverse;
+    std::cout << "3: mu = " << mu << ",Cp = " << Cp << ",lambda = " << lambda << std::endl;
     div = dudx;
     cv_dTdx = gammaM1Inverse / prim(0) * (dpdx - prim(num_equations - 1) / prim(0) * drdx);
 

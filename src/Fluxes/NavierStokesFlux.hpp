@@ -1,6 +1,7 @@
 #pragma once
 
 #include "mfem.hpp"
+#include "GasModel.hpp"
 
 namespace Prandtl
 {
@@ -15,13 +16,19 @@ private:
     const real_t gamma, gammaM1, gammaM1Inverse;
     const real_t PrInverse;
     const real_t mu_bulk, mu0, R_gas, Ts, T0, T0pTs;
-
+    std::shared_ptr<const IdealGasModel> gasModel;
+    std::shared_ptr<const StateLayout> stateLayout;
 public:
-    NavierStokesFlux(const int dim, real_t gamma_, real_t Pr, real_t mu_, real_t mu0, real_t mu_bulk, real_t R_gas, real_t Ts, real_t T0)
-        : EulerFlux(dim, gamma_), gamma(gamma_), gammaM1(gamma - 1.0), gammaM1Inverse(1.0 / gammaM1), PrInverse(1.0 / Pr),
-          mu(mu_), mu0(mu0), mu_bulk(mu_bulk), R_gas(R_gas), Ts(Ts), T0(T0), T0pTs(T0 + Ts)
+  explicit NavierStokesFlux(std::shared_ptr<const StateLayout> stateLayout_, std::shared_ptr<const IdealGasModel> gasModel_)
+        : EulerFlux(stateLayout_->dim, gasModel_->eos.phys.gamma),
+          gamma(gasModel_->eos.phys.gamma), gammaM1(gasModel_->eos.phys.gammaM1), gammaM1Inverse(gasModel_->eos.phys.gammaM1Inverse),
+          PrInverse(gasModel_->eos.phys.PrInverse),
+          mu(gasModel_->eos.phys.mu), mu0(gasModel_->eos.phys.mu0), mu_bulk(gasModel_->eos.phys.mu_bulk),
+          R_gas(gasModel_->eos.phys.R_gas),
+          Ts(gasModel_->eos.phys.Ts), T0(gasModel_->eos.phys.T0), T0pTs(gasModel_->eos.phys.T0 + gasModel_->eos.phys.Ts),
+          stateLayout(std::move(stateLayout_)), gasModel(std::move(gasModel_))
     {
-        prim.SetSize(dim + 2);
+        prim.SetSize(stateLayout->dim + 2);
     }
     real_t ComputeInviscidFlux(const Vector &state, ElementTransformation &Tr, DenseMatrix &flux) const;
     void ComputeViscousFlux(const Vector &state, const Vector &dqdx, const Vector &dqdy, const Vector &dqdz, DenseMatrix &flux) const;

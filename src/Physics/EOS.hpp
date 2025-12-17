@@ -21,21 +21,24 @@ namespace Prandtl
 
     // ---- helpers on conservative state --------------------------------------
 
+    template<typename StateView>
     MFEM_HOST_DEVICE
-    real_t density(const DofStateView &S) const
+    real_t density(const StateView &S) const
     {
         return S.mass(); // this is "rho" (mass density)
     }
 
+    template<typename StateView>
     MFEM_HOST_DEVICE
-    real_t rhoE(const DofStateView &S) const
+    real_t rhoE(const StateView &S) const
     {
         // rho*E
         return S.energy();
     }
 
+    template<typename StateView>
     MFEM_HOST_DEVICE
-    real_t momentum_sq(const DofStateView &S) const
+    real_t momentum_sq(const StateView &S) const
     {
         const int dim = S.L->dim;   // uses state layout
         real_t m2 = 0;
@@ -47,8 +50,9 @@ namespace Prandtl
         return m2;
     }
 
+    template<typename StateView>
     MFEM_HOST_DEVICE
-    real_t kinetic_energy_density(const DofStateView &S) const
+    real_t kinetic_energy_density(const StateView &S) const
     {
         // 0.5 * rho * |u|^2 = 0.5 * |rho*u|^2 / rho
         const real_t rho  = density(S);
@@ -56,15 +60,17 @@ namespace Prandtl
         return 0.5 * m2 / rho;
     }
 
+    template<typename StateView>
     MFEM_HOST_DEVICE
-    real_t internal_energy_density(const DofStateView &S) const
+    real_t internal_energy_density(const StateView &S) const
     {
         // rho*e = rho*E - 0.5*rho*|u|^2
         return rhoE(S) - kinetic_energy_density(S);
     }
 
+    template<typename StateView>
     MFEM_HOST_DEVICE
-    real_t specific_internal_energy(const DofStateView &S) const
+    real_t specific_internal_energy(const StateView &S) const
     {
         // e = (rho*e) / rho
         const real_t rho  = density(S);
@@ -74,16 +80,18 @@ namespace Prandtl
 
     // ---- primary EOS interface ----------------------------------------------
 
+    template<typename StateView>
     MFEM_HOST_DEVICE
-    real_t pressure(const DofStateView &S) const
+    real_t pressure(const StateView &S) const
     {
         // p = (gamma - 1) * (rho*E - 0.5*|rho*u|^2 / rho)
         const real_t rhoe = internal_energy_density(S);
         return phys.gammaM1 * rhoe;
     }
 
+    template<typename StateView>
     MFEM_HOST_DEVICE
-    real_t temperature(const DofStateView &S) const
+    real_t temperature(const StateView &S) const
     {
         // p = rho*R*T  =>  T = p / (rho*R)
         const real_t rho = density(S);
@@ -91,8 +99,23 @@ namespace Prandtl
         return p / (rho * phys.R_gas);
     }
 
+    template<typename StateView>
     MFEM_HOST_DEVICE
-    real_t sound_speed(const DofStateView &S) const
+    void grad_temperature(const int dim, const StateView &S, const real_t *grad_rho,
+                          const real_t *grad_p, real_t *grad_t) const
+    {
+      const real_t rho = density(S);
+      const real_t tempr = temperature(S)/rho;
+      const real_t cv = cp(S)/phys.gamma;
+      const real_t fac = phys.gammaM1Inverse/(cv*rho);
+      for(int i = 0; i < dim; i++){
+        grad_t[i] = fac*(grad_p[i] - tempr*grad_rho[i]);
+      }
+    }
+
+    template<typename StateView>
+    MFEM_HOST_DEVICE
+    real_t sound_speed(const StateView &S) const
     {
         // a^2 = gamma * p / rho
         const real_t rho = density(S);
@@ -101,16 +124,18 @@ namespace Prandtl
     }
 
     // cp is constant for ideal gas
+    template<typename StateView>
     MFEM_HOST_DEVICE
-    real_t cp(const DofStateView & /*S*/) const
+    real_t cp(const StateView & /*S*/) const
     {
         return phys.cp;
     }
 
     // TODO: Consider whether this is needed/convenient
     // It *can be* nice to have here, but kind of out-of-place
+    template<typename StateView>
     MFEM_HOST_DEVICE
-    void velocity(const DofStateView &S, real_t u[3]) const
+    void velocity(const StateView &S, real_t u[3]) const
     {
         const real_t rho = density(S);
         const int dim = S.L->dim;

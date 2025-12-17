@@ -205,20 +205,6 @@ void Simulation::LoadConfig(const std::string &config_file_path)
         std::cerr << "Error: Invalid ODE solver specified." << std::endl;
         return;
     }
-    flux = std::make_shared<NavierStokesFlux>(dim,
-        physicsConstants->gamma, physicsConstants->Pr, physicsConstants->mu, physicsConstants->mu0,
-        physicsConstants->mu_bulk, physicsConstants->R_gas, physicsConstants->Ts, physicsConstants->T0);
-
-    if (runtime["numerical_flux"].get<std::string>() == "Chandrashekar")
-    {
-        numericalFlux = std::make_shared<ChandrashekarFlux>(*flux, physicsConstants->gamma);
-    }
-    else
-    {
-        std::cerr << "Error: Invalid numerical flux specified." << std::endl;
-        return;
-    }
-
 
     signature = runtime["conditions"]["initial_conditions"].value("signature", 0);
     std::string IC_key = runtime["conditions"]["initial_conditions"].value("function", "LidDrivenCavityIC");
@@ -346,6 +332,19 @@ void Simulation::LoadConfig(const std::string &config_file_path)
     num_dofs_system = vfes->GetVSize();
     stateLayout = std::make_shared<StateLayout>(dim, num_dofs_scalar);
     // sol = std::make_shared<ParGridFunction>(vfes.get());
+
+    flux = std::make_shared<NavierStokesFlux>(stateLayout, gasModel);
+    std::cout << "Made it here" << std::endl;
+    if (runtime["numerical_flux"].get<std::string>() == "Chandrashekar")
+    {
+        numericalFlux = std::make_shared<ChandrashekarFlux>(*flux, physicsConstants->gamma);
+    }
+    else
+    {
+        std::cerr << "Error: Invalid numerical flux specified." << std::endl;
+        return;
+    }
+    std::cout << "Made it here 2" << std::endl;
 
     if (checkpoint_load)
     {
