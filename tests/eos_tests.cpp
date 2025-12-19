@@ -38,7 +38,9 @@ TEST(IdealGas_EOS)
     const real_t R_gas = 287.0;
     const real_t mu    = 1.8e-5;
 
-    PhysicsConstants phys(gamma, Pr, R_gas, mu);
+    std::shared_ptr<PhysicsConstants> phys =
+      std::make_shared<PhysicsConstants>(gamma, Pr, R_gas, mu);
+
     IdealSingleGasEOS eos{phys};
 
     const real_t tol = 1.0e-12;

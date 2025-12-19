@@ -12,11 +12,11 @@ namespace Prandtl
 // ============================================================================
   struct IdealSingleGasEOS
   {
-    PhysicsConstants phys;
+    std::shared_ptr<const PhysicsConstants> phys;
     
     MFEM_HOST_DEVICE
-    explicit IdealSingleGasEOS(const PhysicsConstants &pc)
-        : phys(pc)
+    explicit IdealSingleGasEOS(std::shared_ptr<const PhysicsConstants> pc)
+      : phys(std::move(pc))
     { }
 
     // ---- helpers on conservative state --------------------------------------
@@ -86,7 +86,7 @@ namespace Prandtl
     {
         // p = (gamma - 1) * (rho*E - 0.5*|rho*u|^2 / rho)
         const real_t rhoe = internal_energy_density(S);
-        return phys.gammaM1 * rhoe;
+        return phys->gammaM1 * rhoe;
     }
 
     template<typename StateView>
@@ -96,7 +96,7 @@ namespace Prandtl
         // p = rho*R*T  =>  T = p / (rho*R)
         const real_t rho = density(S);
         const real_t p   = pressure(S);
-        return p / (rho * phys.R_gas);
+        return p / (rho * phys->R_gas);
     }
 
     template<typename StateView>
@@ -106,8 +106,8 @@ namespace Prandtl
     {
       const real_t rho = density(S);
       const real_t pressor = pressure(S)/rho;
-      const real_t cv = cp(S)/phys.gamma;
-      const real_t fac = phys.gammaM1Inverse/(cv*rho);
+      const real_t cv = cp(S)/phys->gamma;
+      const real_t fac = phys->gammaM1Inverse/(cv*rho);
       for(int i = 0; i < dim; i++){
         grad_t[i] = fac*(grad_p[i] - pressor*grad_rho[i]);
       }
@@ -120,7 +120,7 @@ namespace Prandtl
         // a^2 = gamma * p / rho
         const real_t rho = density(S);
         const real_t p   = pressure(S);
-        return std::sqrt(phys.gamma * p / rho);
+        return std::sqrt(phys->gamma * p / rho);
     }
 
     // cp is constant for ideal gas
@@ -128,7 +128,7 @@ namespace Prandtl
     MFEM_HOST_DEVICE
     inline real_t cp(const StateView & /*S*/) const
     {
-        return phys.cp;
+        return phys->cp;
     }
 
     // TODO: Consider whether this is needed/convenient

@@ -28,7 +28,7 @@ namespace Prandtl
     { }
 
     MFEM_HOST_DEVICE
-    explicit GasModel(const PhysicsConstants &phys)
+    explicit GasModel(std::shared_ptr<const PhysicsConstants> phys)
         : eos(EOSImpl(phys)), transport(TransportImpl(phys))
     { }
 
@@ -105,7 +105,7 @@ namespace Prandtl
   using IdealGasModel = GasModel<IdealSingleGasEOS, Transport>;
   
   // Bridge helper so old call-sites that only have PhysicsConstants can move over
-  inline IdealGasModel make_ideal_gas_model(const PhysicsConstants &phys)
+  inline IdealGasModel make_ideal_gas_model(std::shared_ptr<const PhysicsConstants> phys)
   {
     return IdealGasModel(phys);
   }

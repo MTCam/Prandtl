@@ -13,11 +13,11 @@ namespace Prandtl
   
   struct Transport
   {
-    PhysicsConstants phys;
+    std::shared_ptr<const PhysicsConstants> phys;
     
     MFEM_HOST_DEVICE
-    explicit Transport(const PhysicsConstants &pc)
-      : phys(pc)
+    explicit Transport(std::shared_ptr<const PhysicsConstants> pc)
+      : phys(std::move(pc))
     { }
     
     // dynamic visc mu: constant (or Sutherland)
@@ -40,11 +40,11 @@ namespace Prandtl
     {
 #ifdef SUTHERLAND
       // mu0 * T0pTs / (T + Ts) * (T / T0) * std::sqrt(T / T0);
-      real_t Trel = eos.temperature(S) / phys.T0;
-      real_t T0pTs = phys.T0 + phys.Ts;
-      return phys.mu0 * T0pTs * Trel * std::sqrt(Trel) / (temperature + phys.Ts);
+      real_t Trel = eos.temperature(S) / phys->T0;
+      real_t T0pTs = phys->T0 + phys->Ts;
+      return phys->mu0 * T0pTs * Trel * std::sqrt(Trel) / (temperature + phys->Ts);
 #else
-      return phys.mu;
+      return phys->mu;
 #endif
     }
     
@@ -60,7 +60,7 @@ namespace Prandtl
     MFEM_HOST_DEVICE
     inline real_t bulk_viscosity(const EOSType &eos, const StateViewType &S) const
     {
-      return phys.mu_bulk;
+      return phys->mu_bulk;
     }
 
     // Thermal cond kappa = mu * cp / Pr
@@ -75,7 +75,7 @@ namespace Prandtl
     MFEM_HOST_DEVICE
     inline real_t thermal_conductivity(const EOSType &eos, const StateViewType &S) const
     {
-      return viscosity(eos, S) * eos.cp(S) * phys.PrInverse;
+      return viscosity(eos, S) * eos.cp(S) * phys->PrInverse;
     }
   };
   // TODO: Consider refactoring; would be better (explicit) design

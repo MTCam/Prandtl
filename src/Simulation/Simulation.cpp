@@ -155,7 +155,7 @@ void Simulation::LoadConfig(const std::string &config_file_path)
         runtime.value("Pr", 0.72),
         runtime.value("R_gas", 287.05),
         runtime.value("mu", 0.02));
-    gasModel = std::make_shared<IdealGasModel>(*physicsConstants);
+    gasModel = std::make_shared<IdealGasModel>(physicsConstants);
 
 
     if (runtime.contains("lifting_scheme"))
@@ -331,7 +331,6 @@ void Simulation::LoadConfig(const std::string &config_file_path)
     num_dofs_scalar = fes->GetNDofs();
     num_dofs_system = vfes->GetVSize();
     stateLayout = std::make_shared<StateLayout>(dim, num_dofs_scalar);
-    // sol = std::make_shared<ParGridFunction>(vfes.get());
 
     flux = std::make_shared<NavierStokesFlux>(stateLayout, gasModel);
     if (runtime["numerical_flux"].get<std::string>() == "Chandrashekar")
