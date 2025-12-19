@@ -35,56 +35,69 @@ namespace Prandtl
     // --- Thermodynamics ------------------------------------------------------
     template<typename StateView>
     MFEM_HOST_DEVICE
-    real_t pressure(const StateView &S) const
+    inline real_t pressure(const StateView &S) const
     {
         return eos.pressure(S);
     }
 
     template<typename StateView>
     MFEM_HOST_DEVICE
-    real_t temperature(const StateView &S) const
+    inline real_t temperature(const StateView &S) const
     {
         return eos.temperature(S);
     }
 
     template<typename StateView>
     MFEM_HOST_DEVICE
-    real_t sound_speed(const StateView &S) const
+    inline real_t sound_speed(const StateView &S) const
     {
         return eos.sound_speed(S);
     }
 
     template<typename StateView>
     MFEM_HOST_DEVICE
-    real_t density(const StateView &S) const
+    inline real_t density(const StateView &S) const
     {
         return eos.density(S);
     }
 
     template<typename StateView>
     MFEM_HOST_DEVICE
-    real_t specific_internal_energy(const StateView &S) const
+    inline real_t specific_internal_energy(const StateView &S) const
     {
         return eos.specific_internal_energy(S);
     }
 
+    template<typename StateView>
+    MFEM_HOST_DEVICE
+    inline void grad_temperature(const int ndim, const StateView &S,
+                                 const real_t *grad_r, const real_t *grad_p,
+                                 real_t *grad_t) const
+    {
+      return eos.grad_temperature(ndim, S, grad_r, grad_p, grad_t);
+    }
+ 
     // --- Transport -----------------------------------------------------------
 
     template<typename StateView>
     MFEM_HOST_DEVICE
-    real_t viscosity(const StateView &S) const
+    inline real_t viscosity(const StateView &S) const
     {
-      real_t T = eos.temperature(S);
-      return transport.viscosity(T);
+      return transport.viscosity(eos, S);
     }
 
     template<typename StateView>
     MFEM_HOST_DEVICE
-    real_t thermal_conductivity(const StateView &S) const
+    inline real_t bulk_viscosity(const StateView &S) const
     {
-      real_t T = eos.temperature(S);
-      real_t cp = eos.cp(S);
-      return transport.thermal_conductivity(T, cp);
+      return transport.bulk_viscosity(eos, S);
+    }
+
+    template<typename StateView>
+    MFEM_HOST_DEVICE
+    inline real_t thermal_conductivity(const StateView &S) const
+    {
+      return transport.thermal_conductivity(eos, S);
     }
   };
 

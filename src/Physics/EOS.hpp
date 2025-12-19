@@ -23,14 +23,14 @@ namespace Prandtl
 
     template<typename StateView>
     MFEM_HOST_DEVICE
-    real_t density(const StateView &S) const
+    inline real_t density(const StateView &S) const
     {
         return S.mass(); // this is "rho" (mass density)
     }
 
     template<typename StateView>
     MFEM_HOST_DEVICE
-    real_t rhoE(const StateView &S) const
+    inline real_t rhoE(const StateView &S) const
     {
         // rho*E
         return S.energy();
@@ -38,7 +38,7 @@ namespace Prandtl
 
     template<typename StateView>
     MFEM_HOST_DEVICE
-    real_t momentum_sq(const StateView &S) const
+    inline real_t momentum_sq(const StateView &S) const
     {
         const int dim = S.L->dim;   // uses state layout
         real_t m2 = 0;
@@ -52,7 +52,7 @@ namespace Prandtl
 
     template<typename StateView>
     MFEM_HOST_DEVICE
-    real_t kinetic_energy_density(const StateView &S) const
+    inline real_t kinetic_energy_density(const StateView &S) const
     {
         // 0.5 * rho * |u|^2 = 0.5 * |rho*u|^2 / rho
         const real_t rho  = density(S);
@@ -62,7 +62,7 @@ namespace Prandtl
 
     template<typename StateView>
     MFEM_HOST_DEVICE
-    real_t internal_energy_density(const StateView &S) const
+    inline real_t internal_energy_density(const StateView &S) const
     {
         // rho*e = rho*E - 0.5*rho*|u|^2
         return rhoE(S) - kinetic_energy_density(S);
@@ -70,7 +70,7 @@ namespace Prandtl
 
     template<typename StateView>
     MFEM_HOST_DEVICE
-    real_t specific_internal_energy(const StateView &S) const
+    inline real_t specific_internal_energy(const StateView &S) const
     {
         // e = (rho*e) / rho
         const real_t rho  = density(S);
@@ -82,7 +82,7 @@ namespace Prandtl
 
     template<typename StateView>
     MFEM_HOST_DEVICE
-    real_t pressure(const StateView &S) const
+    inline real_t pressure(const StateView &S) const
     {
         // p = (gamma - 1) * (rho*E - 0.5*|rho*u|^2 / rho)
         const real_t rhoe = internal_energy_density(S);
@@ -91,7 +91,7 @@ namespace Prandtl
 
     template<typename StateView>
     MFEM_HOST_DEVICE
-    real_t temperature(const StateView &S) const
+    inline real_t temperature(const StateView &S) const
     {
         // p = rho*R*T  =>  T = p / (rho*R)
         const real_t rho = density(S);
@@ -101,7 +101,7 @@ namespace Prandtl
 
     template<typename StateView>
     MFEM_HOST_DEVICE
-    void grad_temperature(const int dim, const StateView &S, const real_t *grad_rho,
+    inline void grad_temperature(const int dim, const StateView &S, const real_t *grad_rho,
                           const real_t *grad_p, real_t *grad_t) const
     {
       const real_t rho = density(S);
@@ -115,7 +115,7 @@ namespace Prandtl
 
     template<typename StateView>
     MFEM_HOST_DEVICE
-    real_t sound_speed(const StateView &S) const
+    inline real_t sound_speed(const StateView &S) const
     {
         // a^2 = gamma * p / rho
         const real_t rho = density(S);
@@ -126,7 +126,7 @@ namespace Prandtl
     // cp is constant for ideal gas
     template<typename StateView>
     MFEM_HOST_DEVICE
-    real_t cp(const StateView & /*S*/) const
+    inline real_t cp(const StateView & /*S*/) const
     {
         return phys.cp;
     }
@@ -135,7 +135,7 @@ namespace Prandtl
     // It *can be* nice to have here, but kind of out-of-place
     template<typename StateView>
     MFEM_HOST_DEVICE
-    void velocity(const StateView &S, real_t u[3]) const
+    inline void velocity(const StateView &S, real_t u[3]) const
     {
         const real_t rho = density(S);
         const int dim = S.L->dim;

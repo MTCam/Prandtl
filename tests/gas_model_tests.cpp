@@ -150,14 +150,14 @@ TEST(GasModel_IdealGas_Transport)
     const real_t T  = eos.temperature(S);
     const real_t cp = eos.cp(S);
 
-    const real_t mu_expected = transport.viscosity(T);
-    const real_t k_expected  = transport.thermal_conductivity(T, cp);
+    const real_t mu_expected = transport.viscosity(eos, S);
+    const real_t k_expected  = transport.thermal_conductivity(eos, S);
 
     const real_t mu_gas = gas.viscosity(S);
     const real_t k_gas  = gas.thermal_conductivity(S);
 
-    EXPECT_CLOSE(mu_gas, mu_expected, tol);
-    EXPECT_CLOSE(k_gas,  k_expected,  tol);
+    EXPECT_EQ(mu_gas, mu_expected);
+    EXPECT_EQ(k_gas,  k_expected);
 
     return 0;
 }
