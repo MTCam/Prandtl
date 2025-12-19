@@ -105,11 +105,11 @@ namespace Prandtl
                           const real_t *grad_p, real_t *grad_t) const
     {
       const real_t rho = density(S);
-      const real_t tempr = temperature(S)/rho;
+      const real_t pressor = pressure(S)/rho;
       const real_t cv = cp(S)/phys.gamma;
       const real_t fac = phys.gammaM1Inverse/(cv*rho);
       for(int i = 0; i < dim; i++){
-        grad_t[i] = fac*(grad_p[i] - tempr*grad_rho[i]);
+        grad_t[i] = fac*(grad_p[i] - pressor*grad_rho[i]);
       }
     }
 
