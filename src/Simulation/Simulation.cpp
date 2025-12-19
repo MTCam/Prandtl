@@ -334,7 +334,6 @@ void Simulation::LoadConfig(const std::string &config_file_path)
     // sol = std::make_shared<ParGridFunction>(vfes.get());
 
     flux = std::make_shared<NavierStokesFlux>(stateLayout, gasModel);
-    std::cout << "Made it here" << std::endl;
     if (runtime["numerical_flux"].get<std::string>() == "Chandrashekar")
     {
         numericalFlux = std::make_shared<ChandrashekarFlux>(*flux, physicsConstants->gamma);
@@ -344,7 +343,6 @@ void Simulation::LoadConfig(const std::string &config_file_path)
         std::cerr << "Error: Invalid numerical flux specified." << std::endl;
         return;
     }
-    std::cout << "Made it here 2" << std::endl;
 
     if (checkpoint_load)
     {
