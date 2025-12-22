@@ -74,6 +74,60 @@ if(AXISYMMETRIC)
   target_compile_definitions(${PROJECT_NAME} PRIVATE AXISYMMETRIC)
 endif()
 
+# -------------------------------------------------------------------------------
+# Target-local sanitizers for a single executable (Clang/AppleClang/GNU)
+# -------------------------------------------------------------------------------
+
+option(ENABLE_ASAN_UBSAN "Enable ASan+UBSan for the main executable" OFF)
+
+if (ENABLE_ASAN_UBSAN AND CMAKE_CXX_COMPILER_ID MATCHES "Clang|AppleClang|GNU")
+  message(STATUS "Enabling ASan+UBSan on target: myexe")
+
+  # Compile flags
+  target_compile_options(${PROJECT_NAME} PRIVATE
+    -O1
+    -g
+    -fno-fast-math
+    -ffp-contract=off
+    -fno-unsafe-math-optimizations
+    -fno-associative-math
+    -fno-reciprocal-math
+    -fno-omit-frame-pointer
+    -fno-optimize-sibling-calls
+    -fsanitize=address,undefined
+  )
+
+  # Link flags
+  target_link_options(${PROJECT_NAME} PRIVATE
+    -fsanitize=address,undefined
+  )
+
+  # Prefer hard-fail on first UB to get the cleanest stack trace
+  if (CMAKE_CXX_COMPILER_ID MATCHES "Clang|AppleClang")
+    target_compile_options(${PROJECT_NAME} PRIVATE -fno-sanitize-recover=all)
+  endif()
+endif()
+
+option(NO_OPT "Disable optimizations for testing" ON)
+
+if (NO_OPT AND CMAKE_CXX_COMPILER_ID MATCHES "Clang|AppleClang|GNU")
+  message(STATUS "Diabling all optimizations on target: myexe")
+
+  # Compile flags
+  target_compile_options(${PROJECT_NAME} PRIVATE
+    -O0
+    -g
+    -fno-fast-math
+    -ffp-contract=off
+    -fno-unsafe-math-optimizations
+    -fno-associative-math
+    -fno-reciprocal-math
+    -fno-omit-frame-pointer
+    -fno-optimize-sibling-calls
+  )
+
+endif()
+
 target_sources(${PROJECT_NAME}
     PRIVATE src/Operators/DGSEMOperator.cpp 
     PRIVATE src/Integrators/DGSEMIntegrator/DGSEMIntegrator.cpp

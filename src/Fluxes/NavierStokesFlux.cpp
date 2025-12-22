@@ -4,24 +4,20 @@
 namespace Prandtl
 {
 
-real_t NavierStokesFlux::ComputeInviscidFlux(const Vector &state, ElementTransformation &Tr, DenseMatrix &flux) const
-{
-    return ComputeFlux(state, Tr, flux);
-}
-
-void NavierStokesFlux::ComputeViscousFlux(const Vector &state, const Vector &dqdx, const Vector &dqdy, const Vector &dqdz, DenseMatrix &flux) const
-{
+  void NavierStokesFlux::ComputeViscousFlux(const Vector &state, const Vector &dqdx, const Vector &dqdy,
+                                            const Vector &dqdz, DenseMatrix &flux) const
+  {
     PointStateView S{state.GetData(), stateLayout.get()};
-    mu = gasModel->viscosity(S);
+    real_t mu = gasModel->viscosity(S);
     real_t kappa = gasModel->thermal_conductivity(S);
     real_t mu_bulk_loc = gasModel->bulk_viscosity(S);    
-
+    
     const real_t &drdx = dqdx(0);
     const real_t &dudx = dqdx(1);
     const real_t &dvdx = dqdx(2);
     const real_t &dwdx = dqdx(3);
     const real_t &dpdx = dqdx(4);
-
+    
     const real_t &drdy = dqdy(0);
     const real_t &dudy = dqdy(1);
     const real_t &dvdy = dqdy(2);
@@ -44,7 +40,7 @@ void NavierStokesFlux::ComputeViscousFlux(const Vector &state, const Vector &dqd
 
     gasModel->grad_temperature(3, S, grad_rho, grad_p, grad_t);
 
-    div = dudx + dvdy + dwdz;
+    real_t div = dudx + dvdy + dwdz;
 
     flux(1, 0) = mu * (2.0 * dudx - mu_bulk_loc * div);
     flux(2, 0) = mu * (dudy + dvdx);
@@ -59,22 +55,23 @@ void NavierStokesFlux::ComputeViscousFlux(const Vector &state, const Vector &dqd
     flux(1, 2) = mu * (dwdx + dudz);
     flux(2, 2) = mu * (dwdy + dvdz);
     flux(3, 2) = mu * (2.0 * dwdz - mu_bulk_loc * div);
-    flux(4, 2) = vx * flux(1, 2) + vy * flux(2, 2) + vz * flux(3, 2) + kappa * cv_dTdz; 
-}
-
-void NavierStokesFlux::ComputeViscousFlux(const Vector &state, const Vector &dqdx, const Vector &dqdy, DenseMatrix &flux) const
-{
+    flux(4, 2) = vx * flux(1, 2) + vy * flux(2, 2) + vz * flux(3, 2) + kappa * grad_t[2]; 
+  }
+  
+  void NavierStokesFlux::ComputeViscousFlux(const Vector &state, const Vector &dqdx,
+                                            const Vector &dqdy, DenseMatrix &flux) const
+  {
     PointStateView S{state.GetData(), stateLayout.get()};
     real_t kappa = gasModel->thermal_conductivity(S);
-    mu = gasModel->viscosity(S);
+    real_t mu = gasModel->viscosity(S);
     real_t mu_bulk_loc = gasModel->bulk_viscosity(S);    
-
-
+    real_t press = gasModel->pressure(S);
+    
     const real_t &drdx = dqdx(0);
     const real_t &dudx = dqdx(1);
     const real_t &dvdx = dqdx(2);
     const real_t &dpdx = dqdx(3);
-
+    
     const real_t &drdy = dqdy(0);
     const real_t &dudy = dqdy(1);
     const real_t &dvdy = dqdy(2);
@@ -85,9 +82,10 @@ void NavierStokesFlux::ComputeViscousFlux(const Vector &state, const Vector &dqd
     real_t grad_t[2] = {0.0, 0.0};
     real_t vx = S.velocity_x();
     real_t vy = S.velocity_y();
+    real_t rho = S.mass();
 
     gasModel->grad_temperature(2, S, grad_rho, grad_p, grad_t);
-    div = dudx + dvdy;
+    real_t div = dudx + dvdy;
 
     flux(1, 0) = mu * (2.0 * dudx - mu_bulk_loc * div);
     flux(2, 0) = mu * (dudy + dvdx);
@@ -98,32 +96,115 @@ void NavierStokesFlux::ComputeViscousFlux(const Vector &state, const Vector &dqd
     flux(3, 1) = vx * flux(1, 1) + vy * flux(2, 1) + kappa * grad_t[1];
 }
 
-void NavierStokesFlux::ComputeViscousFlux(const Vector &state, const Vector &dqdx, DenseMatrix &flux) const
-{
+  void NavierStokesFlux::ComputeViscousFlux(const Vector &state, const Vector &dqdx, DenseMatrix &flux) const
+  {
     PointStateView S{state.GetData(), stateLayout.get()};
     real_t kappa = gasModel->thermal_conductivity(S);
-    mu = gasModel->viscosity(S);
+    real_t mu = gasModel->viscosity(S);
     real_t mu_bulk_loc = gasModel->bulk_viscosity(S);    
-
+    
     const real_t &drdx = dqdx(0);
     const real_t &dudx = dqdx(1);
     const real_t &dpdx = dqdx(2);
-
+    
     const real_t grad_rho[1] = {drdx};
     const real_t grad_p[1] = {dpdx};
     real_t grad_t[1] = {0.0};
     real_t vx = S.velocity_x();
     gasModel->grad_temperature(1, S, grad_rho, grad_p, grad_t);
-    div = dudx;
-
+    real_t div = dudx;
+    
     flux(1, 0) = mu * (2.0 * dudx - mu_bulk_loc * div);
     flux(2, 0) = vx * flux(1, 0) + kappa * grad_t[0];
-}
+  }
+  
+  real_t NavierStokesFlux::ComputeFlux(const Vector &U,
+                                       ElementTransformation &Tr,
+                                       DenseMatrix &FU) const
+  {
+    
+    PointStateView S{U.GetData(), stateLayout.get()};
+    
+    // 1. Get states
+    const real_t density = S.mass();              // ρ
+    const Vector momentum(U.GetData()+S.momentum_eq(), dim);  // ρu
+    const real_t energy = S.energy();             // E, internal energy ρe
+    const real_t pressure = gasModel->pressure(S);
+    const real_t ke = gasModel->kinetic_energy_density(S);
+    
+    // Check whether the solution is physical only in debug mode
+    MFEM_ASSERT(density >= 0, "Negative Density");
+    MFEM_ASSERT(pressure >= 0, "Negative Pressure");
+    MFEM_ASSERT(energy >= 0, "Negative Energy");
+    
+    // 2. Compute Flux
+    for (int d = 0; d < dim; d++)
+      {
+        FU(0, d) = momentum(d);  // ρu
+        for (int i = 0; i < dim; i++)
+          {
+            // ρuuᵀ
+            FU(1 + i, d) = momentum(i) * momentum(d) / density;
+          }
+        // (ρuuᵀ) + p
+        FU(1 + d, d) += pressure;
+      }
+    // enthalpy H = e + p/ρ = (E + p)/ρ
+    const real_t H = (energy + pressure) / density;
+    for (int d = 0; d < dim; d++)
+      {
+        // u(E+p) = ρu*(E + p)/ρ = ρu*H
+        FU(1 + dim, d) = momentum(d) * H;
+      }
+    
+    // 3. Compute maximum characteristic speed
+    
+    const real_t sound = gasModel->sound_speed(S);
+    // fluid speed |u|
+    const real_t speed = std::sqrt(2.0 * ke / density);
+    // max characteristic speed = fluid speed + sound speed
+    return speed + sound;
+  }
+  
+  
+  real_t NavierStokesFlux::ComputeFluxDotN(const Vector &x,
+                                           const Vector &normal,
+                                           FaceElementTransformations &Tr,
+                                           Vector &FUdotN) const
+  {
+    PointStateView S{x.GetData(), stateLayout.get()};
 
-real_t NavierStokesFlux::ComputeInviscidFluxDotN(const Vector &x, const Vector &nor, FaceElementTransformations &Tr, Vector &fluxN) const
-{
-    return ComputeFluxDotN(x, nor, Tr, fluxN);
-}
-
+    // 1. Get states
+    const real_t density = S.mass();                  // ρ
+    const Vector momentum(x.GetData()+S.momentum_eq(), dim);  // ρu
+    const real_t energy = S.energy();
+    const real_t kinetic_energy = gasModel->kinetic_energy_density(S);
+    const real_t pressure = gasModel->pressure(S);
+    
+    // Check whether the solution is physical only in debug mode
+    MFEM_ASSERT(density >= 0, "Negative Density");
+    MFEM_ASSERT(pressure >= 0, "Negative Pressure");
+    MFEM_ASSERT(energy >= 0, "Negative Energy");
+    
+    // 2. Compute normal flux
+    
+    FUdotN(0) = momentum * normal;  // ρu⋅n
+    // u⋅n
+    const real_t normal_velocity = FUdotN(0) / density;
+    for (int d = 0; d < dim; d++)
+      {
+        // (ρuuᵀ + pI)n = ρu*(u⋅n) + pn
+        FUdotN(1 + d) = normal_velocity * momentum(d) + pressure * normal(d);
+      }
+    // (u⋅n)(E + p)
+    FUdotN(1 + dim) = normal_velocity * (energy + pressure);
+    
+    // 3. Compute maximum characteristic speed
+    const real_t sound = gasModel->sound_speed(S);
+    // fluid speed |u|
+    const real_t speed = std::fabs(normal_velocity) / std::sqrt(normal*normal);
+    // max characteristic speed = fluid speed + sound speed
+    return speed + sound;
+  }
 
 }

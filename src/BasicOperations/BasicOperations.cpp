@@ -169,6 +169,7 @@ void EntropyGrad2PrimGrad(const DenseMatrix &vdof_mat, DenseMatrix &grad, real_t
     }
 }
 
+
 void Conserv2Prim(const Vector &state, Vector &prim_state, real_t gammaM1)
 {
     prim_state.SetSize(state.Size());
@@ -179,13 +180,13 @@ void Conserv2Prim(const Vector &state, Vector &prim_state, real_t gammaM1)
         prim_state(2) = state(2) / state(0);
         if (state.Size() > 4)
         {
-            prim_state(3) = state(3) / state(0);
+          prim_state(3) = state(3) / state(0);
         }
     }
     prim_state(state.Size() - 1) = ComputePressure(state, gammaM1);
 }
 
-void Prim2Conserv(const Vector &state, Vector &conserv_state, real_t gammaM1Inverse)
+  void Prim2Conserv(const Vector &state, Vector &conserv_state, real_t gammaM1Inverse)
 {
     conserv_state.SetSize(state.Size());
     conserv_state(0) = state(0);

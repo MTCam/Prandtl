@@ -33,8 +33,8 @@ namespace Prandtl
     void Conserv2Entropy(const Vector &state, Vector &ent_state, real_t gamma, real_t gammaM1, real_t gammaM1Inverse);
     void EntropyGrad2PrimGrad(const DenseMatrix &vdof_mat, DenseMatrix &grad, real_t gammaM1, real_t gammaM1Inverse);
     void Entropy2Conserv(const Vector &ent_state, Vector &state, real_t gamma, real_t gammaM1, real_t gammaM1Inverse);
-    void Conserv2Prim(const Vector &state, Vector &prim_state, real_t gammaM1);
     void Prim2Conserv(const Vector &state, Vector &conserv_state, real_t gammaM1Inverse);
+    void Conserv2Prim(const Vector &state, Vector &prim_state, real_t gammaM1);
 
     inline void Normalize(Vector &vec)
     {

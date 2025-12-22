@@ -175,6 +175,11 @@ namespace Prandtl
       return rho;
     }
     
+    // Momentum address
+    MFEM_HOST_DEVICE inline int momentum_eq() const
+    {
+      return L->eq_mom[0];
+    }
     // Momentum components: d = 0(x),1(y),2(z)
     MFEM_HOST_DEVICE inline real_t momentum(int d) const
     {

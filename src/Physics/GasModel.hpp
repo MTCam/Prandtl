@@ -63,6 +63,13 @@ namespace Prandtl
 
     template<typename StateView>
     MFEM_HOST_DEVICE
+    inline real_t kinetic_energy_density(const StateView &S) const
+    {
+      return eos.kinetic_energy_density(S);
+    }
+
+    template<typename StateView>
+    MFEM_HOST_DEVICE
     inline real_t specific_internal_energy(const StateView &S) const
     {
         return eos.specific_internal_energy(S);
