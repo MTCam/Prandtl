@@ -83,7 +83,7 @@ namespace Prandtl
     real_t vx = S.velocity_x();
     real_t vy = S.velocity_y();
     real_t rho = S.mass();
-
+    // Conserv2Prim(state, prim, gammaM1);
     gasModel->grad_temperature(2, S, grad_rho, grad_p, grad_t);
     real_t div = dudx + dvdy;
 
