@@ -59,7 +59,7 @@ void NavierStokesFlux::ComputeViscousFlux(const Vector &state, const Vector &dqd
 
 void NavierStokesFlux::ComputeViscousFlux(const Vector &state, const Vector &dqdx, const Vector &dqdy, DenseMatrix &flux) const
 {
-    Conserv2Prim(state, prim, gammaM1);
+  //Conserv2Prim(state, prim, gammaM1);
 
     const real_t &drdx = dqdx(0);
     const real_t &dudx = dqdx(1);
@@ -70,23 +70,23 @@ void NavierStokesFlux::ComputeViscousFlux(const Vector &state, const Vector &dqd
     const real_t &dudy = dqdy(1);
     const real_t &dvdy = dqdy(2);
     const real_t &dpdy = dqdy(3);
-
-#ifdef SUTHERLAND
-    mu = ComputeViscosity(prim(0), prim(num_equations - 1));
-#endif
-
+    const real_t vx = state(1)/state(0);
+    const real_t vy = state(2)/state(0);
+    const real_t ke = 0.5 * (vx*vx + vy*vy) * state(0);
+    const real_t press = gammaM1 * (state(3) - ke);
+ 
     lambda = mu * gamma * PrInverse;
     div = dudx + dvdy;
-    cv_dTdx = gammaM1Inverse / prim(0) * (dpdx - prim(num_equations - 1) / prim(0) * drdx);
-    cv_dTdy = gammaM1Inverse / prim(0) * (dpdy - prim(num_equations - 1) / prim(0) * drdy);
+    cv_dTdx = gammaM1Inverse / state(0) * (dpdx - press / state(0) * drdx);
+    cv_dTdy = gammaM1Inverse / state(0) * (dpdy - press / state(0) * drdy);
 
     flux(1, 0) = mu * (2.0 * dudx - mu_bulk * div);
     flux(2, 0) = mu * (dudy + dvdx);
-    flux(3, 0) = prim(1) * flux(1, 0) + prim(2) * flux(2, 0) + lambda * cv_dTdx;
+    flux(3, 0) = vx * flux(1, 0) + vy * flux(2, 0) + lambda * cv_dTdx;
 
     flux(1, 1) = mu * (dvdx + dudy);
     flux(2, 1) = mu * (2.0 * dvdy - mu_bulk * div);
-    flux(3, 1) = prim(1) * flux(1, 1) + prim(2) * flux(2, 1) + lambda * cv_dTdy;
+    flux(3, 1) = vx * flux(1, 1) + vy * flux(2, 1) + lambda * cv_dTdy;
 }
 
 void NavierStokesFlux::ComputeViscousFlux(const Vector &state, const Vector &dqdx, DenseMatrix &flux) const

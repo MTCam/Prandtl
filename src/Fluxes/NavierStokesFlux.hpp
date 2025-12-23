@@ -21,7 +21,7 @@ public:
         : EulerFlux(dim, gamma_), gamma(gamma_), gammaM1(gamma - 1.0), gammaM1Inverse(1.0 / gammaM1), PrInverse(1.0 / Pr),
           mu(mu_), mu0(mu0), mu_bulk(mu_bulk), R_gas(R_gas), Ts(Ts), T0(T0), T0pTs(T0 + Ts)
     {
-        prim.SetSize(dim + 2);
+      prim.SetSize(dim + 2);
     }
     real_t ComputeInviscidFlux(const Vector &state, ElementTransformation &Tr, DenseMatrix &flux) const;
     void ComputeViscousFlux(const Vector &state, const Vector &dqdx, const Vector &dqdy, const Vector &dqdz, DenseMatrix &flux) const;
