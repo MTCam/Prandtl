@@ -174,7 +174,7 @@ TEST(DofStateView_ReadsExpectedComponents)
         for (int d = 0; d < dim; ++d)
         {
           const int eq_m = layout.eq_mom[d];
-          EXPECT_CLOSE(S.velocity(d),(10.0*eq_m+i+1)/(i+1), 1e-14);
+          EXPECT_CLOSE(S.velocity(d),(10.0*eq_m+i+1)/(i+1), 1e-16);
           if (d == 0){
             EXPECT_EQ(S.velocity_x(), S.velocity(d));
           }
@@ -187,16 +187,75 @@ TEST(DofStateView_ReadsExpectedComponents)
         }
         
         // Energy
-        EXPECT_CLOSE(S.energy(), 10.0 * layout.eq_energy + i + 1, 1e-14);
+        EXPECT_EQ(S.energy(), 10.0 * layout.eq_energy + i + 1);
         
         // Scalars
         for(int s = 0; s < nscalars; s++){
           const int eq_s = layout.eq_scalar0;
           EXPECT_EQ(S.scalar(s),10.0*(eq_s+s) + i + 1);
         }
-    }
-    
+    }    
     return 0;
+}
+
+TEST(PointStateView_ReadsExpectedComponents)
+{
+  const int dim   = 3;
+  const int ndofs = 4;
+  const int nscalars = 2;
+  
+  Prandtl::StateLayout layout(dim, ndofs, nscalars);
+  const int num_eq = dim + 2 + nscalars;             // rho, dim*mom, E, scalars
+  
+  std::vector<real_t> U(num_eq);
+  
+  // Fill equation-blocked storage with a simple pattern:
+  //   U(eq, i) = 10*eq + i + 1.0
+  for (int eq = 0; eq < num_eq; ++eq)
+    {
+      U[eq] = 10.0 * eq + 2;
+    }
+  
+  Prandtl::PointStateView S{U.data(), &layout};
+  
+  // Mass
+  EXPECT_EQ(S.mass(), 10.0 * layout.eq_mass + 2);
+  
+  // Momentum components
+  for (int d = 0; d < dim; ++d)
+    {
+      const int eq_m = layout.eq_mom[d];
+      EXPECT_EQ(S.momentum(d), 10.0 * eq_m + 2);
+      if (d == 0){
+        EXPECT_EQ(S.momentum_x(), S.momentum(d));
+      }
+      if (d == 1){
+        EXPECT_EQ(S.momentum_y(), S.momentum(d));
+      }
+      if (d == 2){
+        EXPECT_EQ(S.momentum_z(), S.momentum(d));
+      }
+      EXPECT_CLOSE(S.velocity(d),(10.0*eq_m+2)/2, 1e-16);
+      if (d == 0){
+        EXPECT_EQ(S.velocity_x(), S.velocity(d));
+      }
+      if (d == 1){
+        EXPECT_EQ(S.velocity_y(), S.velocity(d));
+      }
+      if (d == 2){
+        EXPECT_EQ(S.velocity_z(), S.velocity(d));
+      }
+    }
+  
+  // Energy
+  EXPECT_EQ(S.energy(), 10.0 * layout.eq_energy + 2);
+  
+  // Scalars
+  for(int s = 0; s < nscalars; s++){
+    const int eq_s = layout.eq_scalar0;
+    EXPECT_EQ(S.scalar(s),10.0*(eq_s+s) + 2);
+  }
+  return 0;
 }
 
 TEST(FieldStateView_ReadWriteRoundTrip)
