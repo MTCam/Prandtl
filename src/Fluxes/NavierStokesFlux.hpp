@@ -11,16 +11,13 @@ using namespace mfem;
 class NavierStokesFlux : public FluxFunction
 {
 private:
-  const real_t gammaM1;
   std::shared_ptr<const IdealGasModel> gasModel;
   std::shared_ptr<const StateLayout> stateLayout;
-  mutable Vector prim;
 public:
   explicit NavierStokesFlux(std::shared_ptr<const StateLayout> stateLayout_, std::shared_ptr<const IdealGasModel> gasModel_)
-    : FluxFunction(stateLayout_->nequations(), stateLayout_->dim), gammaM1(gasModel_->eos.phys->gammaM1),
+    : FluxFunction(stateLayout_->nequations(), stateLayout_->dim),
       stateLayout(std::move(stateLayout_)), gasModel(std::move(gasModel_))
   {
-    prim.SetSize(stateLayout->dim+2);
   }
     void ComputeViscousFlux(const Vector &state, const Vector &dqdx, const Vector &dqdy, const Vector &dqdz, DenseMatrix &flux) const;
     void ComputeViscousFlux(const Vector &state, const Vector &dqdx, const Vector &dqdy, DenseMatrix &flux) const;

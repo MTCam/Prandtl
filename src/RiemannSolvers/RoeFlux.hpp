@@ -13,11 +13,11 @@ using namespace mfem;
  * where λ is the maximum characteristic velocity
  *
  */
-class RoeFlux : public RiemannSolver
+class RoeFlux : public FluxFunction
 {
 public:
    RoeFlux(const FluxFunction &fluxFunction)
-      : RiemannSolver(fluxFunction)
+      : FluxFunction(fluxFunction)
    {
 #ifndef MFEM_THREAD_SAFE
       fluxN1.SetSize(fluxFunction.num_equations);
@@ -38,7 +38,7 @@ public:
     */
    real_t Eval(const Vector &state1, const Vector &state2,
                const Vector &nor, FaceElementTransformations &Tr,
-               Vector &flux) const override;
+               Vector &flux) const;
 
 protected:
 #ifndef MFEM_THREAD_SAFE
