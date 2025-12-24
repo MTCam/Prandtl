@@ -135,6 +135,110 @@ namespace Prandtl
   };
   
   // -----------------------------------------------------------------------------
+  // PointStateView: per-point view (immediate refactor tool).
+  //
+  // Usage pattern:
+  //
+  //   Vector state = [rho, rhoVx, rhoVy, rhoVz, rhoE]
+  //   PointStateView S{state.GetData(), &layout};
+  //   double rho = S.mass();
+  //   double rhoU = S.momentum(0);
+  //   double rhoE = S.energy();
+  //
+  // This is a small, value-type-like view with correct indexing.
+  // -----------------------------------------------------------------------------
+  struct PointStateView
+  {
+    const real_t* U;           // packed state data -> [rho, rhoVx, rhoVy, ..., rhoE]
+    const StateLayout* L;      // layout metadata
+    
+    MFEM_HOST_DEVICE
+    PointStateView()
+      : U(nullptr), L(nullptr)
+    { }
+    
+    MFEM_HOST_DEVICE
+    PointStateView(const real_t* U_,
+                   const StateLayout* L_)
+      : U(U_), L(L_)
+    { }
+    
+    MFEM_HOST_DEVICE inline bool is_valid() const
+    {
+      return (U != nullptr) && (L != nullptr);
+    }
+    
+    // Mass / density
+    MFEM_HOST_DEVICE inline real_t mass() const
+    {
+      const real_t rho = U[ L->eq_mass ];
+      return rho;
+    }
+    
+    // Momentum address
+    MFEM_HOST_DEVICE inline int momentum_eq() const
+    {
+      return L->eq_mom[0];
+    }
+    // Momentum components: d = 0(x),1(y),2(z)
+    MFEM_HOST_DEVICE inline real_t momentum(int d) const
+    {
+      assert(d < L->dim);
+      return U[ L->eq_mom[d] ];
+    }
+    
+    MFEM_HOST_DEVICE inline real_t momentum_x() const
+    {
+      return momentum(0);
+    }
+    
+    MFEM_HOST_DEVICE inline real_t momentum_y() const
+    {
+      return (L->dim > 1) ? momentum(1) : real_t(0);
+    }
+    
+    MFEM_HOST_DEVICE inline real_t momentum_z() const
+    {
+      return (L->dim > 2) ? momentum(2) : real_t(0);
+    }
+    
+    // Velocity components: d = 0(x),1(y),2(z)
+    MFEM_HOST_DEVICE inline real_t velocity(int d) const
+    {
+      return momentum(d) / mass();
+    }
+
+    MFEM_HOST_DEVICE inline real_t velocity_x() const
+    {
+      return momentum_x() / mass();
+    }
+
+    MFEM_HOST_DEVICE inline real_t velocity_y() const
+    {
+      return momentum_y() / mass();
+    }
+    
+    MFEM_HOST_DEVICE inline real_t velocity_z() const
+    {
+      return momentum_z() / mass();
+    }
+    
+    // Total energy
+    MFEM_HOST_DEVICE inline real_t energy() const
+    {
+      return U[ L->eq_energy ];
+    }
+    
+    // Scalar components, if present
+    MFEM_HOST_DEVICE inline real_t scalar(int k) const
+    {
+      assert(L->num_scalars > 0);
+      assert((k >= 0 && k < L->num_scalars) && "Invalid scalar index");
+      return U[ L->eq_scalar0 + k ];
+    }
+  };
+
+  // -----------------------------------------------------------------------------
   // DofStateView: per-DOF view (immediate refactor tool).
   //
   // Usage pattern:
@@ -176,7 +280,8 @@ namespace Prandtl
     // Mass / density
     MFEM_HOST_DEVICE inline real_t mass() const
     {
-      return U[ L->index(L->eq_mass, dof) ];
+      const real_t rho = U[ L->index(L->eq_mass, dof) ];
+      return rho;
     }
     
     // Momentum components: d = 0(x),1(y),2(z)
@@ -206,12 +311,12 @@ namespace Prandtl
     {
       return momentum(d) / mass();
     }
-    
+
     MFEM_HOST_DEVICE inline real_t velocity_x() const
     {
       return momentum_x() / mass();
     }
-    
+
     MFEM_HOST_DEVICE inline real_t velocity_y() const
     {
       return momentum_y() / mass();
