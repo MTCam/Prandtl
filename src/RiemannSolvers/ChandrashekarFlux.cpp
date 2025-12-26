@@ -6,78 +6,72 @@ namespace Prandtl
 {
 
 ChandrashekarFlux::ChandrashekarFlux(const NavierStokesFlux &fluxFunction, real_t gamma_)
-    : NumericalFlux(fluxFunction), metric(dim), mom(dim), gamma(gamma_), gammaM1(gamma - 1.0), gammaM1Inverse(1.0 / gammaM1) {}
+  : NumericalFlux(fluxFunction), gasModel(std::move(fluxFunction.gas_model())), stateLayout(std::move(fluxFunction.state_layout()))
+{
+  metric.SetSize(dim);
+}
 
 real_t ChandrashekarFlux::ComputeVolumeFlux(const Vector &state1, const Vector &state2,
                                             const Vector &metric1, const Vector &metric2,
                                             Vector &F_tilde)
 {
     ComputeMean(metric1, metric2, metric);
-
-    rho1 = state1(0);
-    rho2 = state2(0);
-    rho_ln = ComputeLogMean(rho1, rho2);
-    drho = rho2 - rho1;
-
-    u1 = state1(1) / rho1;
-    u2 = state2(1) / rho2;
-    u_mean = 0.5 * (u1 + u2);
-    du = u2 - u1;
-    V_sq1 = u1 * u1;
-    V_sq2 = u2 * u2;
-    Vn = u_mean * metric(0);
-    mom(0) = rho_ln * u_mean;
-    h_hat = -0.25 * (u1 * u1 + u2 * u2) + u_mean * u_mean;
-
-    if (dim > 1)
-    {
-        v1 = state1(2) / rho1;
-        v2 = state2(2) / rho2;
-        v_mean = 0.5 * (v1 + v2);
-        dv = v2 - v1;
-        V_sq1 += v1 * v1;
-        V_sq2 += v2 * v2;
-        Vn += v_mean * metric(1);
-        mom(1) = rho_ln * v_mean;
-        h_hat += -0.25 * (v1 * v1 + v2 * v2) + v_mean * v_mean;
-
-        if (dim > 2)
-        {
-            w1 = state1(3) / rho1;
-            w2 = state2(3) / rho2;
-            w_mean = 0.5 * (w1 + w2);
-            dw = w2 - w1;
-            V_sq1 += w1 * w1;
-            V_sq2 += w2 * w2;
-            Vn += w_mean * metric(2);
-            mom(2) = rho_ln * w_mean;
-            h_hat += -0.25 * (w1 * w1 + w2 * w2) + w_mean * w_mean;
-        }
+    PointStateView S1{state1.GetData(), stateLayout.get()};
+    PointStateView S2{state2.GetData(), stateLayout.get()};
+    
+    const real_t rho1 = S1.mass();
+    const real_t rho2 = S2.mass();
+    const real_t rho_ln = ComputeLogMean(rho1, rho2);
+    const real_t drho = rho2 - rho1;
+    real_t mom[3] = {0.0, 0.0, 0.0};
+    real_t h_hat = 0.0;
+    real_t vn = 0.0;
+    real_t v_21 = 0.0;
+    real_t v_22 = 0.0;
+    for(int idim = 0; idim < dim; idim++){
+      real_t v1 = S1.velocity(idim);
+      real_t v2 = S2.velocity(idim);
+      real_t v_bar = 0.5*(v1 + v2);
+      v_21 += v1*v1;
+      v_22 += v2*v2;
+      vn += v_bar * metric(idim);
+      mom[idim] = rho_ln * v_bar;
+      h_hat += -0.25*(v1*v1 + v2*v2) + v_bar * v_bar;
     }
+    
+    const real_t p1 = gasModel->pressure(S1);
+    const real_t p2 = gasModel->pressure(S2);
 
-    p1 = gammaM1 * (state1(num_equations - 1) - 0.5 * rho1 * V_sq1);
-    p2 = gammaM1 * (state2(num_equations - 1) - 0.5 * rho2 * V_sq2);
+    const real_t speed1 = std::sqrt(v_21);
+    const real_t speed2 = std::sqrt(v_22);
 
-    V_mag1 = std::sqrt(V_sq1);
-    V_mag2 = std::sqrt(V_sq2);
+    const real_t c1 = gasModel->sound_speed(S1);
+    const real_t c2 = gasModel->sound_speed(S2);
 
-    lambda_max = V_mag1 + ComputeSoundSpeed(p1, rho1, gamma);
-    lambda_max = std::max(lambda_max, V_mag2 + ComputeSoundSpeed(p2, rho2, gamma));
+    const real_t lambda_1 = speed1 + c1;
+    const real_t lambda_max = std::max(lambda_1, speed2 + c2);
 
-    beta1 = 0.5 * rho1 / p1;
-    beta2 = 0.5 * rho2 / p2;
-    beta_ln = ComputeLogMean(beta1, beta2);
+    // These next bits are specific to single component ideal gas 
+    const real_t beta1 = 0.5 * rho1 / p1;
+    const real_t beta2 = 0.5 * rho2 / p2;
+    const real_t beta_ln = ComputeLogMean(beta1, beta2);
 
-    p_hat = 0.5 * (rho1 + rho2) / (beta1 + beta2);
+    const real_t p_hat = 0.5 * (rho1 + rho2) / (beta1 + beta2);
 
-    h_hat += 0.5 / beta_ln * gammaM1Inverse + p_hat / rho_ln;
+    // Use the average gamma for now
+    // TODO: Craft KEPEC fluxes for LTE/NLTE
+    const real_t gm11 = gasModel->gamma(S1);
+    const real_t gm12 = gasModel->gamma(S2);
+    const real_t gm1_av_inv = 2.0/(gm11 + gm12 - 2.0);
 
-    F_tilde(0) = rho_ln * Vn;
+    h_hat += 0.5 / beta_ln * gm1_av_inv + p_hat / rho_ln;
+
+    F_tilde(0) = rho_ln * vn;
     for (int d = 0; d < dim; d++)
     {
-        F_tilde(1 + d) = Vn * mom(d) + p_hat * metric(d);
+        F_tilde(1 + d) = vn * mom[d] + p_hat * metric(d);
     }
-    F_tilde(1 + dim) = rho_ln * Vn * h_hat;
+    F_tilde(1 + dim) = rho_ln * vn * h_hat;
 
     return lambda_max;
 }
@@ -85,77 +79,71 @@ real_t ChandrashekarFlux::ComputeVolumeFlux(const Vector &state1, const Vector &
 real_t ChandrashekarFlux::ComputeFaceFlux(const Vector &state1, const Vector &state2,
                                           const Vector &nor, Vector &flux) const
 {
-    nor_mag = nor.Norml2();
+    PointStateView S1{state1.GetData(), stateLayout.get()};
+    PointStateView S2{state2.GetData(), stateLayout.get()};
+    
+    const real_t nor_mag = nor.Norml2();
 
-    rho1 = state1(0);
-    rho2 = state2(0);
-    rho_mean = 0.5 * (rho1 + rho2);
-    rho_ln = ComputeLogMean(rho1, rho2);
-    drho = rho2 - rho1;
-
-    u1 = state1(1) / rho1;
-    u2 = state2(1) / rho2;
-    u_mean = 0.5 * (u1 + u2);
-    du = u2 - u1;
-    V_sq1 = u1 * u1;
-    V_sq2 = u2 * u2;
-    Vn = u_mean * nor(0);
-    mom(0) = rho_ln * u_mean;
-    h_hat = -0.25 * (u1 * u1 + u2 * u2) + u_mean * u_mean;
-    diss = 0.5 * drho * u1 * u2 + rho_mean * du * u_mean;
-
-    if (dim > 1)
-    {
-        v1 = state1(2) / rho1;
-        v2 = state2(2) / rho2;
-        v_mean = 0.5 * (v1 + v2);
-        dv = v2 - v1;
-        V_sq1 += v1 * v1;
-        V_sq2 += v2 * v2;
-        Vn += v_mean * nor(1);
-        mom(1) = rho_ln * v_mean;
-        h_hat += -0.25 * (v1 * v1 + v2 * v2) + v_mean * v_mean;
-        diss += 0.5 * drho * v1 * v2 + rho_mean * dv * v_mean;
-
-        if (dim > 2)
-        {
-            w1 = state1(3) / rho1;
-            w2 = state2(3) / rho2;
-            w_mean = 0.5 * (w1 + w2);
-            dw = w2 - w1;
-            V_sq1 += w1 * w1;
-            V_sq2 += w2 * w2;
-            Vn += w_mean * nor(2);
-            mom(2) = rho_ln * w_mean;
-            h_hat += -0.25 * (w1 * w1 + w2 * w2) + w_mean * w_mean;
-            diss += 0.5 * drho * w1 * w2 + rho_mean * dw + w_mean;
-        }
+    const real_t rho1 = S1.mass();
+    const real_t rho2 = S2.mass();
+    const real_t rho_mean = 0.5 * (rho1 + rho2);
+    const real_t rho_ln = ComputeLogMean(rho1, rho2);
+    const real_t drho = rho2 - rho1;
+    real_t mom[3] = {0.0, 0.0, 0.0};
+    real_t mom1[3] = {0.0, 0.0, 0.0};
+    real_t mom2[3] = {0.0, 0.0, 0.0};
+    real_t hhat = 0.0;
+    real_t diss = 0.0;
+    real_t v21 = 0.0;
+    real_t v22 = 0.0;
+    real_t vn = 0.0;
+    for(int idim = 0;idim < dim;idim++){
+      mom1[idim] = S1.momentum(idim);
+      mom2[idim] = S2.momentum(idim);
+      const real_t v1 = mom1[idim]/rho1;
+      const real_t v2 = mom2[idim]/rho2;
+      const real_t vbar = 0.5 * (v1 + v2);
+      const real_t dv = v2 - v1;
+      v21 += v1*v1;
+      v22 += v2*v2;
+      vn += vbar * nor(idim);
+      mom[idim] = rho_ln * vbar;
+      hhat += -0.25 * (v1*v1 + v2*v2) + vbar * vbar;
+      diss += 0.5 * drho * v1*v2 + rho_mean * dv * vbar;
     }
 
-    p1 = gammaM1 * (state1(num_equations - 1) - 0.5 * rho1 * V_sq1);
-    p2 = gammaM1 * (state2(num_equations - 1) - 0.5 * rho2 * V_sq2);
+    const real_t p1 = gasModel->pressure(S1);
+    const real_t p2 = gasModel->pressure(S2);
 
-    V_mag1 = std::sqrt(V_sq1);
-    V_mag2 = std::sqrt(V_sq2);
+    const real_t vmag1 = std::sqrt(v21);
+    const real_t vmag2 = std::sqrt(v22);
 
-    lambda_max = V_mag1 + ComputeSoundSpeed(p1, rho1, gamma);
-    lambda_max = std::max(lambda_max, V_mag2 + ComputeSoundSpeed(p2, rho2, gamma));
+    const real_t c1 = gasModel->sound_speed(S1);
+    const real_t c2 = gasModel->sound_speed(S2);
 
-    beta1 = 0.5 * rho1 / p1;
-    beta2 = 0.5 * rho2 / p2;
-    beta_ln = ComputeLogMean(beta1, beta2);
+    const real_t lambda_max = std::max(vmag1+c1, vmag2+c2);
 
-    p_hat = 0.5 * (rho1 + rho2) / (beta1 + beta2);
+    const real_t beta1 = 0.5 * rho1 / p1;
+    const real_t beta2 = 0.5 * rho2 / p2;
+    const real_t beta_ln = ComputeLogMean(beta1, beta2);
 
-    h_hat += 0.5 / beta_ln * gammaM1Inverse + p_hat / rho_ln;
-    diss += 0.5 * drho * gammaM1Inverse / beta_ln + 0.5 * rho_mean * gammaM1Inverse * (1.0 / beta2 - 1.0 / beta1);
+    const real_t p_hat = 0.5 * (rho1 + rho2) / (beta1 + beta2);
 
-    flux(0) = rho_ln * Vn - 0.5 * lambda_max * (rho2 - rho1) * nor_mag;
+    // Use the average gamma for now
+    // TODO: Craft KEPEC fluxes for LTE/NLTE
+    const real_t gm11 = gasModel->gamma(S1);
+    const real_t gm12 = gasModel->gamma(S2); 
+    const real_t gm1_av_inv = 2.0/(gm11 + gm12 - 2.0);
+
+    hhat += 0.5 / beta_ln * gm1_av_inv + p_hat / rho_ln;
+    diss += 0.5 * drho * gm1_av_inv / beta_ln + 0.5 * rho_mean * gm1_av_inv * (1.0 / beta2 - 1.0 / beta1);
+
+    flux(0) = rho_ln * vn - 0.5 * lambda_max * (rho2 - rho1) * nor_mag;
     for (int d = 0; d < dim; d++)
     {
-        flux(1 + d) = Vn * mom(d) + p_hat * nor(d) - 0.5 * lambda_max * (state2(1 + d) - state1(1 + d)) * nor_mag;
+      flux(1 + d) = vn * mom[d] + p_hat * nor(d) - 0.5 * lambda_max * (mom2[d]-mom1[d]) * nor_mag;
     }
-    flux(1 + dim) = rho_ln * Vn * h_hat - 0.5 * lambda_max * diss * nor_mag;
+    flux(1 + dim) = rho_ln * vn * hhat - 0.5 * lambda_max * diss * nor_mag;
 
     return lambda_max;
 }
