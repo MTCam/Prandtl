@@ -22,7 +22,8 @@ public:
     void ComputeViscousFlux(const Vector &state, const Vector &dqdx, const Vector &dqdy, const Vector &dqdz, DenseMatrix &flux) const;
     void ComputeViscousFlux(const Vector &state, const Vector &dqdx, const Vector &dqdy, DenseMatrix &flux) const;
     void ComputeViscousFlux(const Vector &state, const Vector &dqdx, DenseMatrix &flux) const;
-
+  std::shared_ptr<const IdealGasModel> gas_model() const { return gasModel; };
+  std::shared_ptr<const StateLayout> state_layout() const { return stateLayout; };
    /**
     * @brief Compute inviscid flux from conserved state
     *
