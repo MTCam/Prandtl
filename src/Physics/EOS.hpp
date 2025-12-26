@@ -91,6 +91,13 @@ namespace Prandtl
 
     template<typename StateView>
     MFEM_HOST_DEVICE
+    inline real_t gamma(const StateView &S) const
+    {
+      return phys->gamma;
+    }
+
+    template<typename StateView>
+    MFEM_HOST_DEVICE
     inline real_t temperature(const StateView &S) const
     {
         // p = rho*R*T  =>  T = p / (rho*R)

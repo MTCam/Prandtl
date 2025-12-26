@@ -42,6 +42,13 @@ namespace Prandtl
 
     template<typename StateView>
     MFEM_HOST_DEVICE
+    inline real_t gamma(const StateView &S) const
+    {
+        return eos.gamma(S);
+    }
+ 
+    template<typename StateView>
+    MFEM_HOST_DEVICE
     inline real_t temperature(const StateView &S) const
     {
         return eos.temperature(S);
