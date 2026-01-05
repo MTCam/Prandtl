@@ -5,7 +5,7 @@
 namespace Prandtl
 {
 
-bool debug_boundary = false;
+constexpr bool debug_boundary = false;
 BdrFaceIntegrator::BdrFaceIntegrator(std::shared_ptr<LiftingScheme> liftingScheme_, const NumericalFlux &rsolver, int Np, const real_t &time, real_t gamma_, bool constant, bool t_dependent)
    : NonlinearFormIntegrator(), liftingScheme(liftingScheme_),
      rsolver(rsolver), fluxFunction(rsolver.GetFluxFunction()),

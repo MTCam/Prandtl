@@ -3,7 +3,7 @@
 
 namespace Prandtl
 {
-bool debug_integrator = false;
+constexpr bool debug_integrator = false;
 
 DGSEMIntegrator::DGSEMIntegrator(
       std::shared_ptr<ParMesh> pmesh_,
@@ -14,7 +14,7 @@ DGSEMIntegrator::DGSEMIntegrator(
     : NonlinearFormIntegrator(), pmesh(pmesh_), fes0(fes0_), alpha(alpha_), liftingScheme(liftingScheme_),
       rsolver(rsolver_), fluxFunction(rsolver_.GetFluxFunction()),
       Np_x(Np), Np_y(fluxFunction.dim > 1 ? Np : 1), Np_z(fluxFunction.dim > 2 ? Np : 1),
-      num_equations(fluxFunction.num_equations), dim(num_equations - 2), num_elements(pmesh->GetNE()),
+      num_equations(fluxFunction.num_equations), dim(fluxFunction.dim), num_elements(pmesh->GetNE()),
       GLIntRules(0, Quadrature1D::GaussLobatto), gammaM1(gamma - 1.0)
 {
     IntegrationOrder = 2 * Np_x - 3;

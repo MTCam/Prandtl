@@ -79,7 +79,7 @@ Simulation::~Simulation()
     }
 }
 
-bool debug_simulation = false;
+constexpr bool debug_simulation = false;
 
 void Simulation::LoadConfig(const std::string &config_file_path)
 {
@@ -333,14 +333,11 @@ void Simulation::LoadConfig(const std::string &config_file_path)
     stateLayout = std::make_shared<StateLayout>(dim, num_dofs_scalar);
 
     flux = std::make_shared<NavierStokesFlux>(stateLayout, gasModel);
-    if (runtime["numerical_flux"].get<std::string>() == "Chandrashekar")
-    {
-        numericalFlux = std::make_shared<ChandrashekarFlux>(*flux, physicsConstants->gamma);
-    }
-    else
-    {
-        std::cerr << "Error: Invalid numerical flux specified." << std::endl;
-        return;
+    if (runtime["numerical_flux"].get<std::string>() == "Chandrashekar"){
+      numericalFlux = std::make_shared<ChandrashekarFlux>(*flux);
+    } else {
+      std::cerr << "Error: Invalid numerical flux specified." << std::endl;
+      return;
     }
 
     if (checkpoint_load)
