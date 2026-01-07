@@ -300,3 +300,69 @@ TEST(FieldStateView_ReadWriteRoundTrip)
     return 0;
 }
 
+
+TEST(PointStateViewRW_WritesExpectedComponents)
+{
+    const int dim   = 3;
+    const int ndofs = 1;
+    const int nscalars = 2;
+
+    Prandtl::StateLayout layout(dim, ndofs, nscalars);
+    const int num_eq = dim + 2 + nscalars;
+
+    std::vector<real_t> U(num_eq, -1.0);
+
+    Prandtl::PointStateViewRW E{U.data(), &layout};
+
+    // Write via setters
+    E.set_mass(2.0);
+    E.set_momentum(0, 3.0);
+    E.set_momentum(1, -4.0);
+    E.set_momentum(2, 5.0);
+    E.set_energy(9.0);
+    E.set_scalar(0, 11.0);
+    E.set_scalar(1, 12.0);
+
+    // Read back via RW view
+    EXPECT_EQ(E.mass(), 2.0);
+    EXPECT_EQ(E.momentum(0), 3.0);
+    EXPECT_EQ(E.momentum(1), -4.0);
+    EXPECT_EQ(E.momentum(2), 5.0);
+    EXPECT_EQ(E.energy(), 9.0);
+    EXPECT_EQ(E.scalar(0), 11.0);
+    EXPECT_EQ(E.scalar(1), 12.0);
+
+    // Cross-check via const view over same buffer
+    Prandtl::PointStateView S{U.data(), &layout};
+
+    EXPECT_EQ(S.mass(), 2.0);
+    EXPECT_EQ(S.momentum(0), 3.0);
+    EXPECT_EQ(S.momentum(1), -4.0);
+    EXPECT_EQ(S.momentum(2), 5.0);
+    EXPECT_EQ(S.energy(), 9.0);
+    EXPECT_EQ(S.scalar(0), 11.0);
+    EXPECT_EQ(S.scalar(1), 12.0);
+
+    return 0;
+}
+
+
+TEST(PointStateViewRW_WritesToMFEMVector)
+{
+  Prandtl::StateLayout layout(/*dim=*/2, /*ndofs=*/1, /*num_scalars=*/0);
+  mfem::Vector v(layout.nequations());
+  v = 0.0;
+
+  Prandtl::PointStateViewRW E(v.GetData(), &layout);
+  E.set_mass(2.0);
+  E.set_momentum(0, 3.0);
+  E.set_momentum(1, -4.0);
+  E.set_energy(9.0);
+
+  EXPECT_EQ(v[layout.eq_mass], 2.0);
+  EXPECT_EQ(v[layout.eq_mom[0]], 3.0);
+  EXPECT_EQ(v[layout.eq_mom[1]], -4.0);
+  EXPECT_EQ(v[layout.eq_energy], 9.0);
+
+  return 0;
+}

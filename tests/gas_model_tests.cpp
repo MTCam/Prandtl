@@ -164,3 +164,127 @@ TEST(GasModel_IdealGas_Transport)
 
     return 0;
 }
+
+// -----------------------------------------------------------------------------
+// GasModel entropy-gradient -> primitive-gradient transform regression test.
+//
+// Goal: ensure the refactored IdealGasModel::grad_entropy_to_grad_prim(...) is
+// algebraically consistent with the legacy EntropyGrad2PrimGrad(...) routine.
+//
+// The legacy routine operated point-wise (per DOF) on:
+//   - conservative state Q = [rho, rho*u_0.., rhoE]
+//   - an input "entropy gradient" vector dE (same slot layout as entropy vars)
+//
+// and produced an output vector (same slot layout as Q) via:
+//   out_mom[i]  = p/rho * ( dE_mom[i] + u_i * dE_last )
+//   out_mass    = rho*dE_mass - dE_last*(KE - p/(gamma-1)) + (rho/p)*sum(mom_i*out_mom[i])
+//   out_last    = p/rho * ( out_mass + p*dE_last )
+//
+// Here, dE_last corresponds to the last slot of the entropy-variable vector
+// (w_E = -beta for ideal gas), and KE is the kinetic energy density.
+// -----------------------------------------------------------------------------
+static void
+legacy_entropy_grad_to_prim_grad(const real_t* Q,
+                                 const real_t* dE,
+                                 real_t* out,
+                                 int dim,
+                                 real_t gamma)
+{
+    const real_t rho = Q[0];
+
+    // Velocity
+    real_t u[3] = {0, 0, 0};
+    real_t u2 = 0;
+    for (int i = 0; i < dim; ++i)
+    {
+        u[i] = Q[1 + i] / rho;
+        u2 += u[i] * u[i];
+    }
+
+    const real_t KE = real_t(0.5) * rho * u2;          // kinetic energy density
+    const real_t rhoE = Q[dim + 1];
+    const real_t p = (gamma - real_t(1)) * (rhoE - KE);
+
+    const real_t gammaM1Inv = real_t(1) / (gamma - real_t(1));
+    const real_t ie = p * gammaM1Inv;                  // internal energy density
+
+    const real_t dE_last = dE[dim + 1];
+
+    // out_mom[i]
+    real_t mom_dot = 0;
+    for (int i = 0; i < dim; ++i)
+    {
+        const real_t out_i = (p / rho) * (dE[1 + i] + u[i] * dE_last);
+        out[1 + i] = out_i;
+        mom_dot += Q[1 + i] * out_i; // (rho*u_i) * out_i
+    }
+
+    // out_mass
+    const real_t out_mass = rho * dE[0] - dE_last * (KE - ie) + (rho / p) * mom_dot;
+    out[0] = out_mass;
+
+    // out_last
+    out[dim + 1] = (p / rho) * (out_mass + p * dE_last);
+}
+
+TEST(GasModel_IdealGas_GradEntropyToGradPrim_MatchesLegacy)
+{
+    const real_t gamma = 1.4;
+    const real_t Pr    = 0.72;
+    const real_t R_gas = 287.0;
+    const real_t mu    = 1.8e-5;
+
+    std::shared_ptr<PhysicsConstants> phys =
+      std::make_shared<PhysicsConstants>(gamma, Pr, R_gas, mu);
+
+    IdealGasModel gas(phys);
+
+    const real_t tol = 5.0e-11;
+
+    for (int dim = 1; dim <= 3; ++dim)
+    {
+        const int ndofs = 1;
+        StateLayout layout(dim, ndofs); // no scalars
+        const int num_eq = layout.nequations();
+
+        std::vector<real_t> Q(num_eq);
+
+        // Choose a state with positive pressure.
+        const real_t rho = 1.7;
+        const real_t uvec[3] = {35.0, -7.0, 2.5};
+        const real_t e_int_density = 2.3; // arbitrary positive
+
+        fill_single_dof_state(layout, Q, dim, rho, uvec, e_int_density);
+
+        // Synthetic entropy-variable gradient input (dE); does not need to be physical.
+        std::vector<real_t> dE(num_eq);
+        dE[0] = 0.11;
+        for (int i = 0; i < dim; ++i)
+            dE[1 + i] = 0.2 + 0.05 * (i + 1);
+        dE[dim + 1] = -0.33;
+
+        // Compute expected (legacy) output.
+        std::vector<real_t> out_expected(num_eq, 0.0);
+        legacy_entropy_grad_to_prim_grad(Q.data(), dE.data(), out_expected.data(), dim, gamma);
+
+        // Compute refactored output.
+        std::vector<real_t> out(num_eq, 0.0);
+        PointStateView   S{Q.data(), &layout};
+        PointStateView   dE_view{dE.data(), &layout};
+        PointStateViewRW out_view{out.data(), &layout};
+
+        gas.grad_entropy_to_grad_prim(S, dE_view, out_view);
+
+        // Compare slots.
+        for (int eq = 0; eq < num_eq; ++eq){
+            EXPECT_CLOSE(out[eq], out_expected[eq], tol);
+            if (std::abs(out[eq] - out_expected[eq]) > tol) {
+              std::cerr << "eq=" << eq
+                        << " out=" << out[eq]
+                        << " ref=" << out_expected[eq]
+                        << " diff=" << (out[eq] - out_expected[eq]) << "\n";
+            }
+        }
+    }
+    return 0;
+}
