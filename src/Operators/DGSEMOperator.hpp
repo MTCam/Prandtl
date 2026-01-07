@@ -6,6 +6,7 @@
 #include "ModalBasis.hpp"
 #include "Indicator.hpp"
 #include "BasicOperations.hpp"
+#include "GasModel.hpp"
 
 namespace Prandtl
 {
@@ -24,7 +25,9 @@ private:
     std::shared_ptr<ParGridFunction> r_gf;
     std::unique_ptr<DGSEMIntegrator> integrator;
     std::unique_ptr<Indicator> indicator;
-    std::unique_ptr<DGSEMNonlinearForm> nonlinearForm;
+    std::shared_ptr<const IdealGasModel> gasModel;
+    std::shared_ptr<const StateLayout> stateLayout;
+    std::unique_ptr<DGSEMNonlinearForm> nonlinearForm; 
 
     mutable Array<int> vdof_indices;
     mutable Vector el_vdofs, grad_vdofs;
@@ -60,10 +63,6 @@ private:
     mutable Vector ind_dof;
     mutable real_t alpha_dof;
 
-    const real_t gamma;
-    const real_t gammaM1;
-    const real_t gammaM1Inverse;
-    
     void ComputeGlobalEntropyVector(const Vector &u, Vector &global_entropy) const;
     void ComputeGlobalPrimitiveGradVector(const Vector &u, Vector &dudx) const;
     void ComputeGlobalPrimitiveGradVector(const Vector &u, Vector &dudx, Vector &dudy) const;
@@ -94,7 +93,8 @@ public:
                   std::shared_ptr<ParGridFunction> dudz,
                   std::unique_ptr<DGSEMIntegrator> integrator,
                   std::unique_ptr<Indicator> indicator,
-                  real_t gamma,
+                  std::shared_ptr<const IdealGasModel> gasModel,
+                  std::shared_ptr<const StateLayout> stateLayout, 
                   std::shared_ptr<ParGridFunction> r_gf = nullptr,
                   const real_t alpha_max = 0.5, const real_t alpha_min = 0.001);
     
