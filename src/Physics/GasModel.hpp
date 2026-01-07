@@ -91,6 +91,28 @@ namespace Prandtl
       return eos.grad_temperature(ndim, S, grad_r, grad_p, grad_t);
     }
  
+    template<typename StateView>
+    MFEM_HOST_DEVICE
+    inline real_t entropy(const StateView &S)
+    {
+      return eos.entropy(S);
+    }
+
+    template<typename InStateView, typename OutStateView>
+    MFEM_HOST_DEVICE
+    inline void entropy_state(const InStateView &S, OutStateView &E) const
+    {
+      return eos.entropy_state(S, E);
+    }
+
+    template<typename InStateView, typename OutStateView>
+    MFEM_HOST_DEVICE
+    inline void grad_entropy_to_grad_prim(const InStateView &S, const InStateView &dS,
+                                          OutStateView &dPrim) const
+    {
+      return eos.grad_entropy_to_grad_prim(S, dS, dPrim);
+    }
+
     // --- Transport -----------------------------------------------------------
 
     template<typename StateView>

@@ -138,6 +138,72 @@ namespace Prandtl
         return phys->cp;
     }
 
+    template<typename StateView>
+    MFEM_HOST_DEVICE
+    inline real_t entropy(const StateView &S) const
+    {
+      const real_t p = pressure(S);
+      const real_t gamma = phys->gamma;
+      // TODO: Augment for correct treatment of passive scalars
+      return std::log(p) - gamma * std::log(S.mass());
+    }
+
+    template<typename InStateView, typename OutStateView>
+    MFEM_HOST_DEVICE
+    inline void entropy_state(const InStateView &S, OutStateView &E) const
+    {
+      const real_t p = pressure(S);
+      const real_t gamma = phys->gamma;
+      const real_t rho = S.mass();
+      const real_t s = std::log(p) - gamma*std::log(rho);
+      const real_t beta = rho / p;
+      const real_t v2o2 = kinetic_energy_density(S) / rho;
+      const real_t s_rho = (gamma - s)/(gamma - 1) - beta*v2o2;
+
+      E.set_mass(s_rho);
+      int dim = S.dim();
+      int num_scalars = S.num_scalars();
+      for(int idim = 0;idim < dim;idim++){
+        E.set_momentum(idim, beta * S.velocity(idim));
+      }
+      E.set_energy(-beta);
+      // TODO: Update for correct treatment of passive scalars (depends on ES approach)
+      // - Here we should probably set the entropy state to scalar_state / density
+      // - If we do that, we need to modify the mass component of the entropy state
+      // - Making this fix will make the sensor function sensitive to the scalars
+      // - If we need to recover CV from this, lax scalar treatment is a nogo
+      for(int iscalar = 0;iscalar < num_scalars;iscalar++){
+        E.set_scalar(iscalar, 0.0);
+      }
+    }
+
+    template<typename InStateView, typename OutStateView>
+    inline void grad_entropy_to_grad_prim(const InStateView &S, const InStateView &dE,
+                                          OutStateView &dPrim) const
+    {
+
+      const real_t ke = kinetic_energy_density(S);
+      const real_t p = pressure(S);
+      const real_t rho = S.mass();
+      const real_t rhoE = S.energy();
+      const real_t ie = internal_energy_density(S);
+
+      int dim = S.dim();
+      int num_scalars = S.num_scalars();
+
+      real_t drho = 0.0;
+      for(int idim = 0; idim < dim; idim++){
+        dPrim.set_momentum(idim, p/rho * (dE.momentum(idim) + S.velocity(idim)*dE.energy()));
+        drho += S.momentum(idim)*dPrim.momentum(idim);
+      }
+      drho = rho*dE.mass() - dE.energy()*(ke - ie) + rho*drho/p;
+      dPrim.set_mass(drho);
+      dPrim.set_energy( p/rho * (dPrim.mass() + p*dE.energy()));
+      for(int isp = 0; isp < num_scalars; isp++){
+        dPrim.set_scalar(isp, 0.0); // just a placeholder for now
+      }
+    }
+
     // TODO: Consider whether this is needed/convenient
     // It *can be* nice to have here, but kind of out-of-place
     template<typename StateView>
