@@ -476,10 +476,16 @@ void Simulation::LoadConfig(const std::string &config_file_path)
     {
         alpha_max = 0.5;
     }
+    auto integrator =
+      std::make_unique<Prandtl::DGSEMIntegrator>(pmesh, fes0, alpha, liftingScheme, *numericalFlux, order+1, physicsConstants->gamma);
 
-    NS = std::make_unique<DGSEMOperator>(vfes, fes0, pmesh, eta, alpha, dudx, dudy, dudz,
-        std::make_unique<Prandtl::DGSEMIntegrator>(pmesh, fes0, alpha, liftingScheme, *numericalFlux, order + 1, physicsConstants->gamma),
-        std::make_unique<Prandtl::PerssonPeraireIndicator>(vfes, fes0, eta, std::make_shared<Prandtl::ModalBasis>(*fec, gtype, order, dim), physicsConstants->gamma), physicsConstants->gamma, r_gf, alpha_max);
+    auto indicator =
+      std::make_unique<Prandtl::PerssonPeraireIndicator>(vfes, fes0, eta,
+                                                         std::make_unique<Prandtl::ModalBasis>(*fec, gtype, order, dim),
+                                                         physicsConstants->gamma);
+
+    NS = std::make_unique<DGSEMOperator>(vfes, fes0, pmesh, eta, alpha, dudx, dudy, dudz, std::move(integrator),
+                                         std::move(indicator), gasModel, stateLayout, r_gf, alpha_max);
 
     if (runtime["conditions"].contains("boundary_conditions"))
     {
