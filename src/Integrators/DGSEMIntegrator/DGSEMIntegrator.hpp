@@ -15,6 +15,8 @@ private:
     std::shared_ptr<ParMesh> pmesh;
     std::shared_ptr<ParFiniteElementSpace> fes0;
     std::shared_ptr<ParGridFunction> alpha;
+  std::shared_ptr<const IdealGasModel> gasModel;
+  std::shared_ptr<const StateLayout> stateLayout;
     NumericalFlux &rsolver;
     const NavierStokesFlux &fluxFunction;
     DenseMatrix D_T, Dhat_T, Dhat2_T;
@@ -28,7 +30,7 @@ private:
     int dof, dof1, dof2;
     int id1, id2;
     int IntegrationOrder;
-    real_t gammaM1;
+  //real_t gammaM1;
 
     Vector shape1, shape2;
     Vector state1, state2;
@@ -76,7 +78,9 @@ public:
                     std::shared_ptr<ParFiniteElementSpace> fes0,
                     std::shared_ptr<ParGridFunction> alpha,
                     std::shared_ptr<LiftingScheme> liftingScheme,
-                    NumericalFlux &rsolver, int Np, real_t gamma);
+                    std::shared_ptr<const IdealGasModel> gasModel,
+                    std::shared_ptr<const StateLayout> stateLayout,
+                    NumericalFlux &rsolver, int Np);
 
     void AssembleFaceVector(const FiniteElement &el1, const FiniteElement &el2, FaceElementTransformations &Tr, const Vector &el_u, Vector &el_dudt) override;
     void AssembleElementVector(const FiniteElement &el, ElementTransformation &Tr, const Vector &el_u, Vector &el_dutdt) override;

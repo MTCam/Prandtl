@@ -10,12 +10,15 @@ DGSEMIntegrator::DGSEMIntegrator(
       std::shared_ptr<ParFiniteElementSpace> fes0_,
       std::shared_ptr<ParGridFunction> alpha_,
       std::shared_ptr<LiftingScheme> liftingScheme_,
-      NumericalFlux &rsolver_, int Np, real_t gamma)
-    : NonlinearFormIntegrator(), pmesh(pmesh_), fes0(fes0_), alpha(alpha_), liftingScheme(liftingScheme_),
-      rsolver(rsolver_), fluxFunction(rsolver_.GetFluxFunction()),
+      std::shared_ptr<const IdealGasModel> gasModel_,
+      std::shared_ptr<const StateLayout> stateLayout_,
+      NumericalFlux &rsolver_, int Np)
+    : NonlinearFormIntegrator(), pmesh(pmesh_), fes0(fes0_), alpha(alpha_),
+      gasModel(std::move(gasModel_)), stateLayout(std::move(stateLayout_)),
+      liftingScheme(liftingScheme_), rsolver(rsolver_), fluxFunction(rsolver_.GetFluxFunction()),
       Np_x(Np), Np_y(fluxFunction.dim > 1 ? Np : 1), Np_z(fluxFunction.dim > 2 ? Np : 1),
       num_equations(fluxFunction.num_equations), dim(fluxFunction.dim), num_elements(pmesh->GetNE()),
-      GLIntRules(0, Quadrature1D::GaussLobatto), gammaM1(gamma - 1.0)
+      GLIntRules(0, Quadrature1D::GaussLobatto)
 {
     IntegrationOrder = 2 * Np_x - 3;
 
@@ -411,8 +414,8 @@ void DGSEMIntegrator::AssembleElementVector(const FiniteElement &el,
 #ifdef AXISYMMETRIC
                 
                 {
-                    
-                    const real_t p = PressureFromConservative(state1);
+                  Prandtl::PointStateView S{state1.GetData(), stateLayout.get()};
+                  const real_t p = gasModel.pressure(S);
                     //dU_inviscid(2) += p;
                     el_dudt_mat(id1, 2) += p;
  
@@ -1303,17 +1306,17 @@ void DGSEMIntegrator::ComputeSubcellMetrics()
     }   
 }
 
-#ifdef AXISYMMETRIC
-inline real_t DGSEMIntegrator::PressureFromConservative(const Vector& U) const
-{
-    const real_t rho = U(0);
-    const real_t mz  = U(1);
-    const real_t mr  = U(2);
-    const real_t E   = U(3);
-    const real_t ke = 0.5 * ((mz*mz + mr*mr) / rho);
-    return gammaM1 * (E - ke);
-}
-#endif
+// #ifdef AXISYMMETRIC
+// inline real_t DGSEMIntegrator::PressureFromConservative(const Vector& U) const
+// {
+//    const real_t rho = U(0);
+//    const real_t mz  = U(1);
+//    const real_t mr  = U(2);
+//    const real_t E   = U(3);
+//    const real_t ke = 0.5 * ((mz*mz + mr*mr) / rho);
+//    return gammaM1 * (E - ke);
+// }
+// #endif
 
 
 }
