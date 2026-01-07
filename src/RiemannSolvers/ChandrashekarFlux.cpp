@@ -5,7 +5,7 @@
 namespace Prandtl
 {
 
-ChandrashekarFlux::ChandrashekarFlux(const NavierStokesFlux &fluxFunction, real_t gamma_)
+ChandrashekarFlux::ChandrashekarFlux(const NavierStokesFlux &fluxFunction)
   : NumericalFlux(fluxFunction), gasModel(std::move(fluxFunction.gas_model())), stateLayout(std::move(fluxFunction.state_layout()))
 {
   metric.SetSize(dim);
