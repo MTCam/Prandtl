@@ -68,7 +68,6 @@ real_t ComputeTotalEnthalpy(const Vector &state, real_t gammaM1)
 void Conserv2Entropy(const DenseMatrix &vdof_mat, DenseMatrix &ent_mat, real_t gamma, real_t gammaM1, real_t gammaM1Inverse)
 {
     ent_mat = 0.0;
-    real_t s, beta;
     Vector state, ent_state(vdof_mat.Width());
     for (int d = 0; d < vdof_mat.Height(); d++)
     {
