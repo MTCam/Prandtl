@@ -115,6 +115,7 @@ namespace Prandtl
           eq_mom[d] = (d < dim_) ? (1 + d) : -1;
         }
     }
+
     // Convenience for nequations
     MFEM_HOST_DEVICE inline int nequations() const
     { return dim + 2 + num_scalars; }
@@ -167,7 +168,22 @@ namespace Prandtl
     {
       return (U != nullptr) && (L != nullptr);
     }
-    
+
+    MFEM_HOST_DEVICE inline int dim() const
+    {
+      return (L->dim);
+    }
+
+    MFEM_HOST_DEVICE inline int num_equations() const
+    {
+      return (L->nequations());
+    }
+
+    MFEM_HOST_DEVICE inline int num_scalars() const
+    {
+      return (L->num_scalars);
+    }
+
     // Mass / density
     MFEM_HOST_DEVICE inline real_t mass() const
     {
@@ -239,6 +255,154 @@ namespace Prandtl
   };
 
   // -----------------------------------------------------------------------------
+  // PointStateViewRW: *writeable* per-point view (immediate refactor tool).
+  //
+  // Usage pattern:
+  //
+  //   Vector state = [rho, rhoVx, rhoVy, rhoVz, rhoE]
+  //   PointStateView S{state.GetData(), &layout};
+  //   double rho = S.mass();
+  //   double rhoU = S.momentum(0);
+  //   double rhoE = S.energy();
+  //
+  // This is a small, value-type-like view with correct indexing.
+  // -----------------------------------------------------------------------------
+  struct PointStateViewRW
+  {
+    real_t* U;                 // packed state data -> [rho, rhoVx, rhoVy, ..., rhoE]
+    const StateLayout* L;      // layout metadata
+    
+    MFEM_HOST_DEVICE
+    PointStateViewRW()
+      : U(nullptr), L(nullptr)
+    { }
+    
+    MFEM_HOST_DEVICE
+    PointStateViewRW(real_t* U_,
+                   const StateLayout* L_)
+      : U(U_), L(L_)
+    { }
+    
+    MFEM_HOST_DEVICE inline bool is_valid() const
+    {
+      return (U != nullptr) && (L != nullptr);
+    }
+    
+    MFEM_HOST_DEVICE inline int dim() const
+    {
+      return (L->dim);
+    }
+
+    MFEM_HOST_DEVICE inline int num_scalars() const
+    {
+      return (L->num_scalars);
+    }
+
+    MFEM_HOST_DEVICE inline int num_equations() const
+    {
+      return (L->nequations());
+    }
+
+    // Mass density
+    MFEM_HOST_DEVICE inline real_t mass() const
+    {
+      const real_t rho = U[ L->eq_mass ];
+      return rho;
+    }
+    
+    // Set Mass density
+    MFEM_HOST_DEVICE inline void set_mass(real_t val)
+    {
+      U[ L->eq_mass ] = val;
+    }
+
+    // Momentum address
+    MFEM_HOST_DEVICE inline int momentum_eq() const
+    {
+      return L->eq_mom[0];
+    }
+
+    // Momentum components: d = 0(x),1(y),2(z)
+    MFEM_HOST_DEVICE inline real_t momentum(int d) const
+    {
+      assert(d < L->dim);
+      return U[ L->eq_mom[d] ];
+    }
+    
+    // Set Momentum components: d = 0(x),1(y),2(z)
+    MFEM_HOST_DEVICE inline void set_momentum(int d, real_t val)
+    {
+      assert(d < L->dim);
+      U[ L->eq_mom[d] ] = val;
+    }
+
+    MFEM_HOST_DEVICE inline real_t momentum_x() const
+    {
+      return momentum(0);
+    }
+    
+    MFEM_HOST_DEVICE inline real_t momentum_y() const
+    {
+      return (L->dim > 1) ? momentum(1) : real_t(0);
+    }
+    
+    MFEM_HOST_DEVICE inline real_t momentum_z() const
+    {
+      return (L->dim > 2) ? momentum(2) : real_t(0);
+    }
+    
+    // Velocity components: d = 0(x),1(y),2(z)
+    MFEM_HOST_DEVICE inline real_t velocity(int d) const
+    {
+      return momentum(d) / mass();
+    }
+
+    MFEM_HOST_DEVICE inline real_t velocity_x() const
+    {
+      return momentum_x() / mass();
+    }
+
+    MFEM_HOST_DEVICE inline real_t velocity_y() const
+    {
+      return momentum_y() / mass();
+    }
+    
+    MFEM_HOST_DEVICE inline real_t velocity_z() const
+    {
+      return momentum_z() / mass();
+    }
+    
+    // Total energy
+    MFEM_HOST_DEVICE inline real_t energy() const
+    {
+      return U[ L->eq_energy ];
+    }
+    
+    // Set Total energy
+    MFEM_HOST_DEVICE inline void set_energy(real_t val)
+    {
+      U[ L->eq_energy ] = val;
+    }
+
+    // Scalar components, if present
+    MFEM_HOST_DEVICE inline real_t scalar(int k) const
+    {
+      assert(L->num_scalars > 0);
+      assert((k >= 0 && k < L->num_scalars) && "Invalid scalar index");
+      return U[ L->eq_scalar0 + k ];
+    }
+
+    // Set Scalar components, if present
+    MFEM_HOST_DEVICE inline void set_scalar(int k, real_t val)
+    {
+      assert(L->num_scalars > 0);
+      assert((k >= 0 && k < L->num_scalars) && "Invalid scalar index");
+      U[ L->eq_scalar0 + k ] = val;
+    }
+    
+  };
+
+  // -----------------------------------------------------------------------------
   // DofStateView: per-DOF view (immediate refactor tool).
   //
   // Usage pattern:
@@ -277,6 +441,21 @@ namespace Prandtl
       return (U != nullptr) && (L != nullptr);
     }
     
+    MFEM_HOST_DEVICE inline int dim() const
+    {
+      return (L->dim);
+    }
+
+    MFEM_HOST_DEVICE inline int num_scalars() const
+    {
+      return (L->num_scalars);
+    }
+
+    MFEM_HOST_DEVICE inline int num_equations() const
+    {
+      return (L->nequations());
+    }
+
     // Mass / density
     MFEM_HOST_DEVICE inline real_t mass() const
     {
@@ -370,6 +549,16 @@ namespace Prandtl
       return (data != nullptr) && (layout != nullptr);
     }
     
+    MFEM_HOST_DEVICE inline int dim() const
+    {
+      return (layout->dim);
+    }
+
+    MFEM_HOST_DEVICE inline int num_scalars() const
+    {
+      return (layout->num_scalars);
+    }
+
     // Generic access by (equation, dof)
     MFEM_HOST_DEVICE inline real_t& u(int equation, int dof) const
     {
