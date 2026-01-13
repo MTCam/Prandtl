@@ -6,13 +6,18 @@ namespace Prandtl
 {
 
 constexpr bool debug_boundary = false;
-BdrFaceIntegrator::BdrFaceIntegrator(std::shared_ptr<LiftingScheme> liftingScheme_, const NumericalFlux &rsolver, int Np, const real_t &time, real_t gamma_, bool constant, bool t_dependent)
-   : NonlinearFormIntegrator(), liftingScheme(liftingScheme_),
-     rsolver(rsolver), fluxFunction(rsolver.GetFluxFunction()),
-     Np_x(Np), GLIntRules(0, Quadrature1D::GaussLobatto), 
-     num_equations(fluxFunction.num_equations), dim(fluxFunction.dim),
-     time(time), gamma(gamma_), gammaM1(gamma - 1.0), gammaM1Inverse(1.0 / gammaM1),
-     constant(constant), t_dependent(t_dependent)
+
+  BdrFaceIntegrator::BdrFaceIntegrator(std::shared_ptr<LiftingScheme> liftingScheme_, std::shared_ptr<const IdealGasModel> gasModel_,
+                                       std::shared_ptr<const StateLayout> stateLayout_, const NumericalFlux &rsolver,
+                                       int Np, const real_t &time, bool constant, bool t_dependent)
+    : NonlinearFormIntegrator(), gasModel(std::move(gasModel_)), stateLayout(std::move(stateLayout_)),
+      liftingScheme(liftingScheme_),
+      rsolver(rsolver), fluxFunction(rsolver.GetFluxFunction()),
+      Np_x(Np), GLIntRules(0, Quadrature1D::GaussLobatto), 
+      num_equations(fluxFunction.num_equations), dim(fluxFunction.dim),
+      mass_eq(stateLayout->eq_mass), mom_eq(stateLayout->eq_mom[0]),
+      en_eq(stateLayout->eq_energy), sc_eq(stateLayout->eq_scalar0),
+      time(time), constant(constant), t_dependent(t_dependent)
 {
    const IntegrationRule *ir_vol;
 
@@ -272,13 +277,14 @@ void BdrFaceIntegrator::ComputeBdrFaceViscousFlux(const Vector &state1, const Ve
    mfem_error("BdrFaceIntegrator::ComputeBdrFaceViscousFlux() is not overridden!");
 }
 
-void BdrFaceIntegrator::ComputeBdrFaceLiftingFlux(const Vector &state1, Vector &fluxN, FaceElementTransformations &Tr, const IntegrationPoint &ip)
-{
-   Entropy2Conserv(state1, conserv_state, gamma, gammaM1, gammaM1Inverse);
-   ComputeOuterInviscidState(conserv_state, state2, Tr, ip);
-   Conserv2Entropy(state2, fluxN, gamma, gammaM1, gammaM1Inverse);
-   fluxN -= state1;
-   fluxN *= 0.5; 
-}
-
+  void BdrFaceIntegrator::ComputeBdrFaceLiftingFlux(const Vector &state1, Vector &fluxN, FaceElementTransformations &Tr,
+                                                    const IntegrationPoint &ip)
+  {
+    Entropy2Conserv(state1, conserv_state, *gasModel, *stateLayout);
+    ComputeOuterInviscidState(conserv_state, state2, Tr, ip);
+    Conserv2Entropy(state2, fluxN, *gasModel, *stateLayout);
+    fluxN -= state1;
+    fluxN *= 0.5; 
+  }
+  
 }

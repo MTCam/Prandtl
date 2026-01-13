@@ -4,9 +4,13 @@
 namespace Prandtl
 {
 
-SymmetryBdrFaceIntegrator::SymmetryBdrFaceIntegrator(std::shared_ptr<LiftingScheme> liftingScheme, const NumericalFlux &rsolver, int Np, const real_t &time, real_t gamma, bool constant, bool t_dependent)
-    : BdrFaceIntegrator(liftingScheme, rsolver, Np, time, gamma, constant, t_dependent) { }
-
+  SymmetryBdrFaceIntegrator::SymmetryBdrFaceIntegrator(std::shared_ptr<LiftingScheme> liftingScheme,
+                                                       std::shared_ptr<const IdealGasModel> gasModel_,
+                                                       std::shared_ptr<const StateLayout> stateLayout_,
+                                                       const NumericalFlux &rsolver, int Np, const real_t &time,
+                                                       bool constant, bool t_dependent)
+  : BdrFaceIntegrator(liftingScheme, gasModel_, stateLayout_, rsolver, Np, time, constant, t_dependent) { }
+  
 
 real_t SymmetryBdrFaceIntegrator::ComputeBdrFaceInviscidFlux(const Vector &state1, Vector &state2,
     Vector &fluxN, const Vector &nor, FaceElementTransformations &Tr, const IntegrationPoint &ip)
@@ -23,7 +27,7 @@ real_t SymmetryBdrFaceIntegrator::ComputeBdrFaceInviscidFlux(const Vector &state
 
     state2 = state1;
 
-    Vector mom(state2.GetData() + 1, unit_nor.Size());
+    Vector mom(state2.GetData() + stateLayout->eq_mom[0], unit_nor.Size());
     const real_t mn = mom * unit_nor;
     mom.Add(-2.0 * mn, unit_nor);
 

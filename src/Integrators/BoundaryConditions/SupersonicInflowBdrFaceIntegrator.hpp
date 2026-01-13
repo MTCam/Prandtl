@@ -12,8 +12,16 @@ private:
     Vector const_state;
     VectorFunctionCoefficient conserv_state_fun;
 public:
-    SupersonicInflowBdrFaceIntegrator(std::shared_ptr<LiftingScheme> liftingScheme, const NumericalFlux &rsolver, const int Np, const real_t &time, real_t gamma, VectorFunctionCoefficient &conserv_state_fun, bool t_dependent = false);
-    SupersonicInflowBdrFaceIntegrator(std::shared_ptr<LiftingScheme> liftingScheme, const NumericalFlux &rsolver, const int Np, const real_t &time, real_t gamma, const Vector &conserv_state);
+    SupersonicInflowBdrFaceIntegrator(std::shared_ptr<LiftingScheme> liftingScheme,
+                                      std::shared_ptr<const IdealGasModel> gasModel_,
+                                      std::shared_ptr<const StateLayout> stateLayout_,
+                                      const NumericalFlux &rsolver, const int Np, const real_t &time,
+                                      VectorFunctionCoefficient &conserv_state_fun, bool t_dependent = false);
+    SupersonicInflowBdrFaceIntegrator(std::shared_ptr<LiftingScheme> liftingScheme,
+                                      std::shared_ptr<const IdealGasModel> gasModel_,
+                                      std::shared_ptr<const StateLayout> stateLayout_,
+                                      const NumericalFlux &rsolver, const int Np, const real_t &time,
+                                      const Vector &conserv_state);
     
     virtual void ComputeOuterInviscidState(const Vector &state1, Vector &state2, FaceElementTransformations &Tr, const IntegrationPoint &ip) override;
 

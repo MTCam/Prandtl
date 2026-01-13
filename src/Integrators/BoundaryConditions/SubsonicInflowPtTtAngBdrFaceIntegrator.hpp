@@ -7,20 +7,28 @@ namespace Prandtl
 
 using namespace mfem;
 
-class SubsonicInflowPtTtAngBdrFaceIntegrator : public BdrFaceIntegrator
-{
-private:
+  class SubsonicInflowPtTtAngBdrFaceIntegrator : public BdrFaceIntegrator
+  {
+  private:
     real_t p;
     real_t V_sq;
     real_t p0, T0;
     real_t theta, phi;
     Vector V_comps, pT;
     FunctionCoefficient pt, Tt;
-
-    const real_t gammaM1_gammaInverse, gamma_gammaM1Inverse, cp;
-public:
-    SubsonicInflowPtTtAngBdrFaceIntegrator(std::shared_ptr<LiftingScheme> liftingScheme, const NumericalFlux &rsolver, const int Np, const real_t &time, real_t gamma, real_t cp, FunctionCoefficient &pt, FunctionCoefficient &Tt, real_t theta = 0.0, real_t phi = 0.0, bool t_dependent = false);
-    SubsonicInflowPtTtAngBdrFaceIntegrator(std::shared_ptr<LiftingScheme> liftingScheme, const NumericalFlux &rsolver, const int Np, const real_t &time, real_t gamma, real_t cp, real_t pt, real_t Tt, real_t theta = 0.0, real_t phi = 0.0);
+    
+  public:
+    SubsonicInflowPtTtAngBdrFaceIntegrator(std::shared_ptr<LiftingScheme> liftingScheme,
+                                           std::shared_ptr<const IdealGasModel> gasModel_,
+                                           std::shared_ptr<const StateLayout> stateLayout_,
+                                           const NumericalFlux &rsolver, const int Np, const real_t &time,
+                                           FunctionCoefficient &pt, FunctionCoefficient &Tt,
+                                           real_t theta = 0.0, real_t phi = 0.0, bool t_dependent = false);
+    SubsonicInflowPtTtAngBdrFaceIntegrator(std::shared_ptr<LiftingScheme> liftingScheme,
+                                           std::shared_ptr<const IdealGasModel> gasModel_,
+                                           std::shared_ptr<const StateLayout> stateLayout_,
+                                           const NumericalFlux &rsolver, const int Np, const real_t &time,
+                                           real_t pt, real_t Tt, real_t theta = 0.0, real_t phi = 0.0);
 
     virtual void ComputeOuterInviscidState(const Vector &state1, Vector &state2, FaceElementTransformations &Tr, const IntegrationPoint &ip) override;
     
