@@ -1306,17 +1306,4 @@ void DGSEMIntegrator::ComputeSubcellMetrics()
     }   
 }
 
-// #ifdef AXISYMMETRIC
-// inline real_t DGSEMIntegrator::PressureFromConservative(const Vector& U) const
-// {
-//    const real_t rho = U(0);
-//    const real_t mz  = U(1);
-//    const real_t mr  = U(2);
-//    const real_t E   = U(3);
-//    const real_t ke = 0.5 * ((mz*mz + mr*mr) / rho);
-//    return gammaM1 * (E - ke);
-// }
-// #endif
-
-
 }

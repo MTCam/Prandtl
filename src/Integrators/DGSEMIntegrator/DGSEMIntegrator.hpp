@@ -30,7 +30,6 @@ private:
     int dof, dof1, dof2;
     int id1, id2;
     int IntegrationOrder;
-  //real_t gammaM1;
 
     Vector shape1, shape2;
     Vector state1, state2;
