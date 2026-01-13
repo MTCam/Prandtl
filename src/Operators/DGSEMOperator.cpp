@@ -7,9 +7,7 @@ DGSEMOperator::DGSEMOperator(std::shared_ptr<ParFiniteElementSpace> vfes_,
                              std::shared_ptr<ParMesh> pmesh_,
                              std::shared_ptr<ParGridFunction> eta_,
                              std::shared_ptr<ParGridFunction> alpha_,
-                             std::shared_ptr<ParGridFunction> dudx_,
-                             std::shared_ptr<ParGridFunction> dudy_,
-                             std::shared_ptr<ParGridFunction> dudz_,
+                             std::vector<std::shared_ptr<ParGridFunction> > &grad_u_,
                              std::unique_ptr<DGSEMIntegrator> integrator_,
                              std::unique_ptr<Indicator> indicator_,
                              std::shared_ptr<const IdealGasModel> gasModel_,
@@ -18,7 +16,7 @@ DGSEMOperator::DGSEMOperator(std::shared_ptr<ParFiniteElementSpace> vfes_,
                              const real_t alpha_max, const real_t alpha_min)
                              : TimeDependentOperator(vfes_->GetTrueVSize()),
                              vfes(vfes_), fes0(fes0_), pmesh(pmesh_),
-                             eta(eta_), alpha(alpha_), dudx(dudx_), dudy(dudy_), dudz(dudz_),
+                               eta(eta_), alpha(alpha_), grad_u(grad_u_),
                              integrator(std::move(integrator_)), indicator(std::move(indicator_)),
                              gasModel(std::move(gasModel_)), stateLayout(std::move(stateLayout_)),
                              num_equations(vfes->GetVDim()), dim(pmesh->SpaceDimension()),
@@ -550,24 +548,24 @@ void DGSEMOperator::Mult(const Vector &u, Vector &dudt) const
       
 #ifdef PARABOLIC
     ComputeGlobalEntropyVector(Ustate, global_entropy);
-    
+
     if (dim == 1)
     {
-        nonlinearForm->MultLifting(global_entropy, *dudx);
-        ComputeGlobalPrimitiveGradVector(Ustate, *dudx);
-        nonlinearForm->Mult(Ustate, *dudx, dudt);
+        nonlinearForm->MultLifting(global_entropy, *grad_u[0]);
+        ComputeGlobalPrimitiveGradVector(Ustate, *grad_u[0]);
+        nonlinearForm->Mult(Ustate, *grad_u[0], dudt);
     }
     else if (dim == 2)
     {
-        nonlinearForm->MultLifting(global_entropy, *dudx, *dudy);
-        ComputeGlobalPrimitiveGradVector(Ustate, *dudx, *dudy);
-        nonlinearForm->Mult(Ustate, *dudx, *dudy, dudt);    
+      nonlinearForm->MultLifting(global_entropy, *grad_u[0], *grad_u[1]);
+      ComputeGlobalPrimitiveGradVector(Ustate, *grad_u[0], *grad_u[1]);
+      nonlinearForm->Mult(Ustate, *grad_u[0], *grad_u[1], dudt);    
     }
     else
     {
-        nonlinearForm->MultLifting(global_entropy, *dudx, *dudy, *dudz);
-        ComputeGlobalPrimitiveGradVector(Ustate, *dudx, *dudy, *dudz);
-        nonlinearForm->Mult(Ustate, *dudx, *dudy, *dudz, dudt);
+        nonlinearForm->MultLifting(global_entropy, *grad_u[0], *grad_u[1], *grad_u[2]);
+        ComputeGlobalPrimitiveGradVector(Ustate, *grad_u[0], *grad_u[1], *grad_u[2]);
+        nonlinearForm->Mult(Ustate, *grad_u[0], *grad_u[1], *grad_u[2], dudt);
     }
 
     #ifdef AXISYMMETRIC

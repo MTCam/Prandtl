@@ -21,6 +21,7 @@ private:
     std::shared_ptr<ParMesh> pmesh;
     std::shared_ptr<ParGridFunction> eta;
     std::shared_ptr<ParGridFunction> alpha;
+    std::vector<std::shared_ptr<ParGridFunction> > grad_u;
     std::shared_ptr<ParGridFunction> dudx, dudy, dudz;
     std::shared_ptr<ParGridFunction> r_gf;
     std::unique_ptr<DGSEMIntegrator> integrator;
@@ -88,9 +89,7 @@ public:
                   std::shared_ptr<ParMesh> pmesh,
                   std::shared_ptr<ParGridFunction> eta,
                   std::shared_ptr<ParGridFunction> alpha,
-                  std::shared_ptr<ParGridFunction> dudx,
-                  std::shared_ptr<ParGridFunction> dudy,
-                  std::shared_ptr<ParGridFunction> dudz,
+                  std::vector<std::shared_ptr<ParGridFunction> > &grad_u_,
                   std::unique_ptr<DGSEMIntegrator> integrator,
                   std::unique_ptr<Indicator> indicator,
                   std::shared_ptr<const IdealGasModel> gasModel,
