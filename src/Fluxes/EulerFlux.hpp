@@ -1,8 +1,21 @@
 #pragma once
 
+// Lifted from MFEM and gently massaged into place in Prandtl
 #include "mfem.hpp"
 #include "GasModel.hpp"
 
+using mfem::DenseMatrix;
+using mfem::ElementTransformation;
+using mfem::FaceElementTransformations;
+using mfem::FluxFunction;
+using mfem::Vector;
+using mfem::real_t;
+using Prandtl::IdealGasModel;
+using Prandtl::StateLayout;
+
+namespace Prandtl
+{
+  
 /// Inviscid
 class EulerFlux : public FluxFunction
 {
@@ -18,13 +31,11 @@ public:
    * @param specific_heat_ratio specific heat ratio, γ
    */
   explicit EulerFlux(std::shared_ptr<const StateLayout> stateLayout_, std::shared_ptr<const IdealGasModel> gasModel_)
-    : FluxFunction(stateLayout_->dim), stateLayout(std::move(stateLayout_)), gasModel(std::move(gasModel_))
+    : FluxFunction(stateLayout_->nequations(), stateLayout_->dim), stateLayout(std::move(stateLayout_)), gasModel(std::move(gasModel_))
   { }
-  //EulerFlux(const int dim, const real_t specific_heat_ratio)
-  //    : FluxFunction(dim + 2, dim),
-  //      specific_heat_ratio(specific_heat_ratio) {}
 
-   /**
+
+  /**
     * @brief Compute F(ρ, ρu, E)
     *
     * @param state state (ρ, ρu, E) at current integration point
@@ -48,3 +59,5 @@ public:
                           FaceElementTransformations &Tr,
                           Vector &fluxN) const override;
 };
+  
+}

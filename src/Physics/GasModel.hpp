@@ -49,6 +49,20 @@ namespace Prandtl
  
     template<typename StateView>
     MFEM_HOST_DEVICE
+    inline real_t cp(const StateView &S) const
+    {
+        return eos.cp(S);
+    }
+
+    template<typename StateView>
+    MFEM_HOST_DEVICE
+    inline real_t R_gas(const StateView &S) const
+    {
+        return eos.R_gas(S);
+    }
+ 
+    template<typename StateView>
+    MFEM_HOST_DEVICE
     inline real_t temperature(const StateView &S) const
     {
         return eos.temperature(S);
@@ -73,6 +87,14 @@ namespace Prandtl
     inline real_t kinetic_energy_density(const StateView &S) const
     {
       return eos.kinetic_energy_density(S);
+    }
+
+    template<typename StateView>
+    MFEM_HOST_DEVICE
+    inline real_t internal_energy_from_pressure(const StateView &S, real_t pressure) const
+    {
+        // rho*e = rho*E - 0.5*rho*|u|^2
+      return eos.internal_energy_from_pressure(S, pressure);
     }
 
     template<typename StateView>
@@ -111,6 +133,13 @@ namespace Prandtl
                                           OutStateView &dPrim) const
     {
       return eos.grad_entropy_to_grad_prim(S, dS, dPrim);
+    }
+
+    template<typename InStateView, typename OutStateView>
+    MFEM_HOST_DEVICE
+    inline void entropy_to_conserved(const InStateView &Se, OutStateView &Sc) const
+    {
+      return eos.entropy_to_conserved(Se, Sc);
     }
 
     // --- Transport -----------------------------------------------------------

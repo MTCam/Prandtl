@@ -1,5 +1,4 @@
-#include "NavierStokesFlux.hpp"
-#include "BasicOperations.hpp"
+#include "EulerFlux.hpp"
 
 namespace Prandtl
 {
@@ -13,8 +12,8 @@ namespace Prandtl
     const real_t density = S.mass();              // ρ
     const Vector momentum(U.GetData()+S.momentum_eq(), dim); // ρu
     const real_t energy = S.energy();             // E, internal energy ρe
-    const real_t pressure = GasModel->pressure(S);
-    const real_t ke = GasModel->kinetic_energy_density(S);
+    const real_t pressure = gasModel->pressure(S);
+    const real_t ke = gasModel->kinetic_energy_density(S);
 
     // Check whether the solution is physical only in debug mode
     MFEM_ASSERT(density >= 0, "Negative Density");
@@ -43,7 +42,7 @@ namespace Prandtl
     
     // 3. Compute maximum characteristic speed
     
-    const real_t sound = GasModel->sound_speed(S);
+    const real_t sound = gasModel->sound_speed(S);
     // fluid speed |u|
     const real_t speed = std::sqrt(2.0 * ke / density);
     // max characteristic speed = fluid speed + sound speed
@@ -62,8 +61,8 @@ namespace Prandtl
     const real_t density = S.mass();                  // ρ
     const Vector momentum(x.GetData()+S.momentum_eq(), dim);  // ρu
     const real_t energy = S.energy();
-    const real_t kinetic_energy = GasModel->kinetic_energy_density(S);
-    const real_t pressure = GasModel->pressure(S);
+    const real_t kinetic_energy = gasModel->kinetic_energy_density(S);
+    const real_t pressure = gasModel->pressure(S);
     
     // Check whether the solution is physical only in debug mode
     MFEM_ASSERT(density >= 0, "Negative Density");
@@ -84,7 +83,7 @@ namespace Prandtl
     FUdotN(1 + dim) = normal_velocity * (energy + pressure);
     
     // 3. Compute maximum characteristic speed
-    const real_t sound = GasModel->sound_speed(S);
+    const real_t sound = gasModel->sound_speed(S);
     // fluid speed |u|
     const real_t speed = std::fabs(normal_velocity) / std::sqrt(normal*normal);
     // max characteristic speed = fluid speed + sound speed

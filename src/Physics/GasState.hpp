@@ -403,6 +403,231 @@ namespace Prandtl
   };
 
   // -----------------------------------------------------------------------------
+  // PointPrimitiveView: per-point view (immediate refactor tool).
+  //
+  // Usage pattern:
+  //
+  //   Vector state = [rho, Vx, Vy, Vz, p]
+  //   PointStateView S{state.GetData(), &layout};
+  //   double rho = S.mass();
+  //   double Vx  = S.velocity(0);
+  //   double Vy  = S.velocity(1);
+  //   double p   = S.pressure();
+  //
+  // This is a small, value-type-like view with correct indexing.
+  // -----------------------------------------------------------------------------
+  struct PointPrimitiveView
+  {
+    const real_t* U;           // packed state data -> [rho, rhoVx, rhoVy, ..., rhoE]
+    const StateLayout* L;      // layout metadata
+    
+    MFEM_HOST_DEVICE
+    PointPrimitiveView()
+      : U(nullptr), L(nullptr)
+    { }
+    
+    MFEM_HOST_DEVICE
+    PointPrimitiveView(const real_t* U_,
+                       const StateLayout* L_)
+      : U(U_), L(L_)
+    { }
+    
+    MFEM_HOST_DEVICE inline bool is_valid() const
+    {
+      return (U != nullptr) && (L != nullptr);
+    }
+
+    MFEM_HOST_DEVICE inline int dim() const
+    {
+      return (L->dim);
+    }
+
+    MFEM_HOST_DEVICE inline int num_equations() const
+    {
+      return (L->nequations());
+    }
+
+    MFEM_HOST_DEVICE inline int num_scalars() const
+    {
+      return (L->num_scalars);
+    }
+
+    // Mass / density
+    MFEM_HOST_DEVICE inline real_t mass() const
+    {
+      const real_t rho = U[ L->eq_mass ];
+      return rho;
+    }
+    
+    // Array offset to velocity components
+    MFEM_HOST_DEVICE inline int velocity_loc() const
+    {
+      return L->eq_mom[0];
+    }
+    // Momentum components: d = 0(x),1(y),2(z)
+    MFEM_HOST_DEVICE inline real_t velocity(int d) const
+    {
+      assert(d < L->dim);
+      return U[ L->eq_mom[d] ];
+    }
+    
+    MFEM_HOST_DEVICE inline real_t velocity_x() const
+    {
+      return velocity(0);
+    }
+    
+    MFEM_HOST_DEVICE inline real_t velocity_y() const
+    {
+      return (L->dim > 1) ? velocity(1) : real_t(0);
+    }
+    
+    MFEM_HOST_DEVICE inline real_t velocity_z() const
+    {
+      return (L->dim > 2) ? velocity(2) : real_t(0);
+    }
+
+    MFEM_HOST_DEVICE inline real_t pressure() const
+    {
+      return U[ L->eq_energy ];
+    }
+    
+    // Scalar components, if present
+    MFEM_HOST_DEVICE inline real_t scalar(int k) const
+    {
+      assert(L->num_scalars > 0);
+      assert((k >= 0 && k < L->num_scalars) && "Invalid scalar index");
+      return U[ L->eq_scalar0 + k ];
+    }
+  };
+
+  // -----------------------------------------------------------------------------
+  // PointPrimtiveViewRW: *writeable* per-point view (immediate refactor tool).
+  //
+  // Usage pattern:
+  //
+  //   Vector state = [rho, rhoVx, rhoVy, rhoVz, rhoE]
+  //   PointStateView S{state.GetData(), &layout};
+  //   double r =  S.mass();
+  //   double U = S.velocity(0);
+  //   double V = S.velocity(1);
+  //   double p = S.pressure();
+  //   S.set_pressure(p);
+  //
+  // This is a small, value-type-like view with correct indexing.
+  // -----------------------------------------------------------------------------
+  struct PointPrimitiveViewRW
+  {
+    real_t* U;                 // packed state data -> [rho, rhoVx, rhoVy, ..., rhoE]
+    const StateLayout* L;      // layout metadata
+    
+    MFEM_HOST_DEVICE
+    PointPrimitiveViewRW()
+      : U(nullptr), L(nullptr)
+    { }
+    
+    MFEM_HOST_DEVICE
+    PointPrimitiveViewRW(real_t* U_,
+                   const StateLayout* L_)
+      : U(U_), L(L_)
+    { }
+    
+    MFEM_HOST_DEVICE inline bool is_valid() const
+    {
+      return (U != nullptr) && (L != nullptr);
+    }
+    
+    MFEM_HOST_DEVICE inline int dim() const
+    {
+      return (L->dim);
+    }
+
+    MFEM_HOST_DEVICE inline int num_scalars() const
+    {
+      return (L->num_scalars);
+    }
+
+    MFEM_HOST_DEVICE inline int num_equations() const
+    {
+      return (L->nequations());
+    }
+
+    // Mass density
+    MFEM_HOST_DEVICE inline real_t mass() const
+    {
+      const real_t rho = U[ L->eq_mass ];
+      return rho;
+    }
+    
+    // Set Mass density
+    MFEM_HOST_DEVICE inline void set_mass(real_t val)
+    {
+      U[ L->eq_mass ] = val;
+    }
+
+    // Array offset to velocity components
+    MFEM_HOST_DEVICE inline int velocity_loc() const
+    {
+      return L->eq_mom[0];
+    }
+
+    // Momentum components: d = 0(x),1(y),2(z)
+    MFEM_HOST_DEVICE inline real_t velocity(int d) const
+    {
+      assert(d < L->dim);
+      return U[ L->eq_mom[d] ];
+    }
+    
+    // Set Momentum components: d = 0(x),1(y),2(z)
+    MFEM_HOST_DEVICE inline void set_velocity(int d, real_t val)
+    {
+      assert(d < L->dim);
+      U[ L->eq_mom[d] ] = val;
+    }
+
+    MFEM_HOST_DEVICE inline real_t velocity_x() const
+    {
+      return velocity(0);
+    }
+    
+    MFEM_HOST_DEVICE inline real_t velocity_y() const
+    {
+      return (L->dim > 1) ? velocity(1) : real_t(0);
+    }
+    
+    MFEM_HOST_DEVICE inline real_t velocity_z() const
+    {
+      return (L->dim > 2) ? velocity(2) : real_t(0);
+    }
+    
+    MFEM_HOST_DEVICE inline real_t pressure() const
+    {
+      return U[ L->eq_energy ];
+    }
+    
+    MFEM_HOST_DEVICE inline void set_pressure(real_t val)
+    {
+      U[ L->eq_energy ] = val;
+    }
+
+    // Scalar components, if present
+    MFEM_HOST_DEVICE inline real_t scalar(int k) const
+    {
+      assert(L->num_scalars > 0);
+      assert((k >= 0 && k < L->num_scalars) && "Invalid scalar index");
+      return U[ L->eq_scalar0 + k ];
+    }
+
+    // Set Scalar components, if present
+    MFEM_HOST_DEVICE inline void set_scalar(int k, real_t val)
+    {
+      assert(L->num_scalars > 0);
+      assert((k >= 0 && k < L->num_scalars) && "Invalid scalar index");
+      U[ L->eq_scalar0 + k ] = val;
+    }
+    
+  };
+
+  // -----------------------------------------------------------------------------
   // DofStateView: per-DOF view (immediate refactor tool).
   //
   // Usage pattern:

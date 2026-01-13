@@ -239,7 +239,7 @@ void RotateState(Vector &state, const Vector &nor)
 {
     MFEM_ASSERT(nor.Size() > 1, "Rotate only in 2D or 3D");
     MFEM_ASSERT(nor.Size() < 4, "Rotate only in 2D or 3D");
-
+ 
     Vector tan1;
     Vector rhoV(state.GetData() + 1, nor.Size());
 
@@ -256,6 +256,32 @@ void RotateState(Vector &state, const Vector &nor)
 
     rhoV(0) = rho_u;
     rhoV(1) = rho_v;
+}
+
+void RotateState(Vector &state, const Vector &nor, const StateLayout &layout)
+{
+  int dim = nor.Size();
+  MFEM_ASSERT(dim >= 1 and dim < 4, "RotateState: Invalid normal dimension");
+  
+  Prandtl::PointStateViewRW S{state.GetData(),  &layout};
+  if(nor.Size() == 1){
+    S.set_momentum(0, S.momentum(0)*nor(0));
+    return;
+  }
+  Vector tan1;
+  Vector rhoV(state.GetData() + layout.eq_mom[0], dim);
+  Normal(nor, tan1);
+  real_t rho_u = rhoV * nor;
+  real_t rho_v = rhoV * tan1;
+
+  if (dim == 3)
+    {
+      Vector tan2;
+      Cross(nor, tan1, tan2);
+      rhoV(2) = rhoV * tan2;
+    }
+  rhoV(0) = rho_u;
+  rhoV(1) = rho_v;
 }
 
 void RotateBack(Vector &state, const Vector &nor)
@@ -283,6 +309,32 @@ void RotateBack(Vector &state, const Vector &nor)
     rhoV(1) = rho_v;
 }
 
+void RotateBack(Vector &state, const Vector &nor, const StateLayout &layout)
+{
+  int dim = nor.Size();
+  MFEM_ASSERT(dim >= 1 and dim < 4, "RotateBack: Invalid normal dimension");
+  Vector rhoV(state.GetData() + layout.eq_mom[0], nor.Size());
+  if (dim == 1){
+    rhoV(0) = rhoV(0) / nor(0);
+    return;
+  }
+  Vector tan1;
+  Normal(nor, tan1);
+  real_t rho_u = rhoV(0) * nor(0) + rhoV(1) * tan1(0);
+  real_t rho_v = rhoV(0) * nor(1) + rhoV(1) * tan1(1);
+
+    if (dim == 3)
+    {
+        Vector tan2;
+        Cross(nor, tan1, tan2);
+        rho_u += rhoV(2) * tan2(0);
+        rho_v += rhoV(2) * tan2(1);
+        rhoV(2) = rhoV(0) * nor(2) + rhoV(1) * tan1(2) + rhoV(2) * tan2(2);
+    }
+
+    rhoV(0) = rho_u;
+    rhoV(1) = rho_v;
+}
 
 Vector ComputeRoeAverage(const Vector &state1, const Vector &state2, const real_t gammaM1)
 {

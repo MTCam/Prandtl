@@ -1,0 +1,179 @@
+#pragma once
+#include <cassert>
+#include <cmath>
+#include "GasModel.hpp"
+// This file contains helper routines that implement flow physics models
+// and methods. Helpers in this module need and use results from the gas
+// EOS and Transport models, but do not belong themselves in the EOS or
+// Transport constructs.
+//
+// NOTE: The main reason for existence of these helpers is to centralize
+// the routines which may need to be updated when adding new gas models
+// like LTE/NLTE. Some routines in this module may be invalid for other
+// gas types, but are central to how fluxes are computed.
+namespace Prandtl {
+  namespace Flow {
+
+    // This routine takes as input a  *face-oriented* state as input and returns
+    // p* for the 1D Riemann problem at the face. 
+    template<typename StateView, typename GasModelT>
+    MFEM_HOST_DEVICE
+    inline real_t slipwall_pstar(const StateView &S, const GasModelT &gasModel)
+    {
+      const real_t rho = S.mass();
+      const real_t c = gasModel.sound_speed(S);
+      const real_t p = gasModel.pressure(S);
+      const real_t v = S.velocity(0);
+      const real_t gamma = gasModel.gamma(S);
+      const real_t gammaP1 = gamma + 1.;
+      const real_t gammaM1 = gamma - 1.;
+      const real_t gammaP1Inverse = 1.0/gammaP1;
+      const real_t gammaM1Inverse = 1.0/gammaM1;
+      if (v > 0.0){
+        return (p + 0.25*v*gammaP1*rho*
+                (v + std::sqrt(v*v + 8.0*gammaP1Inverse*p*(gammaM1*gammaP1Inverse+1.0)/rho)));
+      } else {
+        return p * std::pow(std::max(1.0 + 0.5*gammaM1*v/c, 0.0001), 2.0*gamma*gammaM1Inverse);
+      }
+      return 0.0;
+    }
+
+    // This interface uses the internal entropy state (Se), and the wall temp (Tw) to get a "wall beta"
+    // It *requires specialization* for any gas other than ideal single component gas
+    // Ideal Gas: beta = 1/(RTwall)
+    // Ideal Mixtures / LTE beta = 1/(Rmix*Twall), where Rmix is depending on the mixture Rmix(Y)
+    // NLTE: Potentially this will be OK, but EOS-dependent
+    template<typename StateView, typename GasModelT>
+    MFEM_HOST_DEVICE
+    inline real_t isothermal_wall_beta(const StateView &Se, real_t Tw, const GasModelT &gasModel)
+    {
+      // In gas models where R_gas is not constant (e.g. a mixture), we need to pass the *conserved*
+      // state to the gasModel.R_gas function. Since we only have ideal atm with fixed R_gas, I am
+      // skipping the unnecessary Entropy2Conservative conversion.  
+      return (1.0 / (gasModel.R_gas(Se)*Tw));
+    }
+
+    struct TotalConditions {
+      real_t p0;
+      real_t T0;
+    };
+
+    struct StaticKinematics {
+      real_t rho;
+      real_t v2;
+      real_t energy;
+    };
+
+    template<typename ConservedStateView, typename GasModelT>
+    MFEM_HOST_DEVICE
+    inline StaticKinematics isentropic_total_to_static(const ConservedStateView &S, const TotalConditions &Ct,
+                                                       const GasModelT &gasModel)
+    {
+      StaticKinematics out{};
+      const real_t p = gasModel.pressure(S);
+      const real_t gamma = gasModel.gamma(S);
+      const real_t cp = gasModel.cp(S);
+      const real_t gm1 = gamma - 1.0;
+      const real_t expo = gm1 / gamma;
+
+      real_t v2 = 2.0*cp*Ct.T0*(1.0 - std::pow(p/Ct.p0, expo));
+      v2 = std::max(0.0, v2);
+      const real_t cpT = cp * Ct.T0 - 0.5*v2;
+      out.rho = (gamma / gm1)*p/cpT;
+      out.energy = p/gm1 + 0.5*v2*out.rho;
+      return out;
+    }
+
+    template<typename StateView, typename StateViewRW, typename GasModelT>
+    MFEM_HOST_DEVICE
+    inline void riemann_invariant_outer_state(const StateView &Si, const StateView &So, StateViewRW &S2, const real_t *n,
+                                              const GasModelT &gasModel)
+    {
+      const int dim = Si.dim();
+      const real_t rho_i = Si.mass();
+      const real_t rho_o = So.mass();
+      real_t Vn_i = Si.momentum(0) * n[0];
+      real_t Vn_o = So.momentum(0) * n[0];
+      if (dim > 1){
+        Vn_i += Si.momentum(1) * n[1];
+        Vn_o += So.momentum(1) * n[1];
+      }
+      if (dim > 2){
+        Vn_i += Si.momentum(2) * n[2];
+        Vn_o += So.momentum(2) * n[2];
+      }
+
+      Vn_i /= rho_i;
+      Vn_o /= rho_o;
+
+      const real_t p_i = gasModel.pressure(Si);
+      const real_t a_i = gasModel.sound_speed(Si);
+      const real_t p_o = gasModel.pressure(So);
+      const real_t a_o = gasModel.sound_speed(So);
+
+      const real_t gamma = gasModel.gamma(Si);
+      const real_t gm1 = gamma - 1.0;
+      const real_t gm1i = 1.0 / gm1;
+      const real_t gi = 1.0/gamma;
+
+      const bool ext_supersonic_n = (std::abs(Vn_o) >= a_o);
+
+      const real_t Rm =
+        (ext_supersonic_n && Vn_i >= 0.0)
+        ? (Vn_i - 2.0 * a_i * gm1i)
+        : (Vn_o - 2.0 * a_o * gm1i);      
+      const real_t Rp =
+        (ext_supersonic_n && Vn_i < 0.0)
+        ? (Vn_o + 2.0 * a_o * gm1i)
+        : (Vn_i + 2.0 * a_i * gm1i);
+
+      const real_t Vn_b = 0.5 * (Rm + Rp);
+      const real_t a_b = 0.25*gm1*(Rp - Rm);
+
+      const real_t dVn_i = Vn_b - Vn_i;
+      const real_t dVn_o = Vn_b - Vn_o;
+
+      // Density from isentrope anchored on inflow/outflow side
+      const auto rho_from_ref = [&](real_t rho_ref, real_t p_ref) {
+        // rho_b = rho_ref * ( (a_b^2 * rho_ref)/(gamma*p_ref) )^(1/(gamma-1))
+        const real_t factor = (a_b*a_b) * rho_ref / (gamma * p_ref);
+        return rho_ref * std::pow(factor, gm1i);
+      };
+
+      const bool inflow = (Vn_i < 0.0);
+      const real_t rho_b = inflow ? rho_from_ref(rho_o, p_o) : rho_from_ref(rho_i, p_i);
+      S2.set_mass(rho_b);
+      const real_t p_b = (a_b * a_b) * rho_b * gi;
+      real_t vb[3] = {0., 0., 0.};
+      real_t vb2 = 0.0;
+      const real_t dVn = inflow ? dVn_o : dVn_i;
+      for(int idim = 0;idim < dim;idim++){
+        const real_t base = inflow ? So.velocity(idim) : Si.velocity(idim);
+        vb[idim] = base + dVn*n[idim];
+        vb2 += (vb[idim]*vb[idim]);
+        S2.set_momentum(idim, rho_b*vb[idim]);
+      }
+      S2.set_energy(p_b * gm1i + 0.5 * rho_b * vb2);
+    }
+
+    template<typename PrimStateView, typename ConsStateView, typename GasModelT>
+    MFEM_HOST_DEVICE inline void PrimitiveToConserved(const PrimStateView &prim, ConsStateView &cons, const GasModelT &gasModel){
+      const real_t rho = prim.mass();
+      const int dim = prim.dim();
+      // NOTE: This call *should* fail for gas models other than ideal single component
+      const real_t gamma = gasModel.gamma(prim);
+      real_t v2 = prim.velocity(0)*prim.velocity(0);
+      cons.set_mass(rho);
+      cons.set_momentum(0, rho*prim.velocity(0));
+      if (dim > 1){
+        cons.set_momentum(1, rho*prim.velocity(1));
+        v2 += prim.velocity(1)*prim.velocity(1);
+      }
+      if (dim > 2){
+        cons.set_momentum(2, rho*prim.velocity(2));
+        v2 += prim.velocity(2)*prim.velocity(2);
+      }
+      cons.set_energy(prim.pressure() / (gamma-1.) + 0.5 * rho * v2); 
+    }
+  }
+}

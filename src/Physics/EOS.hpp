@@ -20,7 +20,13 @@ namespace Prandtl
     { }
 
     // ---- helpers on conservative state --------------------------------------
-
+    template<typename StateView>
+    MFEM_HOST_DEVICE
+    inline real_t R_gas(const StateView &S) const
+    {
+      return phys->R_gas;
+    }
+ 
     template<typename StateView>
     MFEM_HOST_DEVICE
     inline real_t density(const StateView &S) const
@@ -66,6 +72,14 @@ namespace Prandtl
     {
         // rho*e = rho*E - 0.5*rho*|u|^2
         return rhoE(S) - kinetic_energy_density(S);
+    }
+
+    template<typename StateView>
+    MFEM_HOST_DEVICE
+    inline real_t internal_energy_from_pressure(const StateView &S, real_t pressure) const
+    {
+        // rho*e = rho*E - 0.5*rho*|u|^2
+      return pressure / (phys->gamma - 1.0);
     }
 
     template<typename StateView>
@@ -178,6 +192,7 @@ namespace Prandtl
     }
 
     template<typename InStateView, typename OutStateView>
+    MFEM_HOST_DEVICE
     inline void grad_entropy_to_grad_prim(const InStateView &S, const InStateView &dE,
                                           OutStateView &dPrim) const
     {
@@ -204,6 +219,28 @@ namespace Prandtl
       }
     }
 
+    template<typename InStateView, typename OutStateView>
+    MFEM_HOST_DEVICE
+    inline void entropy_to_conserved(const InStateView &Se, OutStateView &Sc) const
+    {
+      int dim = Se.dim();
+      const real_t beta = -Se.energy();
+      real_t k = 0.0;
+      real_t vel[3];
+      for(int idim = 0;idim < dim;idim++){
+        vel[idim] = Se.momentum(idim)/beta;
+        k += vel[idim]*vel[idim];
+      }
+      const real_t gamma = phys->gamma;
+      const real_t s = gamma - (Se.mass() + 0.5*k*beta)*(gamma - 1.);
+      const real_t rho = std::pow(std::exp(-s)/beta, 1.0/(gamma - 1));
+      Sc.set_mass(rho);
+      Sc.set_energy(rho*(1.0/(beta*(gamma-1.)) + 0.5*k));
+      for(int idim = 0;idim < dim;idim++){
+        Sc.set_momentum(idim, rho*vel[idim]);
+      }
+    }
+
     // TODO: Consider whether this is needed/convenient
     // It *can be* nice to have here, but kind of out-of-place
     template<typename StateView>
@@ -221,5 +258,6 @@ namespace Prandtl
           u[d] = real_t(0);
         }
     }
+
   };
 }
