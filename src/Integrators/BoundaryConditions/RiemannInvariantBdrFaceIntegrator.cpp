@@ -7,11 +7,10 @@ namespace Prandtl
   // Constructor for RiemannInvariantBdrFaceIntegrator with a variable (space- and/or time-dependent) primitive state
   RiemannInvariantBdrFaceIntegrator::RiemannInvariantBdrFaceIntegrator(std::shared_ptr<LiftingScheme> liftingScheme,
                                                                        std::shared_ptr<const IdealGasModel> gasModel_,
-                                                                       std::shared_ptr<const StateLayout> stateLayout_,
                                                                        const NumericalFlux &rsolver, const int Np,
                                                                        const real_t &time,
                                                                        VectorFunctionCoefficient &prim_state_fun, bool t_dependent)
-  : BdrFaceIntegrator(liftingScheme, gasModel_, stateLayout_, rsolver, Np, time, false, t_dependent),
+  : BdrFaceIntegrator(liftingScheme, gasModel_, rsolver, Np, time, false, t_dependent),
     prim_state_fun(prim_state_fun)
   {
     unit_nor.SetSize(dim);
@@ -22,23 +21,22 @@ namespace Prandtl
   // Constructor for RiemannInvariantBdrFaceIntegrator with a constant primitive state
   RiemannInvariantBdrFaceIntegrator::RiemannInvariantBdrFaceIntegrator(std::shared_ptr<LiftingScheme> liftingScheme,
                                                                        std::shared_ptr<const IdealGasModel> gasModel_,
-                                                                       std::shared_ptr<const StateLayout> stateLayout_,
                                                                        const NumericalFlux &rsolver, const int Np,
                                                                        const real_t &time, const Vector &prim_state)
-  : BdrFaceIntegrator(liftingScheme, gasModel_, stateLayout_, rsolver, Np, time, true, false),
+  : BdrFaceIntegrator(liftingScheme, gasModel_, rsolver, Np, time, true, false),
     prim_state_fun(num_equations, std::function<void(const Vector&, Vector&)>())
   {
     unit_nor.SetSize(dim);
     prim_o.SetSize(num_equations);
     state_o.SetSize(num_equations);
-    prim_o(stateLayout->eq_mass) = prim_state(stateLayout->eq_mass);
-    prim_o(stateLayout->eq_energy) = prim_state(stateLayout->eq_energy);
-    size_t voff = stateLayout->eq_mom[0];
+    prim_o(gasModel->L.eq_mass) = prim_state(gasModel->L.eq_mass);
+    prim_o(gasModel->L.eq_energy) = prim_state(gasModel->L.eq_energy);
+    size_t voff = gasModel->L.eq_mom[0];
     prim_o(voff) = prim_state(voff);
     if (dim > 1) prim_o(voff+1) = prim_state(voff+1);
     if (dim > 2) prim_o(voff+2) = prim_state(voff+2);
-    Prandtl::PointPrimitiveView P{prim_o.GetData(), stateLayout.get()};
-    Prandtl::PointStateViewRW S{state_o.GetData(), stateLayout.get()};
+    Prandtl::PointPrimitiveView P{prim_o.GetData()};
+    Prandtl::PointStateViewRW S{state_o.GetData()};
     Prandtl::Flow::PrimitiveToConserved(P, S, *gasModel);
 }
 
@@ -53,13 +51,13 @@ void RiemannInvariantBdrFaceIntegrator::ComputeOuterInviscidState(const Vector &
             prim_state_fun.SetTime(time);
         
         prim_state_fun.Eval(prim_o, Tr, ip);
-        Prandtl::PointPrimitiveView P{prim_o.GetData(), stateLayout.get()};
-        Prandtl::PointStateViewRW S{state_o.GetData(), stateLayout.get()};
+        Prandtl::PointPrimitiveView P{prim_o.GetData()};
+        Prandtl::PointStateViewRW S{state_o.GetData()};
         Prandtl::Flow::PrimitiveToConserved(P, S, *gasModel);
     }
-    Prandtl::PointStateView So{state_o.GetData(), stateLayout.get()};
-    Prandtl::PointStateView Si{state1.GetData(), stateLayout.get()};
-    Prandtl::PointStateViewRW S2{state2.GetData(), stateLayout.get()};
+    Prandtl::PointStateView So{state_o.GetData()};
+    Prandtl::PointStateView Si{state1.GetData()};
+    Prandtl::PointStateViewRW S2{state2.GetData()};
     real_t n[3] = { unit_nor(0), (dim>1 ? unit_nor(1) : 0.0), (dim>2 ? unit_nor(2) : 0.0) };
 
     Prandtl::Flow::riemann_invariant_outer_state(Si, So, S2, n, *gasModel);

@@ -16,12 +16,10 @@ private:
 public:
   SubsonicOutflowPBdrFaceIntegrator(std::shared_ptr<LiftingScheme> liftingScheme,
                                     std::shared_ptr<const IdealGasModel> gasModel_,
-                                    std::shared_ptr<const StateLayout> stateLayout_,
                                     const NumericalFlux &rsolver, const int Np, const real_t &time,
                                     FunctionCoefficient &p_fun, bool t_dependent = false);
     SubsonicOutflowPBdrFaceIntegrator(std::shared_ptr<LiftingScheme> liftingScheme,
                                       std::shared_ptr<const IdealGasModel> gasModel_,
-                                      std::shared_ptr<const StateLayout> stateLayout_,
                                       const NumericalFlux &rsolver, const int Np, const real_t &time, real_t p_out);
     
     virtual void ComputeOuterInviscidState(const Vector &state1, Vector &state2, FaceElementTransformations &Tr, const IntegrationPoint &ip) override;

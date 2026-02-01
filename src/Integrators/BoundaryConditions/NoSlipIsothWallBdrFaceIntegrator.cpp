@@ -6,20 +6,18 @@ namespace Prandtl
 
 NoSlipIsothWallBdrFaceIntegrator::NoSlipIsothWallBdrFaceIntegrator(std::shared_ptr<LiftingScheme> liftingScheme,
                                                                    std::shared_ptr<const IdealGasModel> gasModel_,
-                                                                   std::shared_ptr<const StateLayout> stateLayout_,
                                                                    const NumericalFlux &rsolver, const int Np,
                                                                    const real_t &time,
                                                                    FunctionCoefficient &T_wall_, VectorFunctionCoefficient &V_wall_,
                                                                    bool t_dependent)
-: SlipWallBdrFaceIntegrator(liftingScheme, gasModel_, stateLayout_, rsolver, Np, time, false, t_dependent),
+: SlipWallBdrFaceIntegrator(liftingScheme, gasModel_, rsolver, Np, time, false, t_dependent),
   T_wall(T_wall_), V_wall(V_wall_) {}
   
 NoSlipIsothWallBdrFaceIntegrator::NoSlipIsothWallBdrFaceIntegrator(std::shared_ptr<LiftingScheme> liftingScheme,
                                                                    std::shared_ptr<const IdealGasModel> gasModel_,
-                                                                   std::shared_ptr<const StateLayout> stateLayout_,
                                                                    const NumericalFlux &rsolver, const int Np,
                                                                    const real_t &time, real_t &T, const Vector &V)
-: SlipWallBdrFaceIntegrator(liftingScheme, gasModel_, stateLayout_, rsolver, Np, time, true, false),
+: SlipWallBdrFaceIntegrator(liftingScheme, gasModel_, rsolver, Np, time, true, false),
   T(T), V(V), T_wall(std::function<real_t(const Vector&)>()), V_wall(dim, std::function<void(const Vector&, Vector&)>())
 {}
   
@@ -41,7 +39,8 @@ void NoSlipIsothWallBdrFaceIntegrator::ComputeBdrFaceViscousFlux(const Vector &s
     flux_mat.Mult(nor, fluxN);
 }
 
-void NoSlipIsothWallBdrFaceIntegrator::ComputeBdrFaceLiftingFlux(const Vector &state1, Vector &fluxN, FaceElementTransformations &Tr, const IntegrationPoint &ip)
+void NoSlipIsothWallBdrFaceIntegrator::ComputeBdrFaceLiftingFlux(const Vector &state1, Vector &fluxN, FaceElementTransformations &Tr,
+                                                                 const IntegrationPoint &ip)
 {
     if (!constant)
     {
@@ -51,9 +50,9 @@ void NoSlipIsothWallBdrFaceIntegrator::ComputeBdrFaceLiftingFlux(const Vector &s
         T = T_wall.Eval(Tr, ip);
         V_wall.Eval(V, Tr, ip);
     }
-    Prandtl::PointStateView Se{state1.GetData(), stateLayout.get()};
+    Prandtl::PointStateView Se{state1.GetData()};
     const real_t beta = Prandtl::Flow::isothermal_wall_beta(Se, T, *gasModel);
-    fluxN(mass_eq) = Se.mass();
+    fluxN(mass_eq) = gasModel->mass(Se);
     fluxN(mom_eq) = V(0) * beta;
     if (dim > 1)
     {

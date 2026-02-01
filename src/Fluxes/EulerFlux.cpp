@@ -7,11 +7,11 @@ namespace Prandtl
                                 DenseMatrix &FU) const
   {
 
-    PointStateView S{U.GetData(), stateLayout.get()};
+    PointStateView S{U.GetData()};
     // 1. Get states
-    const real_t density = S.mass();              // ρ
-    const Vector momentum(U.GetData()+S.momentum_eq(), dim); // ρu
-    const real_t energy = S.energy();             // E, internal energy ρe
+    const real_t density = gasModel->mass(S);
+    const Vector momentum(U.GetData()+gasModel->L.eq_mom0, dim); // ρu
+    const real_t energy = gasModel->energy(S);
     const real_t pressure = gasModel->pressure(S);
     const real_t ke = gasModel->kinetic_energy_density(S);
 
@@ -55,15 +55,15 @@ namespace Prandtl
                                     FaceElementTransformations &Tr,
                                     Vector &FUdotN) const
   {
-    PointStateView S{x.GetData(), stateLayout.get()};
+    PointStateView S{x.GetData()};
 
     // 1. Get states
-    const real_t density = S.mass();                  // ρ
-    const Vector momentum(x.GetData()+S.momentum_eq(), dim);  // ρu
-    const real_t energy = S.energy();
+    const real_t density = gasModel->mass(S);
+    const Vector momentum(x.GetData()+gasModel->L.eq_mom0, dim);
+    const real_t energy = gasModel->energy(S);
     const real_t kinetic_energy = gasModel->kinetic_energy_density(S);
     const real_t pressure = gasModel->pressure(S);
-    
+
     // Check whether the solution is physical only in debug mode
     MFEM_ASSERT(density >= 0, "Negative Density");
     MFEM_ASSERT(pressure >= 0, "Negative Pressure");

@@ -1,5 +1,5 @@
 #pragma once
-
+#include "mfem.hpp"
 #include "GasState.hpp"
 
 using Prandtl::real_t;

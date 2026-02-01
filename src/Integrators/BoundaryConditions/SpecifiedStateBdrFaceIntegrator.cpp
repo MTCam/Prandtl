@@ -6,21 +6,19 @@ namespace Prandtl
 // Constructor for SpecifiedStateBdrfaceIntegrator with a variable (space- and/or time-dependent) conservative state
 SpecifiedStateBdrFaceIntegrator::SpecifiedStateBdrFaceIntegrator(std::shared_ptr<LiftingScheme> liftingScheme,
                                                                  std::shared_ptr<const IdealGasModel> gasModel_,
-                                                                 std::shared_ptr<const StateLayout> stateLayout_,
                                                                  const NumericalFlux &rsolver, const int Np,
                                                                  const real_t &time,
                                                                  VectorFunctionCoefficient &conserv_state_fun_, bool t_dependent)
-: BdrFaceIntegrator(liftingScheme, gasModel_, stateLayout_, rsolver, Np, time, false, t_dependent),
+: BdrFaceIntegrator(liftingScheme, gasModel_, rsolver, Np, time, false, t_dependent),
   conserv_state_fun(conserv_state_fun_) {}
 
 
 // Constructor for SpecifiedStateBdrfaceIntegrator with a constant conservative state
 SpecifiedStateBdrFaceIntegrator::SpecifiedStateBdrFaceIntegrator(std::shared_ptr<LiftingScheme> liftingScheme,
                                                                  std::shared_ptr<const IdealGasModel> gasModel_,
-                                                                 std::shared_ptr<const StateLayout> stateLayout_,
                                                                  const NumericalFlux &rsolver, int Np,
                                                                  const real_t &time, const Vector &conserv_state)
-: BdrFaceIntegrator(liftingScheme, gasModel_, stateLayout_, rsolver, Np, time, true, false), 
+: BdrFaceIntegrator(liftingScheme, gasModel_, rsolver, Np, time, true, false), 
   const_state(conserv_state), conserv_state_fun(num_equations, std::function<void(const Vector&, Vector&)>()) {}
 
 void SpecifiedStateBdrFaceIntegrator::ComputeOuterInviscidState(const Vector &state1, Vector &state2,

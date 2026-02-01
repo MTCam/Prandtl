@@ -6,7 +6,7 @@ namespace Prandtl
 {
 
 ChandrashekarFlux::ChandrashekarFlux(const NavierStokesFlux &fluxFunction)
-  : NumericalFlux(fluxFunction), gasModel(std::move(fluxFunction.gas_model())), stateLayout(std::move(fluxFunction.state_layout()))
+  : NumericalFlux(fluxFunction), gasModel(std::move(fluxFunction.gas_model()))
 {
   metric.SetSize(dim);
 }
@@ -16,11 +16,11 @@ real_t ChandrashekarFlux::ComputeVolumeFlux(const Vector &state1, const Vector &
                                             Vector &F_tilde)
 {
     ComputeMean(metric1, metric2, metric);
-    PointStateView S1{state1.GetData(), stateLayout.get()};
-    PointStateView S2{state2.GetData(), stateLayout.get()};
+    PointStateView S1{state1.GetData()};
+    PointStateView S2{state2.GetData()};
     
-    const real_t rho1 = S1.mass();
-    const real_t rho2 = S2.mass();
+    const real_t rho1 = gasModel->density(S1); //  .mass(*stateLayout);
+    const real_t rho2 = gasModel->density(S2); // S2.mass(*stateLayout);
     const real_t rho_ln = ComputeLogMean(rho1, rho2);
     const real_t drho = rho2 - rho1;
     real_t mom[3] = {0.0, 0.0, 0.0};
@@ -29,8 +29,8 @@ real_t ChandrashekarFlux::ComputeVolumeFlux(const Vector &state1, const Vector &
     real_t v_21 = 0.0;
     real_t v_22 = 0.0;
     for(int idim = 0; idim < dim; idim++){
-      real_t v1 = S1.velocity(idim);
-      real_t v2 = S2.velocity(idim);
+      real_t v1 = gasModel->velocity(S1, idim); // S1.velocity(*stateLayout, idim);
+      real_t v2 = gasModel->velocity(S2, idim);
       real_t v_bar = 0.5*(v1 + v2);
       v_21 += v1*v1;
       v_22 += v2*v2;
@@ -79,13 +79,13 @@ real_t ChandrashekarFlux::ComputeVolumeFlux(const Vector &state1, const Vector &
 real_t ChandrashekarFlux::ComputeFaceFlux(const Vector &state1, const Vector &state2,
                                           const Vector &nor, Vector &flux) const
 {
-    PointStateView S1{state1.GetData(), stateLayout.get()};
-    PointStateView S2{state2.GetData(), stateLayout.get()};
+    PointStateView S1{state1.GetData()};
+    PointStateView S2{state2.GetData()};
     
     const real_t nor_mag = nor.Norml2();
 
-    const real_t rho1 = S1.mass();
-    const real_t rho2 = S2.mass();
+    const real_t rho1 = gasModel->density(S1); // .mass(*stateLayout);
+    const real_t rho2 = gasModel->density(S2); // .mass(*stateLayout);
     const real_t rho_mean = 0.5 * (rho1 + rho2);
     const real_t rho_ln = ComputeLogMean(rho1, rho2);
     const real_t drho = rho2 - rho1;
@@ -98,8 +98,8 @@ real_t ChandrashekarFlux::ComputeFaceFlux(const Vector &state1, const Vector &st
     real_t v22 = 0.0;
     real_t vn = 0.0;
     for(int idim = 0;idim < dim;idim++){
-      mom1[idim] = S1.momentum(idim);
-      mom2[idim] = S2.momentum(idim);
+      mom1[idim] = gasModel->momentum(S1, idim); // .momentum(*stateLayout, idim);
+      mom2[idim] = gasModel->momentum(S2, idim); // .momentum(*stateLayout, idim);
       const real_t v1 = mom1[idim]/rho1;
       const real_t v2 = mom2[idim]/rho2;
       const real_t vbar = 0.5 * (v1 + v2);

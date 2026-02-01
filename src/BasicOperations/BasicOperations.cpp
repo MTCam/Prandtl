@@ -258,14 +258,14 @@ void RotateState(Vector &state, const Vector &nor)
     rhoV(1) = rho_v;
 }
 
-void RotateState(Vector &state, const Vector &nor, const StateLayout &layout)
+void RotateState(const StateLayout &layout, Vector &state, const Vector &nor)
 {
   int dim = nor.Size();
   MFEM_ASSERT(dim >= 1 and dim < 4, "RotateState: Invalid normal dimension");
   
-  Prandtl::PointStateViewRW S{state.GetData(),  &layout};
+  Prandtl::PointStateViewRW S{state.GetData()};
   if(nor.Size() == 1){
-    S.set_momentum(0, S.momentum(0)*nor(0));
+    S.set_momentum(layout, 0, S.momentum(layout, 0)*nor(0));
     return;
   }
   Vector tan1;

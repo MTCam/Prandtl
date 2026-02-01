@@ -11,10 +11,9 @@ DGSEMIntegrator::DGSEMIntegrator(
       std::shared_ptr<ParGridFunction> alpha_,
       std::shared_ptr<LiftingScheme> liftingScheme_,
       std::shared_ptr<const IdealGasModel> gasModel_,
-      std::shared_ptr<const StateLayout> stateLayout_,
       NumericalFlux &rsolver_, int Np)
     : NonlinearFormIntegrator(), pmesh(pmesh_), fes0(fes0_), alpha(alpha_),
-      gasModel(std::move(gasModel_)), stateLayout(std::move(stateLayout_)),
+      gasModel(std::move(gasModel_)),
       liftingScheme(liftingScheme_), rsolver(rsolver_), fluxFunction(rsolver_.GetFluxFunction()),
       Np_x(Np), Np_y(fluxFunction.dim > 1 ? Np : 1), Np_z(fluxFunction.dim > 2 ? Np : 1),
       num_equations(fluxFunction.num_equations), dim(fluxFunction.dim), num_elements(pmesh->GetNE()),
@@ -414,9 +413,8 @@ void DGSEMIntegrator::AssembleElementVector(const FiniteElement &el,
 #ifdef AXISYMMETRIC
                 
                 {
-                  Prandtl::PointStateView S{state1.GetData(), stateLayout.get()};
-                  const real_t p = gasModel.pressure(S);
-                    //dU_inviscid(2) += p;
+                  Prandtl::PointStateView S{state1.GetData()};
+                  const real_t p = gasModel->pressure(S);
                     el_dudt_mat(id1, 2) += p;
  
                 if (debug_integrator)

@@ -21,7 +21,6 @@ class EulerFlux : public FluxFunction
 {
 private:
   std::shared_ptr<const IdealGasModel> gasModel;
-  std::shared_ptr<const StateLayout> stateLayout;
 public:
   /**
    * @brief Construct a new EulerFlux FluxFunction with given spatial
@@ -31,7 +30,7 @@ public:
    * @param specific_heat_ratio specific heat ratio, γ
    */
   explicit EulerFlux(std::shared_ptr<const StateLayout> stateLayout_, std::shared_ptr<const IdealGasModel> gasModel_)
-    : FluxFunction(stateLayout_->nequations(), stateLayout_->dim), stateLayout(std::move(stateLayout_)), gasModel(std::move(gasModel_))
+    : FluxFunction(stateLayout_->nequations(), stateLayout_->dim), gasModel(std::move(gasModel_))
   { }
 
 

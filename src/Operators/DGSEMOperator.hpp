@@ -27,7 +27,6 @@ private:
     std::unique_ptr<DGSEMIntegrator> integrator;
     std::unique_ptr<Indicator> indicator;
     std::shared_ptr<const IdealGasModel> gasModel;
-    std::shared_ptr<const StateLayout> stateLayout;
     std::unique_ptr<DGSEMNonlinearForm> nonlinearForm; 
 
     mutable Array<int> vdof_indices;
@@ -93,7 +92,6 @@ public:
                   std::unique_ptr<DGSEMIntegrator> integrator,
                   std::unique_ptr<Indicator> indicator,
                   std::shared_ptr<const IdealGasModel> gasModel,
-                  std::shared_ptr<const StateLayout> stateLayout, 
                   std::shared_ptr<ParGridFunction> r_gf = nullptr,
                   const real_t alpha_max = 0.5, const real_t alpha_min = 0.001);
     
