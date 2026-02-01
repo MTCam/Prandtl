@@ -1,6 +1,6 @@
 #pragma once
 
-#include "kernels.hpp"
+#include "Kernels.hpp"
 
 namespace Prandtl
 {
