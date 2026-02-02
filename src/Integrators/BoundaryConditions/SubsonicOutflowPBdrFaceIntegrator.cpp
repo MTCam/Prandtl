@@ -24,8 +24,8 @@ void SubsonicOutflowPBdrFaceIntegrator::ComputeOuterInviscidState(const Vector &
         }
         p = p_fun.Eval(Tr, ip);
     }
-    Vector vel(state1.GetData() + 1, dim);
-    vel /= state1(0);
+    Vector vel(dim);
+    for(int i = 0;i < dim;i++) vel(i) = state1(i+1) / state1(0);
     state2 = state1;
     state2(num_equations - 1) = p * gammaM1Inverse + 0.5 * state1(0) * (vel * vel);
 }
