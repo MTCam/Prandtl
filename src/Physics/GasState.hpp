@@ -426,7 +426,7 @@ namespace Prandtl
     }
     
     // Set Mass density
-    MFEM_HOST_DEVICE inline void set_mass(const StateLayout &L,real_t val)
+    MFEM_HOST_DEVICE inline void set_mass(const StateLayout &L, real_t val)
     {
       U[ L.eq_mass ] = val;
     }
@@ -438,7 +438,7 @@ namespace Prandtl
     }
 
     // Momentum components: d = 0(x),1(y),2(z)
-    MFEM_HOST_DEVICE inline real_t velocity(const StateLayout &L,int d) const
+    MFEM_HOST_DEVICE inline real_t velocity(const StateLayout &L, int d) const
     {
       assert(d < L.dim);
       return U[ L.eq_mom[d] ];
@@ -617,57 +617,57 @@ namespace Prandtl
     }
     
     // Named accessors for convenience
-    MFEM_HOST_DEVICE inline real_t& mass(const StateLayout &layout,int dof) const
+    MFEM_HOST_DEVICE inline real_t& mass(const StateLayout &layout, int dof) const
     {
       return u(layout, layout.eq_mass, dof);
     }
     
-    MFEM_HOST_DEVICE inline real_t& momentum(const StateLayout &layout,int component, int dof) const
+    MFEM_HOST_DEVICE inline real_t& momentum(const StateLayout &layout, int component, int dof) const
     {
       return u(layout, layout.eq_mom[component], dof);
     }
     
-    MFEM_HOST_DEVICE inline real_t& momentum_x(const StateLayout &layout,int dof) const
+    MFEM_HOST_DEVICE inline real_t& momentum_x(const StateLayout &layout, int dof) const
     {
       return u(layout, layout.eq_mom[0], dof);
     }
     
-    MFEM_HOST_DEVICE inline real_t& momentum_y(const StateLayout &layout,int dof) const
+    MFEM_HOST_DEVICE inline real_t& momentum_y(const StateLayout &layout, int dof) const
     {
       return u(layout, layout.eq_mom[1], dof);
     }
     
-    MFEM_HOST_DEVICE inline real_t& momentum_z(const StateLayout &layout,int dof) const
+    MFEM_HOST_DEVICE inline real_t& momentum_z(const StateLayout &layout, int dof) const
     {
       return u(layout, layout.eq_mom[2], dof);
     }
     
-    MFEM_HOST_DEVICE inline real_t velocity(const StateLayout &layout,int component, int dof) const
+    MFEM_HOST_DEVICE inline real_t velocity(const StateLayout &layout, int component, int dof) const
     {
       return momentum(layout, component, dof) / mass(layout, dof);
     }
     
-    MFEM_HOST_DEVICE inline real_t velocity_x(const StateLayout &layout,int dof) const
+    MFEM_HOST_DEVICE inline real_t velocity_x(const StateLayout &layout, int dof) const
     {
       return velocity(layout, 0, dof);
     }
     
-    MFEM_HOST_DEVICE inline real_t velocity_y(const StateLayout &layout,int dof) const
+    MFEM_HOST_DEVICE inline real_t velocity_y(const StateLayout &layout, int dof) const
     {
       return velocity(layout, 1, dof);
     }
     
-    MFEM_HOST_DEVICE inline real_t velocity_z(const StateLayout &layout,int dof) const
+    MFEM_HOST_DEVICE inline real_t velocity_z(const StateLayout &layout, int dof) const
     {
       return velocity(layout, 2, dof);
     }
     
-    MFEM_HOST_DEVICE inline real_t& energy(const StateLayout &layout,int dof) const
+    MFEM_HOST_DEVICE inline real_t& energy(const StateLayout &layout, int dof) const
     {
       return u(layout, layout.eq_energy, dof);
     }
     
-    MFEM_HOST_DEVICE inline real_t& scalar(const StateLayout &layout,int k, int dof) const
+    MFEM_HOST_DEVICE inline real_t& scalar(const StateLayout &layout, int k, int dof) const
     {
       assert(layout.num_scalars > 0);
       assert(k >= 0 && k < layout.num_scalars && "Invalid scalar index");
@@ -675,7 +675,7 @@ namespace Prandtl
     }
   };
 
-  inline int offset_mass   (const Prandtl::StateLayout &L) { return L.index(L.eq_mass,   0); }
+  inline int offset_mass   (const Prandtl::StateLayout &L) { return L.index(L.eq_mass, 0); }
   inline int offset_momentum  (const Prandtl::StateLayout &L) { return L.index(L.eq_mom0, 0); }
   inline int offset_energy (const Prandtl::StateLayout &L) { return L.index(L.eq_energy, 0); }
   inline int offset_scalars (const Prandtl::StateLayout &L) { return L.index(L.eq_scalar0, 0); };

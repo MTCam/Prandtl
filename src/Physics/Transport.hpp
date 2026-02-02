@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cmath>
 #include "Physics.hpp"
 #include "GasState.hpp"
 

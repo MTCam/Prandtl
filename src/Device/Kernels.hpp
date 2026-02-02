@@ -1,11 +1,19 @@
 #pragma once
-
+// Drag in essential parts of MFEM for kernels
+#include "config/config.hpp"
+#include "general/forall.hpp"
 #ifndef MFEM_HOST_DEVICE
-#define MFEM_HOST_DEVICE __host__ __device__
+#include "general/device.hpp"
+#endif
+#ifndef MFEM_HOST_DEVICE
+#error "MFEM_HOST_DEVICE not defined. Check MFEM headers/includes."
 #endif
 
 namespace Prandtl
 {
-  //using namespace mfem;
-  using real_t = double; // mfem::real_t;
+#ifdef MFEM_USE_SINGLE
+  using real_t = float;
+#else
+  using real_t = double;
+#endif
 }
