@@ -134,7 +134,7 @@ void EntropyGrad2PrimGrad(const DenseMatrix &vdof_mat, DenseMatrix &grad, real_t
         grad.GetRow(d, grad_state);
 
         Vector vel(dim);
-        for(int i = 0;i < dim;i++) vel[i] = state(i+1)/state(0);
+        for(int i = 0;i < dim;i++) vel(i) = state(i+1)/state(0);
         v_sq = 0.5 * (vel * vel);
         p = gammaM1 * (state(state.Size() - 1) - state(0) * v_sq);
         KE = v_sq * state(0);
