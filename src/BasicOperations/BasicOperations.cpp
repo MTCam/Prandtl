@@ -30,10 +30,8 @@ void ComputeMean(const Vector &x, const Vector &y, Vector &mean)
 
 real_t ComputePressure(const Vector &state, real_t gammaM1)
 {
-    Vector V(state.GetData() + 1, state.Size() - 2);
-    V /= state(0);
-
-    return gammaM1 * (state(state.Size() - 1) - 0.5 * state(0) * (V * V));
+  Vector mom(state.GetData() + 1, state.Size() - 2);
+  return gammaM1 * (state(state.Size() - 1) - 0.5 * (mom * mom) / state(0));
 }
 
 real_t ComputeEntropy(real_t rho, real_t p, real_t gamma)
@@ -82,22 +80,23 @@ void Conserv2Entropy(const Vector &state, Vector &ent_state, real_t gamma, real_
 {
     real_t s, p, v_sq, beta;
 
-    Vector vel(state.GetData() + 1, state.Size() - 2);
-    vel /= state(0);
-    v_sq = 0.5 * (vel * vel);
+    Vector mom(state.GetData() + 1, state.Size() - 2);
+    const real_t rho = state(0);
+    const real_t rhom1 = 1.0 / rho;
+    v_sq = 0.5 * (mom * mom) * rhom1 * rhom1;
 
-    p = gammaM1 * (state(state.Size() - 1) - state(0) * v_sq);
-    beta = state(0) / p;
-    s = std::log(p * std::pow(state(0), -gamma));
+    p = gammaM1 * (state(state.Size() - 1) - rho * v_sq);
+    beta = rho / p;
+    s = std::log(p * std::pow(rho, -gamma));
 
     ent_state(0) = (gamma - s) * gammaM1Inverse - beta * v_sq;
-    ent_state(1) = beta * vel(0);
+    ent_state(1) = beta * mom(0) * rhom1;
     if (state.Size() > 3)
     {
-        ent_state(2) = beta * vel(1);
+        ent_state(2) = beta * mom(1) * rhom1;
         if (state.Size() > 4)
         {
-            ent_state(3) = beta * vel(2);
+            ent_state(3) = beta * mom(2) * rhom1;
         }
     }
     ent_state(state.Size() - 1) = -beta;
@@ -106,9 +105,9 @@ void Conserv2Entropy(const Vector &state, Vector &ent_state, real_t gamma, real_
 void Entropy2Conserv(const Vector &ent_state, Vector &state, real_t gamma, real_t gammaM1, real_t gammaM1Inverse)
 {
     int dim = ent_state.Size() - 2;
-    Vector vel(ent_state.GetData() + 1, dim);
+    Vector vel(dim);
     const real_t beta = -ent_state(dim + 1);
-    vel /= beta;
+    for(int i = 0;i < dim;i++) vel(i) = ent_state(i+1) / beta;
     const real_t s = gamma - (ent_state(0) + 0.5 * beta * (vel * vel)) * gammaM1;
     state(0) = std::pow(std::exp(-s) / beta, gammaM1Inverse);
     state(1) = state(0) * vel(0);
@@ -134,8 +133,8 @@ void EntropyGrad2PrimGrad(const DenseMatrix &vdof_mat, DenseMatrix &grad, real_t
         vdof_mat.GetRow(d, state);
         grad.GetRow(d, grad_state);
 
-        Vector vel(state.GetData() + 1, dim);
-        vel /= state(0);
+        Vector vel(dim);
+        for(int i = 0;i < dim;i++) vel(i) = state(i+1)/state(0);
         v_sq = 0.5 * (vel * vel);
         p = gammaM1 * (state(state.Size() - 1) - state(0) * v_sq);
         KE = v_sq * state(0);
