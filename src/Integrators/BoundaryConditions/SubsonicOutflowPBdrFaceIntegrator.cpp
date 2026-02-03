@@ -28,6 +28,7 @@ void SubsonicOutflowPBdrFaceIntegrator::ComputeOuterInviscidState(const Vector &
         }
         p = p_fun.Eval(Tr, ip);
     }
+
     state2 = state1;
     Prandtl::PointStateView S1{state1.GetData()};
     Prandtl::PointStateViewRW S2{state2.GetData()};
