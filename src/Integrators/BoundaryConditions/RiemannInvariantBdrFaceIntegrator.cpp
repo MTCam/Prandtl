@@ -64,8 +64,8 @@ void RiemannInvariantBdrFaceIntegrator::ComputeOuterInviscidState(const Vector &
         }
     }
 
-    Vector V_i(state1.GetData() + 1, dim);
-    V_i /= state1(0);
+    Vector V_i(dim);
+    for(int i = 0;i < dim;i++) V_i(i) = state1(i+1) / state1(0);
     Vn_i = V_i * unit_nor;
     Vn_o = V_o * unit_nor;
 
