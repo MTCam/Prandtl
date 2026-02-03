@@ -11,16 +11,19 @@ using namespace mfem;
 class NavierStokesFlux : public FluxFunction
 {
 private:
-  std::shared_ptr<const IdealGasModel> gasModel;
+  const IdealGasModel gasModel;
 public:
-  explicit NavierStokesFlux(std::shared_ptr<const StateLayout> stateLayout_, std::shared_ptr<const IdealGasModel> gasModel_)
-    : FluxFunction(stateLayout_->nequations(), stateLayout_->dim), gasModel(std::move(gasModel_))
-  {
-  }
+  explicit NavierStokesFlux(const IdealGasModel &gasModel_)
+    : FluxFunction(gasModel_.num_equations(), gasModel_.dim()), gasModel(gasModel_){};
   void ComputeViscousFlux(const Vector &state, const Vector &dqdx, const Vector &dqdy, const Vector &dqdz, DenseMatrix &flux) const;
   void ComputeViscousFlux(const Vector &state, const Vector &dqdx, const Vector &dqdy, DenseMatrix &flux) const;
   void ComputeViscousFlux(const Vector &state, const Vector &dqdx, DenseMatrix &flux) const;
-  std::shared_ptr<const IdealGasModel> gas_model() const { return gasModel; };
+  MFEM_HOST_DEVICE inline real_t pressure(const real_t *state) const
+  {
+    Prandtl::PointStateView S{state};
+    return gasModel.pressure(S);
+  }
+
   /**
    * @brief Compute inviscid flux from conserved state
    *

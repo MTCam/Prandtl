@@ -9,11 +9,11 @@ namespace Prandtl
 
     PointStateView S{U.GetData()};
     // 1. Get states
-    const real_t density = gasModel->mass(S);
-    const Vector momentum(U.GetData()+gasModel->L.eq_mom0, dim); // ρu
-    const real_t energy = gasModel->energy(S);
-    const real_t pressure = gasModel->pressure(S);
-    const real_t ke = gasModel->kinetic_energy_density(S);
+    const real_t density = gasModel.mass(S);
+    const Vector momentum(U.GetData()+gasModel.L.eq_mom0, dim); // ρu
+    const real_t energy = gasModel.energy(S);
+    const real_t pressure = gasModel.pressure(S);
+    const real_t ke = gasModel.kinetic_energy_density(S);
 
     // Check whether the solution is physical only in debug mode
     MFEM_ASSERT(density >= 0, "Negative Density");
@@ -42,7 +42,7 @@ namespace Prandtl
     
     // 3. Compute maximum characteristic speed
     
-    const real_t sound = gasModel->sound_speed(S);
+    const real_t sound = gasModel.sound_speed(S);
     // fluid speed |u|
     const real_t speed = std::sqrt(2.0 * ke / density);
     // max characteristic speed = fluid speed + sound speed
@@ -58,11 +58,11 @@ namespace Prandtl
     PointStateView S{x.GetData()};
 
     // 1. Get states
-    const real_t density = gasModel->mass(S);
-    const Vector momentum(x.GetData()+gasModel->L.eq_mom0, dim);
-    const real_t energy = gasModel->energy(S);
-    const real_t kinetic_energy = gasModel->kinetic_energy_density(S);
-    const real_t pressure = gasModel->pressure(S);
+    const real_t density = gasModel.mass(S);
+    const Vector momentum(x.GetData()+gasModel.L.eq_mom0, dim);
+    const real_t energy = gasModel.energy(S);
+    const real_t kinetic_energy = gasModel.kinetic_energy_density(S);
+    const real_t pressure = gasModel.pressure(S);
 
     // Check whether the solution is physical only in debug mode
     MFEM_ASSERT(density >= 0, "Negative Density");
@@ -83,7 +83,7 @@ namespace Prandtl
     FUdotN(1 + dim) = normal_velocity * (energy + pressure);
     
     // 3. Compute maximum characteristic speed
-    const real_t sound = gasModel->sound_speed(S);
+    const real_t sound = gasModel.sound_speed(S);
     // fluid speed |u|
     const real_t speed = std::fabs(normal_velocity) / std::sqrt(normal*normal);
     // max characteristic speed = fluid speed + sound speed

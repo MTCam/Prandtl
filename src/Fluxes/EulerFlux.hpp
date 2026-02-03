@@ -1,6 +1,9 @@
 #pragma once
 
 // Lifted from MFEM and gently massaged into place in Prandtl
+// We needed to take ownership of the EulerFlux object into
+// Prandtl so that we can make it capable of supporting different
+// gas models.
 #include "mfem.hpp"
 #include "GasModel.hpp"
 
@@ -20,7 +23,7 @@ namespace Prandtl
 class EulerFlux : public FluxFunction
 {
 private:
-  std::shared_ptr<const IdealGasModel> gasModel;
+  const IdealGasModel gasModel;
 public:
   /**
    * @brief Construct a new EulerFlux FluxFunction with given spatial
@@ -29,8 +32,8 @@ public:
    * @param dim spatial dimension
    * @param specific_heat_ratio specific heat ratio, γ
    */
-  explicit EulerFlux(std::shared_ptr<const StateLayout> stateLayout_, std::shared_ptr<const IdealGasModel> gasModel_)
-    : FluxFunction(stateLayout_->nequations(), stateLayout_->dim), gasModel(std::move(gasModel_))
+  explicit EulerFlux(const IdealGasModel &gasModel_)
+    : FluxFunction(gasModel_.num_equations(), gasModel_.dim()), gasModel(gasModel_)
   { }
 
 

@@ -8,9 +8,8 @@ namespace Prandtl
                                                    std::shared_ptr<ParFiniteElementSpace> fes0,
                                                    std::shared_ptr<ParGridFunction> eta,
                                                    std::shared_ptr<ModalBasis> modalBasis,
-                                                   std::shared_ptr<const IdealGasModel> gasModel_)
-  : Indicator(vfes, fes0, eta), modalBasis(modalBasis),
-    gasModel(std::move(gasModel_)),
+                                                   const IdealGasModel &gasModel_)
+  : Indicator(vfes, fes0, eta), modalBasis(modalBasis), gasModel(gasModel_),
     ubdegs(modalBasis->GetPolyDegs())
   {
     rho_p.SetSize(ndofs);
@@ -33,7 +32,7 @@ void PerssonPeraireIndicator::CheckSmoothness(const Vector &x)
         {
             vdof_mat.GetRow(i, state);
             Prandtl::PointStateView S{state.GetData()};
-            rho_p(i) = gasModel->density(S) * gasModel->pressure(S);
+            rho_p(i) = gasModel.density(S) * gasModel.pressure(S);
         }
         modalBasis->ComputeModes(rho_p, modes);
         modesM1 = modesM2 = modes;

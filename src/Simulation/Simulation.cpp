@@ -333,9 +333,9 @@ void Simulation::LoadConfig(const std::string &config_file_path)
     stateLayout = std::make_shared<StateLayout>(dim, num_dofs_scalar);
     gasModel = std::make_shared<IdealGasModel>(*physicsConstants, *stateLayout);
 
-    flux = std::make_shared<NavierStokesFlux>(stateLayout, gasModel);
+    flux = std::make_shared<NavierStokesFlux>(*gasModel);
     if (runtime["numerical_flux"].get<std::string>() == "Chandrashekar"){
-      numericalFlux = std::make_shared<ChandrashekarFlux>(*flux);
+      numericalFlux = std::make_shared<ChandrashekarFlux>(*flux, *gasModel);
     } else {
       std::cerr << "Error: Invalid numerical flux specified." << std::endl;
       return;
@@ -478,15 +478,15 @@ void Simulation::LoadConfig(const std::string &config_file_path)
         alpha_max = 0.5;
     }
     auto integrator =
-      std::make_unique<Prandtl::DGSEMIntegrator>(pmesh, fes0, alpha, liftingScheme, gasModel, *numericalFlux, order+1);
+      std::make_unique<Prandtl::DGSEMIntegrator>(pmesh, fes0, alpha, liftingScheme, *numericalFlux, order+1);
 
     auto indicator =
       std::make_unique<Prandtl::PerssonPeraireIndicator>(vfes, fes0, eta,
                                                          std::make_unique<Prandtl::ModalBasis>(*fec, gtype, order, dim),
-                                                         gasModel);
+                                                         *gasModel);
 
     NS = std::make_unique<DGSEMOperator>(vfes, fes0, pmesh, eta, alpha, grad_u, std::move(integrator),
-                                         std::move(indicator), gasModel, r_gf, alpha_max);
+                                         std::move(indicator), *gasModel, r_gf, alpha_max);
 
     if (runtime["conditions"].contains("boundary_conditions"))
     {
@@ -520,7 +520,7 @@ void Simulation::LoadConfig(const std::string &config_file_path)
 
             if (type == "symmetry" || type == "axis")
             {
-              auto symmetry = std::make_unique<SymmetryBdrFaceIntegrator>(liftingScheme, gasModel, *numericalFlux,
+              auto symmetry = std::make_unique<SymmetryBdrFaceIntegrator>(liftingScheme, *gasModel, *numericalFlux,
                                                                           order + 1, NS->GetTimeRef(), true, false);
               
               NS->AddBdrFaceIntegrator(symmetry.release(), bdr_marker_vector.back());
@@ -535,7 +535,7 @@ void Simulation::LoadConfig(const std::string &config_file_path)
             }
             else if (type == "slip")
             {
-              auto slip = std::make_unique<SlipWallBdrFaceIntegrator>(liftingScheme, gasModel, *numericalFlux,
+              auto slip = std::make_unique<SlipWallBdrFaceIntegrator>(liftingScheme, *gasModel, *numericalFlux,
                                                                       order + 1, NS->GetTimeRef(), true, false);
 
                 NS->AddBdrFaceIntegrator(slip.release(), bdr_marker_vector.back());
@@ -548,7 +548,7 @@ void Simulation::LoadConfig(const std::string &config_file_path)
                     std::string velBC_key = bc_props["velocity"]["vector"].get<std::string>();
                     std::string heatBC_key = bc_props["heat"]["scalar"].get<std::string>();
                     NS->AddBdrFaceIntegrator(
-           new NoSlipAdiabWallBdrFaceIntegrator(liftingScheme, gasModel, *numericalFlux, order + 1, NS->GetTimeRef(),
+           new NoSlipAdiabWallBdrFaceIntegrator(liftingScheme, *gasModel, *numericalFlux, order + 1, NS->GetTimeRef(),
                                                 ConditionFactory::Instance().GetScalarBoundaryCondition(heatBC_key),
                                                 ConditionFactory::Instance().GetVectorBoundaryCondition(velBC_key)), bdr_marker_vector.back());
                 }
@@ -632,7 +632,7 @@ void Simulation::LoadConfig(const std::string &config_file_path)
                     }
 
                     NS->AddBdrFaceIntegrator(
-                                             new NoSlipAdiabWallBdrFaceIntegrator(liftingScheme, gasModel,
+                                             new NoSlipAdiabWallBdrFaceIntegrator(liftingScheme, *gasModel,
                                                                                   *numericalFlux, order + 1, NS->GetTimeRef(),
                                                                                   *heatBC, *velBC, td),
                                              bdr_marker_vector.back());
@@ -649,7 +649,7 @@ void Simulation::LoadConfig(const std::string &config_file_path)
             }
             else if (type == "supersonic-outflow")
             {
-              auto outlet = std::make_unique<SupersonicOutflowBdrFaceIntegrator>(liftingScheme, gasModel,
+              auto outlet = std::make_unique<SupersonicOutflowBdrFaceIntegrator>(liftingScheme, *gasModel,
                                                                                  *numericalFlux, order + 1, NS->GetTimeRef());
 
                 NS->AddBdrFaceIntegrator(outlet.release(), bdr_marker_vector.back());
@@ -661,7 +661,7 @@ void Simulation::LoadConfig(const std::string &config_file_path)
                 {
                 std::string state_key = bc_props["vector"].get<std::string>();
                 auto inlet = std::make_unique<SupersonicInflowBdrFaceIntegrator>(
-                                                              liftingScheme, gasModel, 
+                                                              liftingScheme, *gasModel, 
                                                               *numericalFlux, order + 1, NS->GetTimeRef(),
                                                               ConditionFactory::Instance().GetVectorBoundaryCondition(state_key));
                 NS->AddBdrFaceIntegrator(inlet.release(), bdr_marker_vector.back());
@@ -723,7 +723,7 @@ void Simulation::LoadConfig(const std::string &config_file_path)
                         std::cerr << "Error: Invalid boundary condition signature." << std::endl;
                         return;
                     }
-                    auto inlet = std::make_unique<SupersonicInflowBdrFaceIntegrator>(liftingScheme, gasModel, *numericalFlux,
+                    auto inlet = std::make_unique<SupersonicInflowBdrFaceIntegrator>(liftingScheme, *gasModel, *numericalFlux,
                                                                                      order + 1, NS->GetTimeRef(), *stateBC, td);
 
                     NS->AddBdrFaceIntegrator(inlet.release(), bdr_marker_vector.back());
@@ -735,7 +735,7 @@ void Simulation::LoadConfig(const std::string &config_file_path)
                 if (bc_props.contains("vector"))
                 {
                     std::string state_key = bc_props["vector"].get<std::string>();
-                    NS->AddBdrFaceIntegrator(new SpecifiedStateBdrFaceIntegrator(liftingScheme, gasModel, *numericalFlux,
+                    NS->AddBdrFaceIntegrator(new SpecifiedStateBdrFaceIntegrator(liftingScheme, *gasModel, *numericalFlux,
                                                                                  order + 1, NS->GetTimeRef(),
                         ConditionFactory::Instance().GetVectorBoundaryCondition(state_key)), bdr_marker_vector.back());
                 }
@@ -795,7 +795,7 @@ void Simulation::LoadConfig(const std::string &config_file_path)
                         std::cerr << "Error: Invalid boundary condition signature." << std::endl;
                         return;
                     }
-                    NS->AddBdrFaceIntegrator(new SpecifiedStateBdrFaceIntegrator(liftingScheme, gasModel, *numericalFlux, order + 1, NS->GetTimeRef(),
+                    NS->AddBdrFaceIntegrator(new SpecifiedStateBdrFaceIntegrator(liftingScheme, *gasModel, *numericalFlux, order + 1, NS->GetTimeRef(),
                                                                                  *stateBC, td), bdr_marker_vector.back());
                 }
             }

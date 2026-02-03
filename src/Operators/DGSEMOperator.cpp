@@ -10,14 +10,14 @@ DGSEMOperator::DGSEMOperator(std::shared_ptr<ParFiniteElementSpace> vfes_,
                              std::vector<std::shared_ptr<ParGridFunction> > &grad_u_,
                              std::unique_ptr<DGSEMIntegrator> integrator_,
                              std::unique_ptr<Indicator> indicator_,
-                             std::shared_ptr<const IdealGasModel> gasModel_,
+                             const IdealGasModel &gasModel_,
                              std::shared_ptr<ParGridFunction> r_gf_,
                              const real_t alpha_max, const real_t alpha_min)
                              : TimeDependentOperator(vfes_->GetTrueVSize()),
                              vfes(vfes_), fes0(fes0_), pmesh(pmesh_),
                                eta(eta_), alpha(alpha_), grad_u(grad_u_),
                              integrator(std::move(integrator_)), indicator(std::move(indicator_)),
-                             gasModel(std::move(gasModel_)),
+                             gasModel(gasModel_),
                              num_equations(vfes->GetVDim()), dim(pmesh->SpaceDimension()),
                              order(vfes->GetElementOrder(0)), num_elements(pmesh->GetNE()),
                              Ndofs(vfes->GetFE(0)->GetDof()),
@@ -86,7 +86,7 @@ void DGSEMOperator::ComputeGlobalEntropyVector(const Vector &u, Vector &global_e
         vfes->GetElementVDofs(el, vdof_indices);
         u.GetSubVector(vdof_indices, el_vdofs);
         DenseMatrix vdof_mat(el_vdofs.GetData(), Ndofs, num_equations);
-        Conserv2Entropy(*gasModel, vdof_mat, ent_mat);
+        Conserv2Entropy(gasModel, vdof_mat, ent_mat);
         global_entropy.SetSubVector(vdof_indices, ent_mat.GetData());
     }
 }
@@ -102,7 +102,7 @@ void DGSEMOperator::ComputeGlobalPrimitiveGradVector(const Vector &u, Vector &du
 
         dudx.GetSubVector(vdof_indices, grad_vdofs);
         DenseMatrix grad_mat(grad_vdofs.GetData(), Ndofs, num_equations);
-        EntropyGrad2PrimGrad(*gasModel, vdof_mat, grad_mat);
+        EntropyGrad2PrimGrad(gasModel, vdof_mat, grad_mat);
         dudx.SetSubVector(vdof_indices, grad_mat.GetData());
     }
 }
@@ -118,12 +118,12 @@ void DGSEMOperator::ComputeGlobalPrimitiveGradVector(const Vector &u, Vector &du
 
         dudx.GetSubVector(vdof_indices, grad_vdofs);
         DenseMatrix grad_mat1(grad_vdofs.GetData(), Ndofs, num_equations);
-        EntropyGrad2PrimGrad(*gasModel, vdof_mat, grad_mat1);
+        EntropyGrad2PrimGrad(gasModel, vdof_mat, grad_mat1);
         dudx.SetSubVector(vdof_indices, grad_mat1.GetData());
 
         dudy.GetSubVector(vdof_indices, grad_vdofs);
         DenseMatrix grad_mat2(grad_vdofs.GetData(), Ndofs, num_equations);
-        EntropyGrad2PrimGrad(*gasModel, vdof_mat, grad_mat2);
+        EntropyGrad2PrimGrad(gasModel, vdof_mat, grad_mat2);
         dudy.SetSubVector(vdof_indices, grad_mat2.GetData());    
         
     }
@@ -140,17 +140,17 @@ void DGSEMOperator::ComputeGlobalPrimitiveGradVector(const Vector &u, Vector &du
 
         dudx.GetSubVector(vdof_indices, grad_vdofs);
         DenseMatrix grad_mat1(grad_vdofs.GetData(), Ndofs, num_equations);
-        EntropyGrad2PrimGrad(*gasModel, vdof_mat, grad_mat1);
+        EntropyGrad2PrimGrad(gasModel, vdof_mat, grad_mat1);
         dudx.SetSubVector(vdof_indices, grad_mat1.GetData());
 
         dudy.GetSubVector(vdof_indices, grad_vdofs);
         DenseMatrix grad_mat2(grad_vdofs.GetData(), Ndofs, num_equations);
-        EntropyGrad2PrimGrad(*gasModel, vdof_mat, grad_mat2);
+        EntropyGrad2PrimGrad(gasModel, vdof_mat, grad_mat2);
         dudy.SetSubVector(vdof_indices, grad_mat2.GetData());
 
         dudz.GetSubVector(vdof_indices, grad_vdofs);
         DenseMatrix grad_mat3(grad_vdofs.GetData(), Ndofs, num_equations);
-        EntropyGrad2PrimGrad(*gasModel, vdof_mat, grad_mat3);
+        EntropyGrad2PrimGrad(gasModel, vdof_mat, grad_mat3);
         dudz.SetSubVector(vdof_indices, grad_mat3.GetData());      
     }
 }

@@ -5,7 +5,7 @@ namespace Prandtl
 {
 
 NoSlipIsothWallBdrFaceIntegrator::NoSlipIsothWallBdrFaceIntegrator(std::shared_ptr<LiftingScheme> liftingScheme,
-                                                                   std::shared_ptr<const IdealGasModel> gasModel_,
+                                                                   const IdealGasModel &gasModel_,
                                                                    const NumericalFlux &rsolver, const int Np,
                                                                    const real_t &time,
                                                                    FunctionCoefficient &T_wall_, VectorFunctionCoefficient &V_wall_,
@@ -14,7 +14,7 @@ NoSlipIsothWallBdrFaceIntegrator::NoSlipIsothWallBdrFaceIntegrator(std::shared_p
   T_wall(T_wall_), V_wall(V_wall_) {}
   
 NoSlipIsothWallBdrFaceIntegrator::NoSlipIsothWallBdrFaceIntegrator(std::shared_ptr<LiftingScheme> liftingScheme,
-                                                                   std::shared_ptr<const IdealGasModel> gasModel_,
+                                                                   const IdealGasModel &gasModel_,
                                                                    const NumericalFlux &rsolver, const int Np,
                                                                    const real_t &time, real_t &T, const Vector &V)
 : SlipWallBdrFaceIntegrator(liftingScheme, gasModel_, rsolver, Np, time, true, false),
@@ -51,8 +51,8 @@ void NoSlipIsothWallBdrFaceIntegrator::ComputeBdrFaceLiftingFlux(const Vector &s
         V_wall.Eval(V, Tr, ip);
     }
     Prandtl::PointStateView Se{state1.GetData()};
-    const real_t beta = Prandtl::Flow::isothermal_wall_beta(Se, T, *gasModel);
-    fluxN(mass_eq) = gasModel->mass(Se);
+    const real_t beta = Prandtl::Flow::isothermal_wall_beta(Se, T, gasModel);
+    fluxN(mass_eq) = gasModel.mass(Se);
     fluxN(mom_eq) = V(0) * beta;
     if (dim > 1)
     {

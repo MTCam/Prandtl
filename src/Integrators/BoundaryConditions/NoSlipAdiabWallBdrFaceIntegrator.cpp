@@ -4,7 +4,7 @@ namespace Prandtl
 {
 
 NoSlipAdiabWallBdrFaceIntegrator::NoSlipAdiabWallBdrFaceIntegrator(std::shared_ptr<LiftingScheme> liftingScheme, 
-                                                                   std::shared_ptr<const IdealGasModel> gasModel_,
+                                                                   const IdealGasModel &gasModel_,
                                                                    const NumericalFlux &rsolver, const int Np,
                                                                    const real_t &time, FunctionCoefficient &qn_wall_,
                                                                    VectorFunctionCoefficient &V_wall_,bool t_dependent)
@@ -12,7 +12,7 @@ NoSlipAdiabWallBdrFaceIntegrator::NoSlipAdiabWallBdrFaceIntegrator(std::shared_p
   qn_wall(qn_wall_), V_wall(V_wall_) {}
   
   NoSlipAdiabWallBdrFaceIntegrator::NoSlipAdiabWallBdrFaceIntegrator(std::shared_ptr<LiftingScheme> liftingScheme,
-                                                                   std::shared_ptr<const IdealGasModel> gasModel_,
+                                                                   const IdealGasModel &gasModel_,
                                                                    const NumericalFlux &rsolver, const int Np,
                                                                    const real_t &time, real_t qn, const Vector &V)
   : SlipWallBdrFaceIntegrator(liftingScheme, gasModel_, rsolver, Np, time, true, false),
@@ -81,8 +81,8 @@ void NoSlipAdiabWallBdrFaceIntegrator::ComputeBdrFaceLiftingFlux(const Vector &s
         V_wall.Eval(V, Tr, ip);        
     }
     Prandtl::PointStateView S{state1.GetData()};
-    v = -gasModel->energy(S);
-    fluxN(mass_eq) = gasModel->mass(S);
+    v = -gasModel.energy(S);
+    fluxN(mass_eq) = gasModel.mass(S);
     fluxN(mom_eq) = V(0) * v;
     if (dim > 1)
     {
