@@ -20,6 +20,9 @@ find_package(MPI REQUIRED)
 include_directories(${MPI_CXX_INCLUDE_PATH})
 set(MPI_CXX_LIBRARIES ${MPI_CXX_LIBRARIES})
 
+# Find Mutation++
+find_package(mutation++ REQUIRED)
+
 message(STATUS "MPI CXX COMPILER: ${MPI_CXX_COMPILER}")
 message(STATUS "MPI INCLUDE PATH: ${MPI_INCLUDE_PATH}")
 message(STATUS "MPI LIBRARIES: ${MPI_CXX_LIBRARIES}")
@@ -155,7 +158,7 @@ target_link_directories(${PROJECT_NAME}
     PUBLIC ${CMAKE_SOURCE_DIR}/libs/metis-5.1.0/lib
     )
 
-target_link_libraries(${PROJECT_NAME} mfem HYPRE metis MPI::MPI_CXX)
+target_link_libraries(${PROJECT_NAME} mfem HYPRE metis mutation++::mutation++ MPI::MPI_CXX)
 
 if (BUILD_TESTING)
   include(CTest)
