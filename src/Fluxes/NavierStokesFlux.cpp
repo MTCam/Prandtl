@@ -64,8 +64,7 @@ namespace Prandtl
     PointStateView S{state.GetData()};
     real_t kappa = gasModel.thermal_conductivity(S);
     real_t mu = gasModel.viscosity(S);
-    real_t mu_bulk_loc = gasModel.bulk_viscosity(S);    
-    real_t press = gasModel.pressure(S);
+    real_t mu_bulk_loc = gasModel.bulk_viscosity(S);
     
     const real_t &drdx = dqdx(0);
     const real_t &dudx = dqdx(1);
@@ -82,7 +81,6 @@ namespace Prandtl
     real_t grad_t[2] = {0.0, 0.0};
     real_t vx = gasModel.velocity(S, 0);
     real_t vy = gasModel.velocity(S, 1);
-    real_t rho = gasModel.density(S);
 
     gasModel.grad_temperature(S, grad_rho, grad_p, grad_t);
     real_t div = dudx + dvdy;

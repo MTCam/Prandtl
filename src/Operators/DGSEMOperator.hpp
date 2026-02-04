@@ -22,7 +22,6 @@ private:
     std::shared_ptr<ParGridFunction> eta;
     std::shared_ptr<ParGridFunction> alpha;
     std::vector<std::shared_ptr<ParGridFunction> > grad_u;
-    std::shared_ptr<ParGridFunction> dudx, dudy, dudz;
     std::shared_ptr<ParGridFunction> r_gf;
     std::unique_ptr<DGSEMIntegrator> integrator;
     std::unique_ptr<Indicator> indicator;

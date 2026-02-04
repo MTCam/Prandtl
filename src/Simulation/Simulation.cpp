@@ -438,10 +438,10 @@ void Simulation::LoadConfig(const std::string &config_file_path)
 
         for (int i = 0; i < num_dofs_scalar; ++i)
         {
-          real_t rho = fields.mass(i);
-          real_t rhoU = fields.momentum_x(i);
-          real_t rhoV = fields.momentum_y(i);
-          real_t E = fields.energy(i);
+          real_t rho = fields.mass(*stateLayout, i);
+          real_t rhoU = fields.momentum_x(*stateLayout, i);
+          real_t rhoV = fields.momentum_y(*stateLayout, i);
+          real_t E = fields.energy(*stateLayout, i);
           real_t z = zr[i].first;
           real_t r = zr[i].second;
 

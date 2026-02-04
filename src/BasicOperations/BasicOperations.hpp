@@ -65,7 +65,6 @@ namespace Prandtl
   inline void Conserv2Entropy(const GasModelT &gasModel, const DenseMatrix &vdof_mat, DenseMatrix &ent_mat)
   {
     ent_mat = 0.0;
-    real_t s, beta;
     Vector state, ent_state(vdof_mat.Width());
     for (int d = 0; d < vdof_mat.Height(); d++)
       {
