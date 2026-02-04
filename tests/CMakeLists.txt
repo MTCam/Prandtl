@@ -33,6 +33,7 @@ target_include_directories(gas_tests
     PUBLIC ${PROJECT_SOURCE_DIR}/libs/hypre/src/hypre/include
     PUBLIC ${PROJECT_SOURCE_DIR}/libs/metis-5.1.0/include
     ${PROJECT_SOURCE_DIR}/src/Physics
+    ${PROJECT_SOURCE_DIR}/src/Device
 )
 
 # Propagate SUTHERLAND compile definition to gas_tests if enabled
@@ -62,6 +63,7 @@ target_include_directories(state_tests
     PUBLIC ${PROJECT_SOURCE_DIR}/libs/hypre/src/hypre/include
     PUBLIC ${PROJECT_SOURCE_DIR}/libs/metis-5.1.0/include
     ${PROJECT_SOURCE_DIR}/src/Physics
+    ${PROJECT_SOURCE_DIR}/src/Device
 )
 
 target_link_directories(state_tests
