@@ -41,7 +41,7 @@ TEST(IdealGas_EOS)
     std::shared_ptr<PhysicsConstants> phys =
       std::make_shared<PhysicsConstants>(gamma, Pr, R_gas, mu);
 
-    IdealSingleGasEOS eos{phys};
+    IdealSingleGasEOS eos;
 
     const real_t tol = 1.0e-12;
 
@@ -73,17 +73,17 @@ TEST(IdealGas_EOS)
         // --- Case 1: velocity = u1 -----------------------------------------
         fill_single_dof_state(layout, U, dim, rho, u1, e_int_density);
 
-        DofStateView S1(U.data(), &layout, 0);
+        DofStateView S1(U.data(), 0);
 
-        const real_t p1 = eos.pressure(S1);
+        const real_t p1 = eos.pressure(*phys, layout, S1);
         EXPECT_CLOSE(p1, 1.0, tol);
 
         const real_t T1_expected = p1 / (rho * R_gas);
-        const real_t T1 = eos.temperature(S1);
+        const real_t T1 = eos.temperature(*phys, layout, S1);
         EXPECT_CLOSE(T1, T1_expected, tol);
 
         const real_t a1_expected = std::sqrt(gamma * p1 / rho);
-        const real_t a1 = eos.sound_speed(S1);
+        const real_t a1 = eos.sound_speed(*phys, layout, S1);
         EXPECT_CLOSE(a1, a1_expected, tol);
 
         // --- Case 2: different velocity, same e_int_density ----------------
@@ -91,17 +91,17 @@ TEST(IdealGas_EOS)
 
         fill_single_dof_state(layout, U, dim, rho, u2, e_int_density);
 
-        DofStateView S2(U.data(), &layout, 0);
+        DofStateView S2(U.data(), 0);
 
-        const real_t p2 = eos.pressure(S2);
+        const real_t p2 = eos.pressure(*phys, layout, S2);
         EXPECT_CLOSE(p2, 1.0, tol);  // should be unchanged
 
         const real_t T2_expected = p2 / (rho * R_gas);
-        const real_t T2 = eos.temperature(S2);
+        const real_t T2 = eos.temperature(*phys, layout, S2);
         EXPECT_CLOSE(T2, T2_expected, tol);
 
         const real_t a2_expected = std::sqrt(gamma * p2 / rho);
-        const real_t a2 = eos.sound_speed(S2);
+        const real_t a2 = eos.sound_speed(*phys, layout, S2);
         EXPECT_CLOSE(a2, a2_expected, tol);
     }
 
@@ -128,7 +128,7 @@ TEST(IdealGas_EOS_GradTemperature)
     std::shared_ptr<PhysicsConstants> phys =
       std::make_shared<PhysicsConstants>(gamma, Pr, R_gas, mu);
 
-    IdealSingleGasEOS eos{phys};
+    IdealSingleGasEOS eos;
 
     const real_t tol = 1.0e-12;
 
@@ -157,10 +157,10 @@ TEST(IdealGas_EOS_GradTemperature)
         std::vector<real_t> U(num_eq * ndofs);
         fill_single_dof_state(layout, U, dim, rho, u, e_int_density);
 
-        DofStateView S(U.data(), &layout, 0);
+        DofStateView S(U.data(), 0);
 
         // Sanity: ensure EOS returns the intended p, so T is consistent.
-        const real_t p_check = eos.pressure(S);
+        const real_t p_check = eos.pressure(*phys, layout, S);
         EXPECT_CLOSE(p_check, p, tol);
 
         // --- Case A: grad(rho)=0, grad(p)!=0 -------------------------------
@@ -171,7 +171,7 @@ TEST(IdealGas_EOS_GradTemperature)
             // Initialize with sentinels so we detect if EOS overwrites.
             real_t grad_t[3]   = {99.0, 99.0, 99.0};
 
-            eos.grad_temperature(dim, S, grad_rho, grad_p, grad_t);
+            eos.grad_temperature(*phys, layout, S, grad_rho, grad_p, grad_t);
 
             for (int d = 0; d < dim; ++d)
             {
@@ -191,7 +191,7 @@ TEST(IdealGas_EOS_GradTemperature)
 
             real_t grad_t[3]   = {99.0, 99.0, 99.0};
 
-            eos.grad_temperature(dim, S, grad_rho, grad_p, grad_t);
+            eos.grad_temperature(*phys, layout, S, grad_rho, grad_p, grad_t);
 
             for (int d = 0; d < dim; ++d)
             {
@@ -222,7 +222,7 @@ TEST(IdealGas_EOS_HelperFunctions)
     std::shared_ptr<PhysicsConstants> phys =
       std::make_shared<PhysicsConstants>(gamma, Pr, R_gas, mu);
 
-    IdealSingleGasEOS eos{phys};
+    IdealSingleGasEOS eos;
 
     const real_t tol = 1.0e-12;
 
@@ -240,7 +240,7 @@ TEST(IdealGas_EOS_HelperFunctions)
         std::vector<real_t> U(num_eq * ndofs);
         fill_single_dof_state(layout, U, dim, rho, u, e_int_density);
 
-        DofStateView S(U.data(), &layout, 0);
+        DofStateView S(U.data(), 0);
 
         // Compute expected values analytically.
         real_t u2 = 0.0;
@@ -259,18 +259,172 @@ TEST(IdealGas_EOS_HelperFunctions)
 
         // ---- EOS helper checks ------------------------------------------------
 
-        EXPECT_CLOSE(eos.momentum_sq(S), mom_sq, tol);
-        EXPECT_CLOSE(eos.kinetic_energy_density(S), ke_expected, tol);
-        EXPECT_CLOSE(eos.internal_energy_density(S), ie_expected, tol);
-        EXPECT_CLOSE(eos.specific_internal_energy(S), sie_expected, tol);
-        EXPECT_CLOSE(eos.cp(S), cp_expected, tol);
+        EXPECT_CLOSE(eos.momentum_sq(*phys, layout, S), mom_sq, tol);
+        EXPECT_CLOSE(eos.kinetic_energy_density(*phys, layout, S), ke_expected, tol);
+        EXPECT_CLOSE(eos.internal_energy_density(*phys, layout, S), ie_expected, tol);
+        EXPECT_CLOSE(eos.specific_internal_energy(*phys, layout, S), sie_expected, tol);
+        EXPECT_CLOSE(eos.cp(*phys, layout, S), cp_expected, tol);
 
         // EOS velocity helper
         real_t u_out[3] = { 99.0, 99.0, 99.0 };
-        eos.velocity(S, u_out);
+        eos.velocity(*phys, layout, S, u_out);
         for (int d = 0; d < dim; ++d)
         {
             EXPECT_CLOSE(u_out[d], u[d], tol);
+        }
+    }
+
+    return 0;
+}
+
+// -----------------------------------------------------------------------------
+// EOS test: entropy scalar for ideal gas
+//
+// entropy(S) = log(p) - gamma*log(rho)
+//
+// We choose rho, u, and e_int_density to realize a prescribed p via
+//   p = (gamma-1) * e_int_density
+// and then verify entropy is independent of velocity.
+// -----------------------------------------------------------------------------
+TEST(IdealGas_EOS_Entropy)
+{
+    const real_t gamma = 1.4;
+    const real_t Pr    = 0.72;
+    const real_t R_gas = 287.0;
+    const real_t mu    = 1.8e-5;
+
+    std::shared_ptr<PhysicsConstants> phys =
+      std::make_shared<PhysicsConstants>(gamma, Pr, R_gas, mu);
+
+    IdealSingleGasEOS eos;
+
+    const real_t tol = 1.0e-12;
+
+    // Prescribed thermodynamic values
+    const real_t rho = 2.5;
+    const real_t p   = 3.75;
+
+    // Choose internal energy density so EOS returns exactly p independent of u:
+    //   p = (gamma-1) * e_int_density
+    const real_t e_int_density = p / (gamma - 1.0);
+
+    const real_t u1[3] = {10.0, -3.0, 5.0};
+    const real_t u2[3] = {-4.0, 7.0, 1.0};
+
+    for (int dim = 1; dim <= 3; ++dim)
+    {
+        const int ndofs = 1;
+        StateLayout layout(dim, ndofs);  // no scalars
+        const int num_eq = layout.eq_energy + 1;
+
+        std::vector<real_t> U(num_eq * ndofs);
+
+        // Case 1: u1
+        fill_single_dof_state(layout, U, dim, rho, u1, e_int_density);
+        DofStateView S1(U.data(), 0);
+
+        const real_t p1 = eos.pressure(*phys, layout, S1);
+        EXPECT_CLOSE(p1, p, tol);
+
+        const real_t s_expected = std::log(p) - gamma * std::log(rho);
+        const real_t s1 = eos.entropy(*phys, layout, S1);
+        EXPECT_CLOSE(s1, s_expected, tol);
+
+        // Case 2: u2 (same rho, same e_int_density => same p)
+        fill_single_dof_state(layout, U, dim, rho, u2, e_int_density);
+        DofStateView S2(U.data(), 0);
+
+        const real_t p2 = eos.pressure(*phys, layout, S2);
+        EXPECT_CLOSE(p2, p, tol);
+
+        const real_t s2 = eos.entropy(*phys, layout, S2);
+        EXPECT_CLOSE(s2, s_expected, tol);  // must be velocity-independent
+    }
+
+    return 0;
+}
+
+// -----------------------------------------------------------------------------
+// EOS test: entropy_state (entropy variables) for ideal gas
+//
+// Validates the mapping used in your EOS::entropy_state implementation:
+//
+//   s      = log(p) - gamma*log(rho)
+//   beta   = rho/p
+//   v2o2   = (0.5*|u|^2)
+//   w_rho  = (gamma - s)/(gamma-1) - beta*v2o2
+//   w_mom  = beta * u
+//   w_E    = -beta
+//
+// And (for now) verifies scalars are set to 0.0 per your TODO-stub.
+// -----------------------------------------------------------------------------
+TEST(IdealGas_EOS_EntropyState)
+{
+    const real_t gamma = 1.4;
+    const real_t Pr    = 0.72;
+    const real_t R_gas = 287.0;
+    const real_t mu    = 1.8e-5;
+
+    std::shared_ptr<PhysicsConstants> phys =
+      std::make_shared<PhysicsConstants>(gamma, Pr, R_gas, mu);
+
+    IdealSingleGasEOS eos;
+
+    const real_t tol = 1.0e-12;
+
+    const real_t rho = 1.7;
+    const real_t p   = 2.25;
+    const real_t e_int_density = p / (gamma - 1.0);
+
+    const real_t u[3] = {3.0, -4.0, 2.0};
+
+    for (int dim = 1; dim <= 3; ++dim)
+    {
+        const int ndofs = 1;
+        const int nscalars = 2;                 // exercise scalar plumbing
+        StateLayout layout(dim, ndofs, nscalars);
+        const int num_eq = dim + 2 + nscalars;
+
+        // Input conservative state (single DOF, equation-blocked)
+        std::vector<real_t> U(num_eq * ndofs, 0.0);
+        fill_single_dof_state(layout, U, dim, rho, u, e_int_density);
+
+        // Add nonzero scalars to ensure entropy_state currently ignores them
+        // and overwrites outputs to 0.0 as intended.
+        for (int k = 0; k < nscalars; ++k)
+        {
+            U[layout.index(layout.eq_scalar0 + k, 0)] = 10.0 + k;
+        }
+
+        DofStateView S(U.data(), 0);
+
+        // Output buffer for entropy variables (single DOF)
+        std::vector<real_t> W(num_eq * ndofs, 777.0); // sentinel fill
+        PointStateViewRW E(W.data());
+
+        eos.entropy_state(*phys, layout, S, E);
+
+        // Expected values
+        const real_t beta = rho / p;
+        real_t u2 = 0.0;
+        for (int d = 0; d < dim; ++d) { u2 += u[d]*u[d]; }
+        const real_t v2o2 = 0.5 * u2;
+
+        const real_t s = std::log(p) - gamma * std::log(rho);
+        const real_t w_rho = (gamma - s) / (gamma - 1.0) - beta * v2o2;
+
+        EXPECT_CLOSE(E.mass(layout), w_rho, tol);
+
+        for (int d = 0; d < dim; ++d)
+        {
+          EXPECT_CLOSE(E.momentum(layout, d), beta * u[d], tol);
+        }
+
+        EXPECT_CLOSE(E.energy(layout), -beta, tol);
+
+        for (int k = 0; k < nscalars; ++k)
+        {
+          EXPECT_CLOSE(E.scalar(layout, k), 0.0, tol);
         }
     }
 

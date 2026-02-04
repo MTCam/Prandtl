@@ -1,39 +1,52 @@
 #pragma once
 
 #include "mfem.hpp"
+#include "GasModel.hpp"
 
 namespace Prandtl
 {
 
 using namespace mfem;
 
-class NavierStokesFlux : public EulerFlux
+class NavierStokesFlux : public FluxFunction
 {
 private:
-    mutable real_t div, cv_dTdx, cv_dTdy, cv_dTdz, lambda, mu;
-    mutable Vector prim;
-    const real_t gamma, gammaM1, gammaM1Inverse;
-    const real_t PrInverse;
-    const real_t mu_bulk, mu0, R_gas, Ts, T0, T0pTs;
-
+  const IdealGasModel gasModel;
 public:
-    NavierStokesFlux(const int dim, real_t gamma_, real_t Pr, real_t mu_, real_t mu0, real_t mu_bulk, real_t R_gas, real_t Ts, real_t T0)
-        : EulerFlux(dim, gamma_), gamma(gamma_), gammaM1(gamma - 1.0), gammaM1Inverse(1.0 / gammaM1), PrInverse(1.0 / Pr),
-          mu(mu_), mu0(mu0), mu_bulk(mu_bulk), R_gas(R_gas), Ts(Ts), T0(T0), T0pTs(T0 + Ts)
-    {
-        prim.SetSize(dim + 2);
-    }
-    real_t ComputeInviscidFlux(const Vector &state, ElementTransformation &Tr, DenseMatrix &flux) const;
-    void ComputeViscousFlux(const Vector &state, const Vector &dqdx, const Vector &dqdy, const Vector &dqdz, DenseMatrix &flux) const;
-    void ComputeViscousFlux(const Vector &state, const Vector &dqdx, const Vector &dqdy, DenseMatrix &flux) const;
-    void ComputeViscousFlux(const Vector &state, const Vector &dqdx, DenseMatrix &flux) const;
-    real_t ComputeInviscidFluxDotN(const Vector &x, const Vector &nor, FaceElementTransformations &Tr, Vector &fluxN) const;
+  explicit NavierStokesFlux(const IdealGasModel &gasModel_)
+    : FluxFunction(gasModel_.num_equations(), gasModel_.dim()), gasModel(gasModel_){};
+  void ComputeViscousFlux(const Vector &state, const Vector &dqdx, const Vector &dqdy, const Vector &dqdz, DenseMatrix &flux) const;
+  void ComputeViscousFlux(const Vector &state, const Vector &dqdx, const Vector &dqdy, DenseMatrix &flux) const;
+  void ComputeViscousFlux(const Vector &state, const Vector &dqdx, DenseMatrix &flux) const;
+  MFEM_HOST_DEVICE inline real_t pressure(const real_t *state) const
+  {
+    Prandtl::PointStateView S{state};
+    return gasModel.pressure(S);
+  }
 
-    inline real_t ComputeViscosity(real_t rho, real_t p)
-    {
-        real_t T = p / (rho * R_gas);
-        return mu0 * T0pTs / (T + Ts) * (T / T0) * std::sqrt(T / T0);
-    }
+  /**
+   * @brief Compute inviscid flux from conserved state
+   *
+   * @param state conserved state at current integration point
+   * @param Tr current element transformation with the integration point
+   * @param flux inviscid flux (ex, ideal single gas: F(ρ, ρu, E) = [ρuᵀ; ρuuᵀ + pI; uᵀ(E + p)])
+   * @return real_t maximum characteristic speed, c + |u| (c = speed of sound)
+   */
+  real_t ComputeFlux(const Vector &state, ElementTransformation &Tr,
+                     DenseMatrix &flux) const override;
+  
+  /**
+   * @brief Compute inviscid flux along normal
+   *
+   * @param x conserved state at current integration point
+   * @param normal normal vector, usually not a unit vector
+   * @param Tr current element transformation with the integration point
+   * @param fluxN inviscid flux dotted with normal
+   * @return real_t maximum characteristic speed, c + |u.n|
+   */
+  real_t ComputeFluxDotN(const Vector &x, const Vector &normal,
+                         FaceElementTransformations &Tr,
+                         Vector &fluxN) const override;
 };
-
+  
 }
