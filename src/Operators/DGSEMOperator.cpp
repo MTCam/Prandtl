@@ -7,23 +7,21 @@ DGSEMOperator::DGSEMOperator(std::shared_ptr<ParFiniteElementSpace> vfes_,
                              std::shared_ptr<ParMesh> pmesh_,
                              std::shared_ptr<ParGridFunction> eta_,
                              std::shared_ptr<ParGridFunction> alpha_,
-                             std::shared_ptr<ParGridFunction> dudx_,
-                             std::shared_ptr<ParGridFunction> dudy_,
-                             std::shared_ptr<ParGridFunction> dudz_,
+                             std::vector<std::shared_ptr<ParGridFunction> > &grad_u_,
                              std::unique_ptr<DGSEMIntegrator> integrator_,
                              std::unique_ptr<Indicator> indicator_,
-                             const real_t gamma_,
+                             const IdealGasModel &gasModel_,
                              std::shared_ptr<ParGridFunction> r_gf_,
                              const real_t alpha_max, const real_t alpha_min)
                              : TimeDependentOperator(vfes_->GetTrueVSize()),
                              vfes(vfes_), fes0(fes0_), pmesh(pmesh_),
-                             eta(eta_), alpha(alpha_), dudx(dudx_), dudy(dudy_), dudz(dudz_),
+                               eta(eta_), alpha(alpha_), grad_u(grad_u_),
                              integrator(std::move(integrator_)), indicator(std::move(indicator_)),
+                             gasModel(gasModel_),
                              num_equations(vfes->GetVDim()), dim(pmesh->SpaceDimension()),
                              order(vfes->GetElementOrder(0)), num_elements(pmesh->GetNE()),
                              Ndofs(vfes->GetFE(0)->GetDof()),
                              modalThreshold(0.5 * std::pow(10.0, -1.8 * std::pow(order, 0.25))),
-                             gamma(gamma_), gammaM1(gamma - 1.0), gammaM1Inverse(1.0 / gammaM1),
                              r_gf(r_gf_), alpha_max(alpha_max), alpha_min(alpha_min),
                              num_dofs_scalar(vfes_->GetTrueVSize()/vfes_->GetVDim())
                              #ifdef AXISYMMETRIC
@@ -88,7 +86,7 @@ void DGSEMOperator::ComputeGlobalEntropyVector(const Vector &u, Vector &global_e
         vfes->GetElementVDofs(el, vdof_indices);
         u.GetSubVector(vdof_indices, el_vdofs);
         DenseMatrix vdof_mat(el_vdofs.GetData(), Ndofs, num_equations);
-        Conserv2Entropy(vdof_mat, ent_mat, gamma, gammaM1, gammaM1Inverse);
+        Conserv2Entropy(gasModel, vdof_mat, ent_mat);
         global_entropy.SetSubVector(vdof_indices, ent_mat.GetData());
     }
 }
@@ -104,7 +102,7 @@ void DGSEMOperator::ComputeGlobalPrimitiveGradVector(const Vector &u, Vector &du
 
         dudx.GetSubVector(vdof_indices, grad_vdofs);
         DenseMatrix grad_mat(grad_vdofs.GetData(), Ndofs, num_equations);
-        EntropyGrad2PrimGrad(vdof_mat, grad_mat, gammaM1, gammaM1Inverse);
+        EntropyGrad2PrimGrad(gasModel, vdof_mat, grad_mat);
         dudx.SetSubVector(vdof_indices, grad_mat.GetData());
     }
 }
@@ -120,12 +118,12 @@ void DGSEMOperator::ComputeGlobalPrimitiveGradVector(const Vector &u, Vector &du
 
         dudx.GetSubVector(vdof_indices, grad_vdofs);
         DenseMatrix grad_mat1(grad_vdofs.GetData(), Ndofs, num_equations);
-        EntropyGrad2PrimGrad(vdof_mat, grad_mat1, gammaM1, gammaM1Inverse);
+        EntropyGrad2PrimGrad(gasModel, vdof_mat, grad_mat1);
         dudx.SetSubVector(vdof_indices, grad_mat1.GetData());
 
         dudy.GetSubVector(vdof_indices, grad_vdofs);
         DenseMatrix grad_mat2(grad_vdofs.GetData(), Ndofs, num_equations);
-        EntropyGrad2PrimGrad(vdof_mat, grad_mat2, gammaM1, gammaM1Inverse);
+        EntropyGrad2PrimGrad(gasModel, vdof_mat, grad_mat2);
         dudy.SetSubVector(vdof_indices, grad_mat2.GetData());    
         
     }
@@ -142,19 +140,18 @@ void DGSEMOperator::ComputeGlobalPrimitiveGradVector(const Vector &u, Vector &du
 
         dudx.GetSubVector(vdof_indices, grad_vdofs);
         DenseMatrix grad_mat1(grad_vdofs.GetData(), Ndofs, num_equations);
-        EntropyGrad2PrimGrad(vdof_mat, grad_mat1, gammaM1, gammaM1Inverse);
+        EntropyGrad2PrimGrad(gasModel, vdof_mat, grad_mat1);
         dudx.SetSubVector(vdof_indices, grad_mat1.GetData());
 
         dudy.GetSubVector(vdof_indices, grad_vdofs);
         DenseMatrix grad_mat2(grad_vdofs.GetData(), Ndofs, num_equations);
-        EntropyGrad2PrimGrad(vdof_mat, grad_mat2, gammaM1, gammaM1Inverse);
+        EntropyGrad2PrimGrad(gasModel, vdof_mat, grad_mat2);
         dudy.SetSubVector(vdof_indices, grad_mat2.GetData());
 
         dudz.GetSubVector(vdof_indices, grad_vdofs);
         DenseMatrix grad_mat3(grad_vdofs.GetData(), Ndofs, num_equations);
-        EntropyGrad2PrimGrad(vdof_mat, grad_mat3, gammaM1, gammaM1Inverse);
+        EntropyGrad2PrimGrad(gasModel, vdof_mat, grad_mat3);
         dudz.SetSubVector(vdof_indices, grad_mat3.GetData());      
-    
     }
 }
 
@@ -550,24 +547,24 @@ void DGSEMOperator::Mult(const Vector &u, Vector &dudt) const
       
 #ifdef PARABOLIC
     ComputeGlobalEntropyVector(Ustate, global_entropy);
-    
+
     if (dim == 1)
     {
-        nonlinearForm->MultLifting(global_entropy, *dudx);
-        ComputeGlobalPrimitiveGradVector(Ustate, *dudx);
-        nonlinearForm->Mult(Ustate, *dudx, dudt);
+        nonlinearForm->MultLifting(global_entropy, *grad_u[0]);
+        ComputeGlobalPrimitiveGradVector(Ustate, *grad_u[0]);
+        nonlinearForm->Mult(Ustate, *grad_u[0], dudt);
     }
     else if (dim == 2)
     {
-        nonlinearForm->MultLifting(global_entropy, *dudx, *dudy);
-        ComputeGlobalPrimitiveGradVector(Ustate, *dudx, *dudy);
-        nonlinearForm->Mult(Ustate, *dudx, *dudy, dudt);    
+      nonlinearForm->MultLifting(global_entropy, *grad_u[0], *grad_u[1]);
+      ComputeGlobalPrimitiveGradVector(Ustate, *grad_u[0], *grad_u[1]);
+      nonlinearForm->Mult(Ustate, *grad_u[0], *grad_u[1], dudt);    
     }
     else
     {
-        nonlinearForm->MultLifting(global_entropy, *dudx, *dudy, *dudz);
-        ComputeGlobalPrimitiveGradVector(Ustate, *dudx, *dudy, *dudz);
-        nonlinearForm->Mult(Ustate, *dudx, *dudy, *dudz, dudt);
+        nonlinearForm->MultLifting(global_entropy, *grad_u[0], *grad_u[1], *grad_u[2]);
+        ComputeGlobalPrimitiveGradVector(Ustate, *grad_u[0], *grad_u[1], *grad_u[2]);
+        nonlinearForm->Mult(Ustate, *grad_u[0], *grad_u[1], *grad_u[2], dudt);
     }
 
     #ifdef AXISYMMETRIC

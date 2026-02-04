@@ -4,19 +4,22 @@ namespace Prandtl
 {
 
 // Constructor for SpecifiedStateBdrfaceIntegrator with a variable (space- and/or time-dependent) conservative state
-SpecifiedStateBdrFaceIntegrator::SpecifiedStateBdrFaceIntegrator(
-    std::shared_ptr<LiftingScheme> liftingScheme, const NumericalFlux &rsolver, const int Np,
-    const real_t &time, real_t gamma, VectorFunctionCoefficient &conserv_state_fun_, bool t_dependent)
-    : BdrFaceIntegrator(liftingScheme, rsolver, Np, time, gamma, false, t_dependent),
-    conserv_state_fun(conserv_state_fun_) {}
+SpecifiedStateBdrFaceIntegrator::SpecifiedStateBdrFaceIntegrator(std::shared_ptr<LiftingScheme> liftingScheme,
+                                                                 const IdealGasModel &gasModel_,
+                                                                 const NumericalFlux &rsolver, const int Np,
+                                                                 const real_t &time,
+                                                                 VectorFunctionCoefficient &conserv_state_fun_, bool t_dependent)
+: BdrFaceIntegrator(liftingScheme, gasModel_, rsolver, Np, time, false, t_dependent),
+  conserv_state_fun(conserv_state_fun_) {}
 
 
 // Constructor for SpecifiedStateBdrfaceIntegrator with a constant conservative state
-SpecifiedStateBdrFaceIntegrator::SpecifiedStateBdrFaceIntegrator(
-    std::shared_ptr<LiftingScheme> liftingScheme, const NumericalFlux &rsolver, int Np,
-    const real_t &time, real_t gamma, const Vector &conserv_state)
-    : BdrFaceIntegrator(liftingScheme, rsolver, Np, time, gamma, true, false), 
-    const_state(conserv_state), conserv_state_fun(num_equations, std::function<void(const Vector&, Vector&)>()) {}
+SpecifiedStateBdrFaceIntegrator::SpecifiedStateBdrFaceIntegrator(std::shared_ptr<LiftingScheme> liftingScheme,
+                                                                 const IdealGasModel &gasModel_,
+                                                                 const NumericalFlux &rsolver, int Np,
+                                                                 const real_t &time, const Vector &conserv_state)
+: BdrFaceIntegrator(liftingScheme, gasModel_, rsolver, Np, time, true, false), 
+  const_state(conserv_state), conserv_state_fun(num_equations, std::function<void(const Vector&, Vector&)>()) {}
 
 void SpecifiedStateBdrFaceIntegrator::ComputeOuterInviscidState(const Vector &state1, Vector &state2,
     FaceElementTransformations &Tr, const IntegrationPoint &ip)

@@ -5,14 +5,18 @@
 namespace Prandtl
 {
 
-bool debug_boundary = false;
-BdrFaceIntegrator::BdrFaceIntegrator(std::shared_ptr<LiftingScheme> liftingScheme_, const NumericalFlux &rsolver, int Np, const real_t &time, real_t gamma_, bool constant, bool t_dependent)
-   : NonlinearFormIntegrator(), liftingScheme(liftingScheme_),
-     rsolver(rsolver), fluxFunction(rsolver.GetFluxFunction()),
-     Np_x(Np), GLIntRules(0, Quadrature1D::GaussLobatto), 
-     num_equations(fluxFunction.num_equations), dim(fluxFunction.dim),
-     time(time), gamma(gamma_), gammaM1(gamma - 1.0), gammaM1Inverse(1.0 / gammaM1),
-     constant(constant), t_dependent(t_dependent)
+constexpr bool debug_boundary = false;
+
+  BdrFaceIntegrator::BdrFaceIntegrator(std::shared_ptr<LiftingScheme> liftingScheme_, const IdealGasModel &gasModel_,
+                                       const NumericalFlux &rsolver, int Np, const real_t &time, bool constant, bool t_dependent)
+    : NonlinearFormIntegrator(), gasModel(gasModel_),
+      liftingScheme(liftingScheme_),
+      rsolver(rsolver), fluxFunction(rsolver.GetFluxFunction()),
+      Np_x(Np), GLIntRules(0, Quadrature1D::GaussLobatto), 
+      num_equations(fluxFunction.num_equations), dim(fluxFunction.dim),
+      mass_eq(gasModel.L.eq_mass), mom_eq(gasModel.L.eq_mom[0]),
+      en_eq(gasModel.L.eq_energy), sc_eq(gasModel.L.eq_scalar0),
+      time(time), constant(constant), t_dependent(t_dependent)
 {
    const IntegrationRule *ir_vol;
 
@@ -58,7 +62,8 @@ BdrFaceIntegrator::BdrFaceIntegrator(std::shared_ptr<LiftingScheme> liftingSchem
    dU_face1.SetSize(num_equations);
 }
 
-void BdrFaceIntegrator::AssembleFaceVector(const FiniteElement &el1, const FiniteElement &el2, FaceElementTransformations &Tr, const Vector &el_u, Vector &el_dudt)
+void BdrFaceIntegrator::AssembleFaceVector(const FiniteElement &el1, const FiniteElement &el2, FaceElementTransformations &Tr,
+                                           const Vector &el_u, Vector &el_dudt)
 {
    if (debug_boundary) // && (time >= 2.99999 || time == 0))
    {
@@ -174,7 +179,9 @@ void BdrFaceIntegrator::AssembleFaceVector(const FiniteElement &el1, const Finit
    }   
 }
 
-void BdrFaceIntegrator::AssembleFaceVector(const FiniteElement &el1, const FiniteElement &el2, FaceElementTransformations &Tr, const Vector &el_u, const Vector &el_dudx, const Vector &el_dudy, Vector &el_dudt)
+void BdrFaceIntegrator::AssembleFaceVector(const FiniteElement &el1, const FiniteElement &el2,
+                                           FaceElementTransformations &Tr, const Vector &el_u,
+                                           const Vector &el_dudx, const Vector &el_dudy, Vector &el_dudt)
 {
    el_dudt.SetSize(dof1 * num_equations);
    el_dudt = 0.0;
@@ -208,7 +215,8 @@ void BdrFaceIntegrator::AssembleFaceVector(const FiniteElement &el1, const Finit
    }   
 }
 
-void BdrFaceIntegrator::AssembleFaceVector(const FiniteElement &el1, const FiniteElement &el2, FaceElementTransformations &Tr, const Vector &el_u, const Vector &el_dudx, Vector &el_dudt)
+void BdrFaceIntegrator::AssembleFaceVector(const FiniteElement &el1, const FiniteElement &el2, FaceElementTransformations &Tr,
+                                           const Vector &el_u, const Vector &el_dudx, Vector &el_dudt)
 {
    const int dof1 = el1.GetDof();
 
@@ -244,12 +252,14 @@ void BdrFaceIntegrator::AssembleFaceVector(const FiniteElement &el1, const Finit
    }   
 }
 
-void BdrFaceIntegrator::ComputeOuterInviscidState(const Vector &state1, Vector &state2, FaceElementTransformations &Tr, const IntegrationPoint &ip)
+void BdrFaceIntegrator::ComputeOuterInviscidState(const Vector &state1, Vector &state2, FaceElementTransformations &Tr,
+                                                  const IntegrationPoint &ip)
 {
    mfem_error("BdrFaceIntegrator::ComputeOuterInviscidState() is not overridden!");
 }
 
-real_t BdrFaceIntegrator::ComputeBdrFaceInviscidFlux(const Vector &state1, Vector &state2, Vector &fluxN, const Vector &nor, FaceElementTransformations &Tr, const IntegrationPoint &ip)
+real_t BdrFaceIntegrator::ComputeBdrFaceInviscidFlux(const Vector &state1, Vector &state2, Vector &fluxN, const Vector &nor,
+                                                     FaceElementTransformations &Tr, const IntegrationPoint &ip)
 {
    ComputeOuterInviscidState(state1, state2, Tr, ip);
    // Compute F(u+, x) and F(u-, x) with maximum characteristic speed
@@ -257,28 +267,35 @@ real_t BdrFaceIntegrator::ComputeBdrFaceInviscidFlux(const Vector &state1, Vecto
    return rsolver.ComputeFaceFlux(state1, state2, nor, fluxN);
 }
 
-void BdrFaceIntegrator::ComputeBdrFaceViscousFlux(const Vector &state1, const Vector &state2, const Vector &dqdx, const Vector &dqdy, const Vector &dqdz, Vector &fluxN, const Vector &nor, FaceElementTransformations &Tr, const IntegrationPoint &ip)
+void BdrFaceIntegrator::ComputeBdrFaceViscousFlux(const Vector &state1, const Vector &state2, const Vector &dqdx,
+                                                  const Vector &dqdy, const Vector &dqdz, Vector &fluxN, const Vector &nor,
+                                                  FaceElementTransformations &Tr, const IntegrationPoint &ip)
 {
    mfem_error("BdrFaceIntegrator::ComputeBdrFaceViscousFlux() is not overridden!");
 }
 
-void BdrFaceIntegrator::ComputeBdrFaceViscousFlux(const Vector &state1, const Vector &state2, const Vector &dqdx, const Vector &dqdy, Vector &fluxN, const Vector &nor, FaceElementTransformations &Tr, const IntegrationPoint &ip)
+void BdrFaceIntegrator::ComputeBdrFaceViscousFlux(const Vector &state1, const Vector &state2, const Vector &dqdx,
+                                                  const Vector &dqdy, Vector &fluxN, const Vector &nor,
+                                                  FaceElementTransformations &Tr, const IntegrationPoint &ip)
 {
    mfem_error("BdrFaceIntegrator::ComputeBdrFaceViscousFlux() is not overridden!");
 }
 
-void BdrFaceIntegrator::ComputeBdrFaceViscousFlux(const Vector &state1, const Vector &state2, const Vector &dqdx, Vector &fluxN, const Vector &nor, FaceElementTransformations &Tr, const IntegrationPoint &ip)
+void BdrFaceIntegrator::ComputeBdrFaceViscousFlux(const Vector &state1, const Vector &state2, const Vector &dqdx,
+                                                  Vector &fluxN, const Vector &nor, FaceElementTransformations &Tr,
+                                                  const IntegrationPoint &ip)
 {
    mfem_error("BdrFaceIntegrator::ComputeBdrFaceViscousFlux() is not overridden!");
 }
 
-void BdrFaceIntegrator::ComputeBdrFaceLiftingFlux(const Vector &state1, Vector &fluxN, FaceElementTransformations &Tr, const IntegrationPoint &ip)
-{
-   Entropy2Conserv(state1, conserv_state, gamma, gammaM1, gammaM1Inverse);
-   ComputeOuterInviscidState(conserv_state, state2, Tr, ip);
-   Conserv2Entropy(state2, fluxN, gamma, gammaM1, gammaM1Inverse);
-   fluxN -= state1;
-   fluxN *= 0.5; 
-}
-
+  void BdrFaceIntegrator::ComputeBdrFaceLiftingFlux(const Vector &state1, Vector &fluxN, FaceElementTransformations &Tr,
+                                                    const IntegrationPoint &ip)
+  {
+    Entropy2Conserv(gasModel, state1, conserv_state);
+    ComputeOuterInviscidState(conserv_state, state2, Tr, ip);
+    Conserv2Entropy(gasModel, state2, fluxN);
+    fluxN -= state1;
+    fluxN *= 0.5; 
+  }
+  
 }

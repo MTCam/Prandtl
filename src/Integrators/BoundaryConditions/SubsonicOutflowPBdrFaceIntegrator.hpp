@@ -14,8 +14,13 @@ private:
     real_t V_sq;
     FunctionCoefficient p_fun;
 public:
-    SubsonicOutflowPBdrFaceIntegrator(std::shared_ptr<LiftingScheme> liftingScheme, const NumericalFlux &rsolver, const int Np, const real_t &time, real_t gamma, FunctionCoefficient &p_fun, bool t_dependent = false);
-    SubsonicOutflowPBdrFaceIntegrator(std::shared_ptr<LiftingScheme> liftingScheme, const NumericalFlux &rsolver, const int Np, const real_t &time, real_t gamma, real_t p_out);
+  SubsonicOutflowPBdrFaceIntegrator(std::shared_ptr<LiftingScheme> liftingScheme,
+                                    const IdealGasModel &gasModel_,
+                                    const NumericalFlux &rsolver, const int Np, const real_t &time,
+                                    FunctionCoefficient &p_fun, bool t_dependent = false);
+    SubsonicOutflowPBdrFaceIntegrator(std::shared_ptr<LiftingScheme> liftingScheme,
+                                      const IdealGasModel &gasModel_,
+                                      const NumericalFlux &rsolver, const int Np, const real_t &time, real_t p_out);
     
     virtual void ComputeOuterInviscidState(const Vector &state1, Vector &state2, FaceElementTransformations &Tr, const IntegrationPoint &ip) override;
 
