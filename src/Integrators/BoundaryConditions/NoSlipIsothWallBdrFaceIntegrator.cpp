@@ -1,24 +1,26 @@
 #include "NoSlipIsothWallBdrFaceIntegrator.hpp"
+#include "Flow.hpp"
 
 namespace Prandtl
 {
 
-NoSlipIsothWallBdrFaceIntegrator::NoSlipIsothWallBdrFaceIntegrator(
-    std::shared_ptr<LiftingScheme> liftingScheme, const NumericalFlux &rsolver, const int Np,
-    const real_t &time, real_t gamma, real_t R_gas_, FunctionCoefficient &T_wall_, VectorFunctionCoefficient &V_wall_,
-    bool t_dependent)
-    : SlipWallBdrFaceIntegrator(liftingScheme, rsolver, Np, time, gamma, false, t_dependent),
-    T_wall(T_wall_), V_wall(V_wall_), R_gas(R_gas_) {}
-
-NoSlipIsothWallBdrFaceIntegrator::NoSlipIsothWallBdrFaceIntegrator(
-    std::shared_ptr<LiftingScheme> liftingScheme, const NumericalFlux &rsolver, const int Np,
-    const real_t &time, real_t gamma, real_t R_gas_, real_t &T, const Vector &V)
-    : SlipWallBdrFaceIntegrator(liftingScheme, rsolver, Np, time, gamma, true, false),
-    T(T), V(V), T_wall(std::function<real_t(const Vector&)>()), V_wall(dim, std::function<void(const Vector&, Vector&)>()), R_gas(R_gas_)
-{
-    v = 1.0 / (R_gas * T);
-}
-
+NoSlipIsothWallBdrFaceIntegrator::NoSlipIsothWallBdrFaceIntegrator(std::shared_ptr<LiftingScheme> liftingScheme,
+                                                                   const IdealGasModel &gasModel_,
+                                                                   const NumericalFlux &rsolver, const int Np,
+                                                                   const real_t &time,
+                                                                   FunctionCoefficient &T_wall_, VectorFunctionCoefficient &V_wall_,
+                                                                   bool t_dependent)
+: SlipWallBdrFaceIntegrator(liftingScheme, gasModel_, rsolver, Np, time, false, t_dependent),
+  T_wall(T_wall_), V_wall(V_wall_) {}
+  
+NoSlipIsothWallBdrFaceIntegrator::NoSlipIsothWallBdrFaceIntegrator(std::shared_ptr<LiftingScheme> liftingScheme,
+                                                                   const IdealGasModel &gasModel_,
+                                                                   const NumericalFlux &rsolver, const int Np,
+                                                                   const real_t &time, real_t &T, const Vector &V)
+: SlipWallBdrFaceIntegrator(liftingScheme, gasModel_, rsolver, Np, time, true, false),
+  T(T), V(V), T_wall(std::function<real_t(const Vector&)>()), V_wall(dim, std::function<void(const Vector&, Vector&)>())
+{}
+  
 void NoSlipIsothWallBdrFaceIntegrator::ComputeBdrFaceViscousFlux(const Vector &state1, const Vector &state2, const Vector &dqdx, const Vector &dqdy, const Vector &dqdz, Vector &fluxN, const Vector &nor, FaceElementTransformations &Tr, const IntegrationPoint &ip)
 {
     fluxFunction.ComputeViscousFlux(state1, dqdx, dqdy, dqdz, flux_mat);
@@ -37,8 +39,8 @@ void NoSlipIsothWallBdrFaceIntegrator::ComputeBdrFaceViscousFlux(const Vector &s
     flux_mat.Mult(nor, fluxN);
 }
 
-
-void NoSlipIsothWallBdrFaceIntegrator::ComputeBdrFaceLiftingFlux(const Vector &state1, Vector &fluxN, FaceElementTransformations &Tr, const IntegrationPoint &ip)
+void NoSlipIsothWallBdrFaceIntegrator::ComputeBdrFaceLiftingFlux(const Vector &state1, Vector &fluxN, FaceElementTransformations &Tr,
+                                                                 const IntegrationPoint &ip)
 {
     if (!constant)
     {
@@ -47,20 +49,20 @@ void NoSlipIsothWallBdrFaceIntegrator::ComputeBdrFaceLiftingFlux(const Vector &s
 
         T = T_wall.Eval(Tr, ip);
         V_wall.Eval(V, Tr, ip);
-
-        v = 1.0 / (R_gas * T);
     }
-    fluxN(0) = state1(0);
-    fluxN(1) = V(0) * v;
+    Prandtl::PointStateView Se{state1.GetData()};
+    const real_t beta = Prandtl::Flow::isothermal_wall_beta(Se, T, gasModel);
+    fluxN(mass_eq) = gasModel.mass(Se);
+    fluxN(mom_eq) = V(0) * beta;
     if (dim > 1)
     {
-        fluxN(2) = V(1) * v;
+        fluxN(mom_eq+1) = V(1) * beta;
         if (dim > 2)
         {
-            fluxN(3) = V(2) * v;
+            fluxN(mom_eq+2) = V(2) * beta;
         }
     }
-    fluxN(num_equations - 1) = -v;
+    fluxN(en_eq) = -beta;
     fluxN -= state1;
 }
 
