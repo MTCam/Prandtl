@@ -10,8 +10,8 @@ real_t LaxFriedrichsFlux::Eval(const Vector &state1, const Vector &state2,
 #ifdef MFEM_THREAD_SAFE
    Vector fluxN1(fluxFunction.num_equations), fluxN2(fluxFunction.num_equations);
 #endif
-   const real_t speed1 = fluxFunction.ComputeFluxDotN(state1, nor, Tr, fluxN1);
-   const real_t speed2 = fluxFunction.ComputeFluxDotN(state2, nor, Tr, fluxN2);
+   const real_t speed1 = this->ComputeFluxDotN(state1, nor, Tr, fluxN1);
+   const real_t speed2 = this->ComputeFluxDotN(state2, nor, Tr, fluxN2);
    // NOTE: nor in general is not a unit normal
    const real_t maxE = std::max(speed1, speed2);
    // here, std::sqrt(nor*nor) is multiplied to match the scale with fluxN

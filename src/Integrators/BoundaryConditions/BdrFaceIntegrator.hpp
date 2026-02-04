@@ -38,21 +38,22 @@ private:
    std::shared_ptr<ParGridFunction> u_gf;
 
 protected:
-   Vector nor;     // normal vector, @see CalcOrtho
-   const NavierStokesFlux fluxFunction;
-   const int num_equations, dim;
-   DenseMatrix flux_mat;
-   const real_t &time;
-   bool constant, t_dependent;
-   Vector dqdx, dqdy, dqdz;
-   std::shared_ptr<LiftingScheme> liftingScheme;
-   const NumericalFlux &rsolver;  // Numerical flux that maps F(u±,x) to hat(F)
-   bool scaleStateInAxisymm = true;
-
-   const real_t gamma, gammaM1, gammaM1Inverse;
+  Vector nor;     // normal vector, @see CalcOrtho
+  const NavierStokesFlux fluxFunction;
+  const int num_equations, dim;
+  DenseMatrix flux_mat;
+  const real_t &time;
+  bool constant, t_dependent;
+  Vector dqdx, dqdy, dqdz;
+  std::shared_ptr<LiftingScheme> liftingScheme;
+  const IdealGasModel gasModel;
+  const NumericalFlux &rsolver;  // Numerical flux that maps F(u±,x) to hat(F)
+  bool scaleStateInAxisymm = true;
+  const int mass_eq, mom_eq, en_eq, sc_eq; 
 
 public:
-   BdrFaceIntegrator(std::shared_ptr<LiftingScheme> liftingScheme, const NumericalFlux &rsolver, int Np, const real_t &time, real_t gamma, bool constant, bool t_dependent);
+  BdrFaceIntegrator(std::shared_ptr<LiftingScheme> liftingScheme, const IdealGasModel &gasModel_,
+                    const NumericalFlux &rsolver, int Np, const real_t &time, bool constant, bool t_dependent);
    
    void ResetMaxCharSpeed()
    {
