@@ -165,6 +165,7 @@ target_include_directories(${PROJECT_NAME}
     PUBLIC ${CMAKE_SOURCE_DIR}/libs/mfem
     PUBLIC ${CMAKE_SOURCE_DIR}/libs/hypre/src/hypre/include
     PUBLIC ${CMAKE_SOURCE_DIR}/libs/metis-5.1.0/include
+    PUBLIC ${CMAKE_SOURCE_DIR}/src/Device
     PUBLIC ${CMAKE_SOURCE_DIR}/src/Operators/NonlinearForm
     PUBLIC ${CMAKE_SOURCE_DIR}/src/Operators
     PUBLIC ${CMAKE_SOURCE_DIR}/src/RiemannSolvers

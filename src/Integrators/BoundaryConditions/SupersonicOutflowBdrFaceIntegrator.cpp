@@ -4,11 +4,10 @@ namespace Prandtl
 {
 
   SupersonicOutflowBdrFaceIntegrator::SupersonicOutflowBdrFaceIntegrator(std::shared_ptr<LiftingScheme> liftingScheme,
-                                                                         std::shared_ptr<const IdealGasModel> gasModel_,
-                                                                         std::shared_ptr<const StateLayout> stateLayout_,
+                                                                         const IdealGasModel &gasModel_,
                                                                          const NumericalFlux &rsolver, const int Np,
                                                                          const real_t &time)
-  : BdrFaceIntegrator(liftingScheme, gasModel_, stateLayout_, rsolver, Np, time, true, false) {}
+  : BdrFaceIntegrator(liftingScheme, gasModel_, rsolver, Np, time, true, false) {}
 
 void SupersonicOutflowBdrFaceIntegrator::ComputeOuterInviscidState(const Vector &state1, Vector &state2, FaceElementTransformations &Tr, const IntegrationPoint &ip)
 {

@@ -17,13 +17,11 @@ private:
     VectorFunctionCoefficient V;
 public:
     SubsonicInflowRVBdrFaceIntegrator(std::shared_ptr<LiftingScheme> liftingScheme,
-                                      std::shared_ptr<const IdealGasModel> gasModel_,
-                                      std::shared_ptr<const StateLayout> stateLayout_,
+                                      const IdealGasModel &gasModel_,
                                       const NumericalFlux &rsolver, const int Np, const real_t &time,
                                       FunctionCoefficient &rho, VectorFunctionCoefficient &V, bool t_dependent = false);
     SubsonicInflowRVBdrFaceIntegrator(std::shared_ptr<LiftingScheme> liftingScheme,
-                                      std::shared_ptr<const IdealGasModel> gasModel_,
-                                      std::shared_ptr<const StateLayout> stateLayout_,
+                                      const IdealGasModel &gasModel_,
                                       const NumericalFlux &rsolver, const int Np, const real_t &time,
                                       real_t rho, const Vector &V);
     

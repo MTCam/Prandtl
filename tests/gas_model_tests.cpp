@@ -37,14 +37,14 @@ TEST(GasModel_IdealGas_EOS)
     std::shared_ptr<PhysicsConstants> phys =
       std::make_shared<PhysicsConstants>(gamma, Pr, R_gas, mu);
 
-    IdealGasModel gas(phys);
-
     const real_t tol = 1.0e-12;
 
     for (int dim = 1; dim <= 3; ++dim)
     {
         const int ndofs = 1;
         StateLayout layout(dim, ndofs);  // no scalars
+        IdealGasModel gas(*phys, layout);
+
         const int num_eq = layout.eq_energy + 1; // dim+2
 
         std::vector<real_t> U(num_eq * ndofs);
@@ -68,7 +68,7 @@ TEST(GasModel_IdealGas_EOS)
 
         fill_single_dof_state(layout, U, dim, rho, u, e_int_density);
 
-        DofStateView S(U.data(), &layout, 0);
+        DofStateView S(U.data(), 0);
 
         // Pressure
         const real_t p = gas.pressure(S);
@@ -124,9 +124,8 @@ TEST(GasModel_IdealGas_Transport)
     std::shared_ptr<PhysicsConstants> phys =
       std::make_shared<PhysicsConstants>(gamma, Pr, R_gas, mu);
 
-    IdealGasModel      gas(phys);
-    IdealSingleGasEOS  eos(phys);
-    Transport          transport(phys);
+    IdealSingleGasEOS  eos;
+    Transport          transport;
 
     const real_t tol = 1.0e-12;
 
@@ -135,6 +134,7 @@ TEST(GasModel_IdealGas_Transport)
     const int dim   = 3;
     const int ndofs = 1;
     StateLayout layout(dim, ndofs);
+    IdealGasModel gas(*phys, layout);
 
     const int num_eq = layout.eq_energy + 1;
     std::vector<real_t> U(num_eq * ndofs);
@@ -147,14 +147,14 @@ TEST(GasModel_IdealGas_Transport)
 
     fill_single_dof_state(layout, U, dim, rho, u, e_int_density);
 
-    DofStateView S(U.data(), &layout, 0);
+    DofStateView S(U.data(), 0);
 
     // Use the EOS + Transport directly to compute the expected results
-    const real_t T  = eos.temperature(S);
-    const real_t cp = eos.cp(S);
+    const real_t T  = eos.temperature(*phys, layout, S);
+    const real_t cp = eos.cp(*phys, layout, S);
 
-    const real_t mu_expected = transport.viscosity(eos, S);
-    const real_t k_expected  = transport.thermal_conductivity(eos, S);
+    const real_t mu_expected = transport.viscosity(*phys, layout, eos, S);
+    const real_t k_expected  = transport.thermal_conductivity(*phys, layout, eos, S);
 
     const real_t mu_gas = gas.viscosity(S);
     const real_t k_gas  = gas.thermal_conductivity(S);
@@ -237,14 +237,13 @@ TEST(GasModel_IdealGas_GradEntropyToGradPrim_MatchesLegacy)
     std::shared_ptr<PhysicsConstants> phys =
       std::make_shared<PhysicsConstants>(gamma, Pr, R_gas, mu);
 
-    IdealGasModel gas(phys);
-
     const real_t tol = 5.0e-11;
 
     for (int dim = 1; dim <= 3; ++dim)
     {
         const int ndofs = 1;
         StateLayout layout(dim, ndofs); // no scalars
+        IdealGasModel gas(*phys, layout);
         const int num_eq = layout.nequations();
 
         std::vector<real_t> Q(num_eq);
@@ -269,9 +268,9 @@ TEST(GasModel_IdealGas_GradEntropyToGradPrim_MatchesLegacy)
 
         // Compute refactored output.
         std::vector<real_t> out(num_eq, 0.0);
-        PointStateView   S{Q.data(), &layout};
-        PointStateView   dE_view{dE.data(), &layout};
-        PointStateViewRW out_view{out.data(), &layout};
+        PointStateView   S{Q.data()};
+        PointStateView   dE_view{dE.data()};
+        PointStateViewRW out_view{out.data()};
 
         gas.grad_entropy_to_grad_prim(S, dE_view, out_view);
 

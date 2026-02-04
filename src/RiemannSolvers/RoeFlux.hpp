@@ -20,8 +20,8 @@ public:
       : FluxFunction(fluxFunction)
    {
 #ifndef MFEM_THREAD_SAFE
-      fluxN1.SetSize(fluxFunction.num_equations);
-      fluxN2.SetSize(fluxFunction.num_equations);
+      fluxN1.SetSize(num_equations);
+      fluxN2.SetSize(num_equations);
 #endif
    }
 

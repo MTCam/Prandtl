@@ -20,10 +20,10 @@ namespace Prandtl {
     MFEM_HOST_DEVICE
     inline real_t slipwall_pstar(const StateView &S, const GasModelT &gasModel)
     {
-      const real_t rho = S.mass();
+      const real_t rho = gasModel.density(S);
       const real_t c = gasModel.sound_speed(S);
       const real_t p = gasModel.pressure(S);
-      const real_t v = S.velocity(0);
+      const real_t v = gasModel.velocity(S, 0);
       const real_t gamma = gasModel.gamma(S);
       const real_t gammaP1 = gamma + 1.;
       const real_t gammaM1 = gamma - 1.;
@@ -89,18 +89,18 @@ namespace Prandtl {
     inline void riemann_invariant_outer_state(const StateView &Si, const StateView &So, StateViewRW &S2, const real_t *n,
                                               const GasModelT &gasModel)
     {
-      const int dim = Si.dim();
-      const real_t rho_i = Si.mass();
-      const real_t rho_o = So.mass();
-      real_t Vn_i = Si.momentum(0) * n[0];
-      real_t Vn_o = So.momentum(0) * n[0];
+      const int dim = gasModel.dim();
+      const real_t rho_i = gasModel.density(Si);
+      const real_t rho_o = gasModel.density(So);
+      real_t Vn_i = gasModel.momentum(Si, 0)*n[0];
+      real_t Vn_o = gasModel.momentum(So, 0)*n[0];
       if (dim > 1){
-        Vn_i += Si.momentum(1) * n[1];
-        Vn_o += So.momentum(1) * n[1];
+        Vn_i += gasModel.momentum(Si, 1)*n[1];
+        Vn_o += gasModel.momentum(So, 1)*n[1];
       }
       if (dim > 2){
-        Vn_i += Si.momentum(2) * n[2];
-        Vn_o += So.momentum(2) * n[2];
+        Vn_i += gasModel.momentum(Si, 2)*n[2];
+        Vn_o += gasModel.momentum(So, 2)*n[2];
       }
 
       Vn_i /= rho_i;
@@ -142,38 +142,38 @@ namespace Prandtl {
 
       const bool inflow = (Vn_i < 0.0);
       const real_t rho_b = inflow ? rho_from_ref(rho_o, p_o) : rho_from_ref(rho_i, p_i);
-      S2.set_mass(rho_b);
+      S2.set_mass(gasModel.L, rho_b);
       const real_t p_b = (a_b * a_b) * rho_b * gi;
       real_t vb[3] = {0., 0., 0.};
       real_t vb2 = 0.0;
       const real_t dVn = inflow ? dVn_o : dVn_i;
       for(int idim = 0;idim < dim;idim++){
-        const real_t base = inflow ? So.velocity(idim) : Si.velocity(idim);
+        const real_t base = inflow ? gasModel.velocity(So, idim) : gasModel.velocity(Si, idim);
         vb[idim] = base + dVn*n[idim];
         vb2 += (vb[idim]*vb[idim]);
-        S2.set_momentum(idim, rho_b*vb[idim]);
+        S2.set_momentum(gasModel.L, idim, rho_b*vb[idim]);
       }
-      S2.set_energy(p_b * gm1i + 0.5 * rho_b * vb2);
+      S2.set_energy(gasModel.L, p_b * gm1i + 0.5 * rho_b * vb2);
     }
 
     template<typename PrimStateView, typename ConsStateView, typename GasModelT>
     MFEM_HOST_DEVICE inline void PrimitiveToConserved(const PrimStateView &prim, ConsStateView &cons, const GasModelT &gasModel){
-      const real_t rho = prim.mass();
-      const int dim = prim.dim();
+      const real_t rho = prim.mass(gasModel.L);
+      const int dim = gasModel.dim();
       // NOTE: This call *should* fail for gas models other than ideal single component
       const real_t gamma = gasModel.gamma(prim);
-      real_t v2 = prim.velocity(0)*prim.velocity(0);
-      cons.set_mass(rho);
-      cons.set_momentum(0, rho*prim.velocity(0));
+      real_t v2 = prim.velocity(gasModel.L, 0)*prim.velocity(gasModel.L, 0);
+      cons.set_mass(gasModel.L, rho);
+      cons.set_momentum(gasModel.L, 0, rho*prim.velocity(gasModel.L, 0));
       if (dim > 1){
-        cons.set_momentum(1, rho*prim.velocity(1));
-        v2 += prim.velocity(1)*prim.velocity(1);
+        cons.set_momentum(gasModel.L, 1, rho*prim.velocity(gasModel.L, 1));
+        v2 += prim.velocity(gasModel.L, 1)*prim.velocity(gasModel.L, 1);
       }
       if (dim > 2){
-        cons.set_momentum(2, rho*prim.velocity(2));
-        v2 += prim.velocity(2)*prim.velocity(2);
+        cons.set_momentum(gasModel.L, 2, rho*prim.velocity(gasModel.L, 2));
+        v2 += prim.velocity(gasModel.L, 2)*prim.velocity(gasModel.L,2);
       }
-      cons.set_energy(prim.pressure() / (gamma-1.) + 0.5 * rho * v2); 
+      cons.set_energy(gasModel.L, prim.pressure(gasModel.L) / (gamma-1.) + 0.5 * rho * v2); 
     }
   }
 }

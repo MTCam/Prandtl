@@ -13,7 +13,7 @@ public:
     GasStateSemanticsAdapter(int dim, int num_dofs_scalar)
         : layout_(dim, num_dofs_scalar),
           data_((dim + 2 + layout_.num_scalars) * num_dofs_scalar),
-          view_(data_.data(), &layout_)
+          view_(data_.data())
     { }
 
     // --- StateSemantics "contract" API ---
@@ -24,33 +24,33 @@ public:
     // Getters
     real_t mass(int i) const
     {
-        return view_.mass(i);
+      return view_.mass(layout_, i);
     }
 
     real_t momentum(int d, int i) const
     {
-        return view_.momentum(d, i);
+      return view_.momentum(layout_, d, i);
     }
 
     real_t energy(int i) const
     {
-        return view_.energy(i);
+      return view_.energy(layout_, i);
     }
 
     // Setters
     void set_mass(int i, real_t rho)
     {
-        view_.mass(i) = rho;
+      view_.mass(layout_, i) = rho;
     }
 
     void set_momentum(int d, int i, real_t rho_u_d)
     {
-        view_.momentum(d, i) = rho_u_d;
+      view_.momentum(layout_, d, i) = rho_u_d;
     }
 
     void set_energy(int i, real_t rhoE)
     {
-        view_.energy(i) = rhoE;
+      view_.energy(layout_, i) = rhoE;
     }
 
 private:

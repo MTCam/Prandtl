@@ -22,12 +22,10 @@ private:
     std::shared_ptr<ParGridFunction> eta;
     std::shared_ptr<ParGridFunction> alpha;
     std::vector<std::shared_ptr<ParGridFunction> > grad_u;
-    std::shared_ptr<ParGridFunction> dudx, dudy, dudz;
     std::shared_ptr<ParGridFunction> r_gf;
     std::unique_ptr<DGSEMIntegrator> integrator;
     std::unique_ptr<Indicator> indicator;
-    std::shared_ptr<const IdealGasModel> gasModel;
-    std::shared_ptr<const StateLayout> stateLayout;
+    const IdealGasModel gasModel;
     std::unique_ptr<DGSEMNonlinearForm> nonlinearForm; 
 
     mutable Array<int> vdof_indices;
@@ -92,8 +90,7 @@ public:
                   std::vector<std::shared_ptr<ParGridFunction> > &grad_u_,
                   std::unique_ptr<DGSEMIntegrator> integrator,
                   std::unique_ptr<Indicator> indicator,
-                  std::shared_ptr<const IdealGasModel> gasModel,
-                  std::shared_ptr<const StateLayout> stateLayout, 
+                  const IdealGasModel &gasModel_,
                   std::shared_ptr<ParGridFunction> r_gf = nullptr,
                   const real_t alpha_max = 0.5, const real_t alpha_min = 0.001);
     

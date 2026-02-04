@@ -81,7 +81,7 @@ jobs:
 
       - name: Configure Prandtl (Euler)
         env:
-          CONFIG_FILE: compile_config.json
+          # CONFIG_FILE: compile_config.json
           CC: ${{ env.CC }}
           CXX: ${{ env.CXX }}
           FC: ${{ env.FC }}
@@ -91,8 +91,8 @@ jobs:
           METIS_DIR: ${{ github.workspace }}/libs/metis-5.1.0
         run: |
           mkdir -p build-euler
+          #  -DCONFIG_FILE=${CONFIG_FILE}
           cmake -S . -B build-euler -G Ninja \
-            -DCONFIG_FILE=${CONFIG_FILE} \
             -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE} \
             -DBUILD_TESTING=ON \
             -DMFEM_DIR="${MFEM_DIR}" \
@@ -112,7 +112,7 @@ jobs:
 
       - name: Configure Prandtl (CNS)
         env:
-          CONFIG_FILE: compile_config.json
+          # CONFIG_FILE: compile_config.json
           CC: ${{ env.CC }}
           CXX: ${{ env.CXX }}
           FC: ${{ env.FC }}
@@ -122,8 +122,8 @@ jobs:
           METIS_DIR: ${{ github.workspace }}/libs/metis-5.1.0
         run: |
           mkdir -p build-cns
+          #  -DCONFIG_FILE=${CONFIG_FILE}
           cmake -S . -B build-cns -G Ninja \
-            -DCONFIG_FILE=${CONFIG_FILE} \
             -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE} \
             -DBUILD_TESTING=ON \
             -DMFEM_DIR="${MFEM_DIR}" \

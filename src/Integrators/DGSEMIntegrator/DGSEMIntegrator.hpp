@@ -12,19 +12,18 @@ using namespace mfem;
 class DGSEMIntegrator : public NonlinearFormIntegrator
 {
 private:
-    std::shared_ptr<ParMesh> pmesh;
-    std::shared_ptr<ParFiniteElementSpace> fes0;
-    std::shared_ptr<ParGridFunction> alpha;
-    std::shared_ptr<const IdealGasModel> gasModel;
-    std::shared_ptr<const StateLayout> stateLayout;
-    NumericalFlux &rsolver;
-    const NavierStokesFlux &fluxFunction;
-    DenseMatrix D_T, Dhat_T, Dhat2_T;
-    const int Np_x, Np_y, Np_z;
-    const int num_equations, dim, num_elements;
-    IntegrationRules GLIntRules;
-    const IntegrationRule *ir, *ir_face, *ir_vol;
-    bool use_partial_assembly;
+  std::shared_ptr<ParMesh> pmesh;
+  std::shared_ptr<ParFiniteElementSpace> fes0;
+  std::shared_ptr<ParGridFunction> alpha;
+  NumericalFlux &rsolver;
+  const NavierStokesFlux &fluxFunction;
+  DenseMatrix D_T, Dhat_T, Dhat2_T;
+  const int Np_x, Np_y, Np_z;
+  const int num_equations, dim, num_elements;
+  IntegrationRules GLIntRules;
+  const IntegrationRule *ir, *ir_face, *ir_vol;
+  bool use_partial_assembly;
+
     real_t max_char_speed;
     real_t J, J1, J2;
     int dof, dof1, dof2;
@@ -77,8 +76,6 @@ public:
                     std::shared_ptr<ParFiniteElementSpace> fes0,
                     std::shared_ptr<ParGridFunction> alpha,
                     std::shared_ptr<LiftingScheme> liftingScheme,
-                    std::shared_ptr<const IdealGasModel> gasModel,
-                    std::shared_ptr<const StateLayout> stateLayout,
                     NumericalFlux &rsolver, int Np, bool use_partial_assembly_=false);
 
   void AssembleGeometricTerms();

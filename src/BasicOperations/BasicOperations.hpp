@@ -44,7 +44,7 @@ namespace Prandtl
 
   void Cross(const Vector &vec1, const Vector &vec2, Vector &cross);
   void Normal(const Vector &vec, Vector &nor);
-  void RotateState(Vector &state, const Vector &nor, const StateLayout &layout);
+  void RotateState(const StateLayout &layout, Vector &state, const Vector &nor);
   void RotateState(Vector &state, const Vector &nor);
   void RotateBack(Vector &state, const Vector &nor);
   void RotateBack(Vector &state, const Vector &nor, const StateLayout &layout);
@@ -54,57 +54,53 @@ namespace Prandtl
     const Table& ElementIndextoBdrElementIndex(Mesh &mesh);
   
   template<typename GasModelT>
-  inline void Conserv2Entropy(const Vector &state, Vector &ent_state, const GasModelT &gasModel, const StateLayout &stateLayout)
+  inline void Conserv2Entropy(const GasModelT &gasModel, const Vector &state, Vector &ent_state)
   {
-    PointStateView S{state.GetData(), &stateLayout};
-    PointStateViewRW E{ent_state.GetData(), &stateLayout};
+    PointStateView S{state.GetData()};
+    PointStateViewRW E{ent_state.GetData()};
     gasModel.entropy_state(S, E);
   }
   
   template<typename GasModelT>
-  inline void Conserv2Entropy(const DenseMatrix &vdof_mat, DenseMatrix &ent_mat, const GasModelT &gasModel,
-                              const StateLayout &layout)
+  inline void Conserv2Entropy(const GasModelT &gasModel, const DenseMatrix &vdof_mat, DenseMatrix &ent_mat)
   {
     ent_mat = 0.0;
-    real_t s, beta;
     Vector state, ent_state(vdof_mat.Width());
     for (int d = 0; d < vdof_mat.Height(); d++)
       {
         vdof_mat.GetRow(d, state);
-        Conserv2Entropy(state, ent_state, gasModel, layout);
+        Conserv2Entropy(gasModel, state, ent_state);
         ent_mat.SetRow(d, ent_state);
       }
   }
   
   template<typename GasModelT>
-  inline void EntropyGrad2PrimGrad(const DenseMatrix &vdof_mat, DenseMatrix &grad, const GasModelT &gasModel,
-                                   const StateLayout &layout)
+  inline void EntropyGrad2PrimGrad(const GasModelT &gasModel, const DenseMatrix &vdof_mat, DenseMatrix &grad)
   {
     Vector state, grad_state;
     
-    int dim = layout.dim; // not vdof_mat.Width() - 2 for heaven's sake
-    int numeq = layout.nequations();
+    int numeq = gasModel.num_equations();
     
     Vector gradPrim(numeq);
     
-    Prandtl::PointStateViewRW dPrim{gradPrim.GetData(), &layout};
+    Prandtl::PointStateViewRW dPrim{gradPrim.GetData()};
     
     for (int d = 0; d < vdof_mat.Height(); d++)
       {
         vdof_mat.GetRow(d, state);
         grad.GetRow(d, grad_state);
-        Prandtl::PointStateView S{state.GetData(), &layout};
-        Prandtl::PointStateView dS{grad_state.GetData(), &layout};
+        Prandtl::PointStateView S{state.GetData()};
+        Prandtl::PointStateView dS{grad_state.GetData()};
         gasModel.grad_entropy_to_grad_prim(S, dS, dPrim);
         grad.SetRow(d, gradPrim);
       }
   }
   
   template<typename GasModelT> 
-  inline void Entropy2Conserv(const Vector &ent_state, Vector &state, const GasModelT &gasModel, const StateLayout &layout)
+  inline void Entropy2Conserv(const GasModelT &gasModel, const Vector &ent_state, Vector &state)
   {
-    Prandtl::PointStateView Se{ent_state.GetData(), &layout};
-    Prandtl::PointStateViewRW Sc{state.GetData(), &layout};
+    Prandtl::PointStateView Se{ent_state.GetData()};
+    Prandtl::PointStateViewRW Sc{state.GetData()};
     gasModel.entropy_to_conserved(Se, Sc);
   }
 

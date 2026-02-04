@@ -10,11 +10,9 @@ DGSEMIntegrator::DGSEMIntegrator(
       std::shared_ptr<ParFiniteElementSpace> fes0_,
       std::shared_ptr<ParGridFunction> alpha_,
       std::shared_ptr<LiftingScheme> liftingScheme_,
-      std::shared_ptr<const IdealGasModel> gasModel_,
-      std::shared_ptr<const StateLayout> stateLayout_,
       NumericalFlux &rsolver_, int Np, bool use_partial_assembly_)
+      NumericalFlux &rsolver_, int Np)
     : NonlinearFormIntegrator(), pmesh(pmesh_), fes0(fes0_), alpha(alpha_),
-      gasModel(std::move(gasModel_)), stateLayout(std::move(stateLayout_)),
       liftingScheme(liftingScheme_), rsolver(rsolver_), fluxFunction(rsolver_.GetFluxFunction()),
       Np_x(Np), Np_y(fluxFunction.dim > 1 ? Np : 1), Np_z(fluxFunction.dim > 2 ? Np : 1),
       num_equations(fluxFunction.num_equations), dim(fluxFunction.dim), num_elements(pmesh->GetNE()),
@@ -437,22 +435,24 @@ OA                f *= r_hat;
                     std::cout << "________________________________________________________________________________________________________________" << "\n";
                 }
 
+                // TODO: Axisym source term is misplaced here. Need source term constructs
+                //       to fix. It is a code smell that this bit of physics is leaking out to
+                //       this level.  Currently, we are forced to make a utility in NS object
+                //       to fetch the pressure to code around this breakage of the abstraction.
 #ifdef AXISYMMETRIC
                 
                 {
-                  Prandtl::PointStateView S{state1.GetData(), stateLayout.get()};
-                  const real_t p = gasModel.pressure(S);
-                    //dU_inviscid(2) += p;
-                    el_dudt_mat(id1, 2) += p;
- 
-                if (debug_integrator)
-                {
-                    const DenseMatrix &Jm = Tr.Jacobian();
-                    const real_t dr_deta_dbg = (Jm.NumRows() > 1 && Jm.NumCols() > 1) ? Jm(1,1) : 0.0;
-                    std::cout << "[AssembleElement]" << " p = " << p << "\n"; //", r = " << r_hat << ", dr/deta = " << dr_deta_dbg << "\n";
-                    std::cout << "[AssembleElement]" << " rdU_inviscid[2]-pJ      = [" << dU_inviscid[0] << ", " << dU_inviscid[1] << ", " << dU_inviscid[2] << ", " << dU_inviscid[3] << "]\n";
-                }
-                    
+                  const real_t p = fluxFunction.pressure(state1.GetData());
+                  el_dudt_mat(id1, 2) += p;
+                  
+                  if (debug_integrator)
+                    {
+                      const DenseMatrix &Jm = Tr.Jacobian();
+                      const real_t dr_deta_dbg = (Jm.NumRows() > 1 && Jm.NumCols() > 1) ? Jm(1,1) : 0.0;
+                      std::cout << "[AssembleElement]" << " p = " << p << "\n"; //", r = " << r_hat << ", dr/deta = " << dr_deta_dbg << "\n";
+                      std::cout << "[AssembleElement]" << " rdU_inviscid[2]-pJ      = [" << dU_inviscid[0] << ", " << dU_inviscid[1] << ", " << dU_inviscid[2] << ", " << dU_inviscid[3] << "]\n";
+                    }
+                  
                 }            
 #endif
                 AddRow(el_dudt_mat, dU_inviscid, id1);

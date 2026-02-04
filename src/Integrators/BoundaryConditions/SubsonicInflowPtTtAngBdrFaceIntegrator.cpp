@@ -6,13 +6,12 @@ namespace Prandtl
 {
 
 SubsonicInflowPtTtAngBdrFaceIntegrator::SubsonicInflowPtTtAngBdrFaceIntegrator(std::shared_ptr<LiftingScheme> liftingScheme,
-                                                                               std::shared_ptr<const IdealGasModel> gasModel_,
-                                                                               std::shared_ptr<const StateLayout> stateLayout_,
+                                                                               const IdealGasModel &gasModel_,
                                                                                const NumericalFlux &rsolver, const int Np,
                                                                                const real_t &time,
                                                                                FunctionCoefficient &pt, FunctionCoefficient &Tt,
                                                                                real_t theta, real_t phi, bool t_dependent)
-: BdrFaceIntegrator(liftingScheme, gasModel_, stateLayout_, rsolver, Np, time, false, t_dependent),
+: BdrFaceIntegrator(liftingScheme, gasModel_, rsolver, Np, time, false, t_dependent),
   pt(pt), Tt(Tt), theta(theta), phi(phi)
 {
   V_comps.SetSize(dim);
@@ -31,12 +30,11 @@ SubsonicInflowPtTtAngBdrFaceIntegrator::SubsonicInflowPtTtAngBdrFaceIntegrator(s
 }
 
 SubsonicInflowPtTtAngBdrFaceIntegrator::SubsonicInflowPtTtAngBdrFaceIntegrator(std::shared_ptr<LiftingScheme> liftingScheme,
-                                                                               std::shared_ptr<const IdealGasModel> gasModel_,
-                                                                               std::shared_ptr<const StateLayout> stateLayout_,
+                                                                               const IdealGasModel &gasModel_,
                                                                                const NumericalFlux &rsolver, const int Np,
                                                                                const real_t &time, real_t pt,
                                                                                real_t Tt, real_t theta, real_t phi)
-: BdrFaceIntegrator(liftingScheme, gasModel_, stateLayout_, rsolver, Np, time, true, false),
+: BdrFaceIntegrator(liftingScheme, gasModel_, rsolver, Np, time, true, false),
   p0(pt), T0(Tt), theta(theta), phi(phi),
   pt(std::function<real_t(const Vector&)>()), Tt(std::function<real_t(const Vector&)>())
 {
@@ -67,19 +65,19 @@ void SubsonicInflowPtTtAngBdrFaceIntegrator::ComputeOuterInviscidState(const Vec
         p0 = pt.Eval(Tr, ip);
         T0 = Tt.Eval(Tr, ip);
     }
-    Prandtl::PointStateView S1{state1.GetData(), stateLayout.get()};
-    Prandtl::PointStateViewRW S2{state2.GetData(), stateLayout.get()};
-    auto tot = Prandtl::Flow::isentropic_total_to_static(S1, {p0, T0}, *gasModel);
-    S2.set_mass(tot.rho);
+    Prandtl::PointStateView S1{state1.GetData()};
+    Prandtl::PointStateViewRW S2{state2.GetData()};
+    auto tot = Prandtl::Flow::isentropic_total_to_static(S1, {p0, T0}, gasModel);
+    S2.set_mass(gasModel.L, tot.rho);
     const real_t v = std::sqrt(tot.v2);
-    S2.set_momentum(0, tot.rho*v*V_comps(0));
+    S2.set_momentum(gasModel.L, 0, tot.rho*v*V_comps(0));
     if (dim > 1)
     {
-      S2.set_momentum(1, tot.rho*v*V_comps(1));
+      S2.set_momentum(gasModel.L, 1, tot.rho*v*V_comps(1));
       if (dim > 2)
-        S2.set_momentum(2, tot.rho*v* V_comps(2));
+        S2.set_momentum(gasModel.L, 2, tot.rho*v* V_comps(2));
     }
-    S2.set_energy(tot.energy);
+    S2.set_energy(gasModel.L, tot.energy);
 }
 
 void SubsonicInflowPtTtAngBdrFaceIntegrator::ComputeBdrFaceViscousFlux(const Vector &state1, const Vector &state2, const Vector &dqdx, const Vector &dqdy, const Vector &dqdz, Vector &fluxN, const Vector &nor, FaceElementTransformations &Tr, const IntegrationPoint &ip)

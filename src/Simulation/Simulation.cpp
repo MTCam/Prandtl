@@ -155,7 +155,6 @@ void Simulation::LoadConfig(const std::string &config_file_path)
         runtime.value("Pr", 0.72),
         runtime.value("R_gas", 287.05),
         runtime.value("mu", 0.02));
-    gasModel = std::make_shared<IdealGasModel>(physicsConstants);
 
 
     if (runtime.contains("lifting_scheme"))
@@ -330,11 +329,13 @@ void Simulation::LoadConfig(const std::string &config_file_path)
 
     num_dofs_scalar = fes->GetNDofs();
     num_dofs_system = vfes->GetVSize();
-    stateLayout = std::make_shared<StateLayout>(dim, num_dofs_scalar);
 
-    flux = std::make_shared<NavierStokesFlux>(stateLayout, gasModel);
+    stateLayout = std::make_shared<StateLayout>(dim, num_dofs_scalar);
+    gasModel = std::make_shared<IdealGasModel>(*physicsConstants, *stateLayout);
+
+    flux = std::make_shared<NavierStokesFlux>(*gasModel);
     if (runtime["numerical_flux"].get<std::string>() == "Chandrashekar"){
-      numericalFlux = std::make_shared<ChandrashekarFlux>(*flux);
+      numericalFlux = std::make_shared<ChandrashekarFlux>(*flux, *gasModel);
     } else {
       std::cerr << "Error: Invalid numerical flux specified." << std::endl;
       return;
@@ -408,7 +409,7 @@ void Simulation::LoadConfig(const std::string &config_file_path)
     if (debug_simulation)
     {
         real_t *sol_state = sol->GetData();
-        Prandtl::FieldStateView fields{sol_state, stateLayout };
+        Prandtl::FieldStateView fields{sol_state};
         std::vector<std::pair<real_t, real_t>> zr(num_dofs_scalar, {0.0, 0.0});
 
         std::cout << "\n === sol state rU values after weighting by r ===\n";
@@ -437,10 +438,10 @@ void Simulation::LoadConfig(const std::string &config_file_path)
 
         for (int i = 0; i < num_dofs_scalar; ++i)
         {
-          real_t rho = fields.mass(i);
-          real_t rhoU = fields.momentum_x(i);
-          real_t rhoV = fields.momentum_y(i);
-          real_t E = fields.energy(i);
+          real_t rho = fields.mass(*stateLayout, i);
+          real_t rhoU = fields.momentum_x(*stateLayout, i);
+          real_t rhoV = fields.momentum_y(*stateLayout, i);
+          real_t E = fields.energy(*stateLayout, i);
           real_t z = zr[i].first;
           real_t r = zr[i].second;
 
@@ -478,16 +479,15 @@ void Simulation::LoadConfig(const std::string &config_file_path)
     }
     bool use_partial_assembly = true;
     auto integrator =
-      std::make_unique<Prandtl::DGSEMIntegrator>(pmesh, fes0, alpha, liftingScheme, gasModel, stateLayout,
-                                                 *numericalFlux, order+1, use_partial_assembly);
+      std::make_unique<Prandtl::DGSEMIntegrator>(pmesh, fes0, alpha, liftingScheme, *numericalFlux, order+1, use_partial_assembly);
 
     auto indicator =
       std::make_unique<Prandtl::PerssonPeraireIndicator>(vfes, fes0, eta,
                                                          std::make_unique<Prandtl::ModalBasis>(*fec, gtype, order, dim),
-                                                         gasModel, stateLayout);
+                                                         *gasModel);
 
     NS = std::make_unique<DGSEMOperator>(vfes, fes0, pmesh, eta, alpha, grad_u, std::move(integrator),
-                                         std::move(indicator), gasModel, stateLayout, r_gf, alpha_max);
+                                         std::move(indicator), *gasModel, r_gf, alpha_max);
 
     if (runtime["conditions"].contains("boundary_conditions"))
     {
@@ -521,7 +521,7 @@ void Simulation::LoadConfig(const std::string &config_file_path)
 
             if (type == "symmetry" || type == "axis")
             {
-              auto symmetry = std::make_unique<SymmetryBdrFaceIntegrator>(liftingScheme, gasModel, stateLayout, *numericalFlux,
+              auto symmetry = std::make_unique<SymmetryBdrFaceIntegrator>(liftingScheme, *gasModel, *numericalFlux,
                                                                           order + 1, NS->GetTimeRef(), true, false);
               
               NS->AddBdrFaceIntegrator(symmetry.release(), bdr_marker_vector.back());
@@ -536,7 +536,7 @@ void Simulation::LoadConfig(const std::string &config_file_path)
             }
             else if (type == "slip")
             {
-              auto slip = std::make_unique<SlipWallBdrFaceIntegrator>(liftingScheme, gasModel, stateLayout, *numericalFlux,
+              auto slip = std::make_unique<SlipWallBdrFaceIntegrator>(liftingScheme, *gasModel, *numericalFlux,
                                                                       order + 1, NS->GetTimeRef(), true, false);
 
                 NS->AddBdrFaceIntegrator(slip.release(), bdr_marker_vector.back());
@@ -549,8 +549,7 @@ void Simulation::LoadConfig(const std::string &config_file_path)
                     std::string velBC_key = bc_props["velocity"]["vector"].get<std::string>();
                     std::string heatBC_key = bc_props["heat"]["scalar"].get<std::string>();
                     NS->AddBdrFaceIntegrator(
-           new NoSlipAdiabWallBdrFaceIntegrator(liftingScheme, gasModel, stateLayout,
-                                                *numericalFlux, order + 1, NS->GetTimeRef(),
+           new NoSlipAdiabWallBdrFaceIntegrator(liftingScheme, *gasModel, *numericalFlux, order + 1, NS->GetTimeRef(),
                                                 ConditionFactory::Instance().GetScalarBoundaryCondition(heatBC_key),
                                                 ConditionFactory::Instance().GetVectorBoundaryCondition(velBC_key)), bdr_marker_vector.back());
                 }
@@ -634,7 +633,7 @@ void Simulation::LoadConfig(const std::string &config_file_path)
                     }
 
                     NS->AddBdrFaceIntegrator(
-                                             new NoSlipAdiabWallBdrFaceIntegrator(liftingScheme, gasModel, stateLayout,
+                                             new NoSlipAdiabWallBdrFaceIntegrator(liftingScheme, *gasModel,
                                                                                   *numericalFlux, order + 1, NS->GetTimeRef(),
                                                                                   *heatBC, *velBC, td),
                                              bdr_marker_vector.back());
@@ -651,7 +650,7 @@ void Simulation::LoadConfig(const std::string &config_file_path)
             }
             else if (type == "supersonic-outflow")
             {
-              auto outlet = std::make_unique<SupersonicOutflowBdrFaceIntegrator>(liftingScheme, gasModel, stateLayout,
+              auto outlet = std::make_unique<SupersonicOutflowBdrFaceIntegrator>(liftingScheme, *gasModel,
                                                                                  *numericalFlux, order + 1, NS->GetTimeRef());
 
                 NS->AddBdrFaceIntegrator(outlet.release(), bdr_marker_vector.back());
@@ -663,7 +662,7 @@ void Simulation::LoadConfig(const std::string &config_file_path)
                 {
                 std::string state_key = bc_props["vector"].get<std::string>();
                 auto inlet = std::make_unique<SupersonicInflowBdrFaceIntegrator>(
-                                                              liftingScheme, gasModel, stateLayout, 
+                                                              liftingScheme, *gasModel, 
                                                               *numericalFlux, order + 1, NS->GetTimeRef(),
                                                               ConditionFactory::Instance().GetVectorBoundaryCondition(state_key));
                 NS->AddBdrFaceIntegrator(inlet.release(), bdr_marker_vector.back());
@@ -725,7 +724,7 @@ void Simulation::LoadConfig(const std::string &config_file_path)
                         std::cerr << "Error: Invalid boundary condition signature." << std::endl;
                         return;
                     }
-                    auto inlet = std::make_unique<SupersonicInflowBdrFaceIntegrator>(liftingScheme, gasModel, stateLayout, *numericalFlux,
+                    auto inlet = std::make_unique<SupersonicInflowBdrFaceIntegrator>(liftingScheme, *gasModel, *numericalFlux,
                                                                                      order + 1, NS->GetTimeRef(), *stateBC, td);
 
                     NS->AddBdrFaceIntegrator(inlet.release(), bdr_marker_vector.back());
@@ -737,7 +736,7 @@ void Simulation::LoadConfig(const std::string &config_file_path)
                 if (bc_props.contains("vector"))
                 {
                     std::string state_key = bc_props["vector"].get<std::string>();
-                    NS->AddBdrFaceIntegrator(new SpecifiedStateBdrFaceIntegrator(liftingScheme, gasModel, stateLayout, *numericalFlux,
+                    NS->AddBdrFaceIntegrator(new SpecifiedStateBdrFaceIntegrator(liftingScheme, *gasModel, *numericalFlux,
                                                                                  order + 1, NS->GetTimeRef(),
                         ConditionFactory::Instance().GetVectorBoundaryCondition(state_key)), bdr_marker_vector.back());
                 }
@@ -797,7 +796,7 @@ void Simulation::LoadConfig(const std::string &config_file_path)
                         std::cerr << "Error: Invalid boundary condition signature." << std::endl;
                         return;
                     }
-                    NS->AddBdrFaceIntegrator(new SpecifiedStateBdrFaceIntegrator(liftingScheme, gasModel, stateLayout, *numericalFlux, order + 1, NS->GetTimeRef(),
+                    NS->AddBdrFaceIntegrator(new SpecifiedStateBdrFaceIntegrator(liftingScheme, *gasModel, *numericalFlux, order + 1, NS->GetTimeRef(),
                                                                                  *stateBC, td), bdr_marker_vector.back());
                 }
             }
@@ -943,11 +942,11 @@ void Simulation::Run()
           NS->SetAxisFloorsFromFreestream(rhoi, pi);
 #else
           real_t *sol_state = sol->GetData();
-          Prandtl::DofStateView dofState{sol_state, stateLayout.get(), i};
-          real_t rhoi = dofState.mass();
-          real_t ui = dofState.velocity_x();
-          real_t vi = dofState.velocity_y();
-          real_t wi = dofState.velocity_z();
+          Prandtl::DofStateView dofState{sol_state, i};
+          real_t rhoi = gasModel->density(dofState);
+          real_t ui = gasModel->velocity(dofState, 0);
+          real_t vi = dim > 1 ? gasModel->velocity(dofState, 1) : 0.0;
+          real_t wi = dim > 2 ? gasModel->velocity(dofState, 2) : 0.0;
           real_t pi = gasModel->pressure(dofState);
           // bug: incorrect calculation of kinetic energy
           //real_t pi = physicsConstants->gammaM1 * (energy(i) - 0.5*rhoi*ui*ui);
@@ -987,14 +986,14 @@ void Simulation::Run()
         real_t *sol_state = sol->GetData();
         for (int i = 0; i < num_dofs_scalar; i++)
           {
-            Prandtl::DofStateView dofState{sol_state, stateLayout.get(), i};
-            (*u)(i) = dofState.velocity_x();
+            Prandtl::DofStateView dofState{sol_state, i};
+            (*u)(i) = gasModel->velocity(dofState,0);
             if (dim > 1)
             {
-              (*v)(i) = dofState.velocity_y();
+              (*v)(i) = gasModel->velocity(dofState, 1);
               if (dim > 2)
                 {
-                  (*w)(i) = dofState.velocity_z();
+                  (*w)(i) = gasModel->velocity(dofState, 2);
                 }
             }
             (*p)(i) = gasModel->pressure(dofState);
@@ -1070,14 +1069,14 @@ void Simulation::Run()
         real_t *sol_state = sol->GetData();
         for (int i = 0; i < num_dofs_scalar; i++)
         {       
-          Prandtl::DofStateView dofState{sol_state, stateLayout.get(), i};
-          (*u)(i) = dofState.velocity_x();
+          Prandtl::DofStateView dofState{sol_state, i};
+          (*u)(i) = gasModel->velocity(dofState, 0);
           if (dim > 1)
             {
-              (*v)(i) = dofState.velocity_y();
+              (*v)(i) = gasModel->velocity(dofState, 1);
               if (dim > 2)
                 {
-                  (*w)(i) = dofState.velocity_z();
+                  (*w)(i) = gasModel->velocity(dofState, 2);
                 }
             }
           (*p)(i) = gasModel->pressure(dofState);
