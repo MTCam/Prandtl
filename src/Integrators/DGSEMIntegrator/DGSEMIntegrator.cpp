@@ -3,22 +3,20 @@
 
 namespace Prandtl
 {
-constexpr bool debug_integrator = false;
-
-DGSEMIntegrator::DGSEMIntegrator(
-      std::shared_ptr<ParMesh> pmesh_,
-      std::shared_ptr<ParFiniteElementSpace> fes0_,
-      std::shared_ptr<ParGridFunction> alpha_,
-      std::shared_ptr<LiftingScheme> liftingScheme_,
-      NumericalFlux &rsolver_, int Np, bool use_partial_assembly_)
-      NumericalFlux &rsolver_, int Np)
+  constexpr bool debug_integrator = false;
+  
+  DGSEMIntegrator::DGSEMIntegrator(std::shared_ptr<ParMesh> pmesh_,
+                                   std::shared_ptr<ParFiniteElementSpace> fes0_,
+                                   std::shared_ptr<ParGridFunction> alpha_,
+                                   std::shared_ptr<LiftingScheme> liftingScheme_,
+                                   NumericalFlux &rsolver_, int Np)
     : NonlinearFormIntegrator(), pmesh(pmesh_), fes0(fes0_), alpha(alpha_),
       liftingScheme(liftingScheme_), rsolver(rsolver_), fluxFunction(rsolver_.GetFluxFunction()),
       Np_x(Np), Np_y(fluxFunction.dim > 1 ? Np : 1), Np_z(fluxFunction.dim > 2 ? Np : 1),
       num_equations(fluxFunction.num_equations), dim(fluxFunction.dim), num_elements(pmesh->GetNE()),
-      GLIntRules(0, Quadrature1D::GaussLobatto), use_partial_assembly(use_partial_assembly_)
-{
-  
+      GLIntRules(0, Quadrature1D::GaussLobatto)
+  {
+    
     IntegrationOrder = 2 * Np_x - 3;
     ir = &GLIntRules.Get(Geometry::SEGMENT, IntegrationOrder);
     if (dim == 1)
@@ -154,23 +152,33 @@ if (debug_integrator)
     AssembleGeometricTerms();
 }
 
-  void DGSEMIntegrator::AssembleGeometricTerms()
+void DGSEMIntegrator::GetGeometricOperators(mfem::Vector &elJac_x, mfem::Vector &elMetric_x,
+                                            mfem::DenseMatrix &D_T_x, mfem::DenseMatrix &Dhat_T_x,
+                                            mfem::DenseMatrix &Dhat2_T_x)
+{
+  elJac_x.MakeRef(elJac, 0, elJac.Size());
+  elMetric_x.MakeRef(elMetric, 0, elMetric.Size());
+  // TODO: Deal with D, too
+  D_T_x.UseExternalData(D_T.Data(), D_T.Height(), D_T.Width());
+  Dhat_T_x.UseExternalData(Dhat_T.Data(), Dhat_T.Height(), Dhat_T.Width());
+  Dhat2_T_x.UseExternalData(Dhat2_T.Data(), Dhat2_T.Height(), Dhat2_T.Width());
+}
+
+void DGSEMIntegrator::AssembleGeometricTerms()
   {
-    if(use_partial_assembly){
-      int nelem = fes0->GetNE();
-      assert(nelem == num_elements);
-      elJac.SetSize(Np_x*Np_y*Np_z*num_elements);
-      elMetric.SetSize(dim*dim*Np_x*Np_y*Np_z*num_elements);
+    int nelem = fes0->GetNE();
+    assert(nelem == num_elements);
+    elJac.SetSize(Np_x*Np_y*Np_z*num_elements);
+    elMetric.SetSize(dim*dim*Np_x*Np_y*Np_z*num_elements);
 
-      std::cout << "AssembleGeometricTerms::Number of elements: " << nelem << std::endl;
+    // std::cout << "AssembleGeometricTerms::Number of elements: " << nelem << std::endl;
 
-      for (int i = 0; i < nelem; i++)
-        {
-          ElementTransformation *T = fes0->GetElementTransformation(i);
-          assert(T->ElementNo == i);
-          AssembleElementGeometricTerms(*T);
-        }
-    }
+    for (int i = 0; i < nelem; i++)
+      {
+        ElementTransformation *T = fes0->GetElementTransformation(i);
+        assert(T->ElementNo == i);
+        AssembleElementGeometricTerms(*T);
+      }
   }
 
 void DGSEMIntegrator::AssembleFaceVector(const FiniteElement &el1, const FiniteElement &el2,
