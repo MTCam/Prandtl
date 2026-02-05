@@ -20,7 +20,7 @@
 //
 // Each block has length = num_dofs_scalar (wrt mesh or element)
 //
-#include "Kernels.hpp"
+#include "prandtl_kernels.hpp"
 
 namespace Prandtl
 {
