@@ -1,7 +1,8 @@
 #pragma once
-#include "Kernels.hpp"
 
-namespace Prandtl::Device
+#include "prandtl_kernels.hpp"
+
+namespace Prandtl
 {
   struct DGSEMCache
   {
@@ -11,8 +12,8 @@ namespace Prandtl::Device
     int num_attr = 0;
     // Persistent device-resident aux arrays
     // Host-only handles used for gather/scatter
-    mfem::ElementRestriction *restr_v = nullptr;   // for vfes (vector space)
-    mfem::ElementRestriction *restr_s = nullptr;   // for fes (scalar space)
+    const mfem::ElementRestrictionOperator *restr_v = nullptr; // for vfes (vector space)
+    const mfem::ElementRestrictionOperator *restr_s = nullptr; // for fes (scalar space)
     mfem::Array<int> elem_attr;    // size ne, values are 1-based attributes
     mfem::Array<int> attr_marker;  // size nattr, 0/1
     mfem::Vector elJac;
