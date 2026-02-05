@@ -87,21 +87,20 @@ DGSEMOperator::~DGSEMOperator()
     // ---- Geometric terms 
     integrator->GetGeometricOperators(dgsem_device_cache.elJac,
                                       dgsem_device_cache.elMetric,
-                                      dgsem_device_cache.D_T,
-                                      dgsem_device_cache.Dhat_T,
-                                      dgsem_device_cache.Dhat2_T);
+                                      dgsem_device_cache.D,
+                                      dgsem_device_cache.Dhat,
+                                      dgsem_device_cache.Dhat2);
     
     dgsem_device_cache.elJac.UseDevice();
     dgsem_device_cache.elMetric.UseDevice();
     dgsem_device_cache.elJac.Read();
     dgsem_device_cache.elMetric.Read();
-    // These aren't quite ready yet
-    // dgsem_device_cache.D_T.UseDevice(true);
-    // dgsem_device_cache.D_T.Read();
-    // dgsem_device_cache.Dhat_T.UseDevice(true);
-    // dgsem_device_cache.Dhat_T.Read();
-    // dgsem_device_cache.Dhat2_T.UseDevice(true);
-    // dgsem_device_cache.Dhat2_T.Read();
+    dgsem_device_cache.D.UseDevice();
+    dgsem_device_cache.Dhat.UseDevice();
+    dgsem_device_cache.Dhat2.UseDevice();
+    dgsem_device_cache.D.Read();
+    dgsem_device_cache.Dhat.Read();
+    dgsem_device_cache.Dhat2.Read();
     
     // ---- 7) Any other PA operator/data needed in forall -------------
     // Eventually - LTE gas might store a table here, and even

@@ -43,7 +43,8 @@ namespace Prandtl
     
     DenseTensor F_inviscid, G_inviscid, H_inviscid;
     DenseMatrix F_viscous, G_viscous, H_viscous;
-    
+
+    Vector Dhat2;
     Vector D_row;
     
     Vector dU_inviscid, dU_viscous, dU_volume, dU_face1, dU_face2, dU, dU_subcell;
@@ -81,8 +82,8 @@ namespace Prandtl
     void AssembleGeometricTerms();
     void AssembleElementGeometricTerms(ElementTransformation &Tr);
     void GetGeometricOperators(mfem::Vector &elJac_x, mfem::Vector &elMetric_x,
-                               mfem::DenseMatrix &D_T_x, mfem::DenseMatrix &Dhat_T_x,
-                               mfem::DenseMatrix &Dhat2_T_x);
+                               mfem::Vector &D, mfem::Vector &Dhat,
+                               mfem::Vector &Dhat2);
     void AssembleElementVectorOG(const FiniteElement &el, ElementTransformation &Tr, const Vector &el_u, Vector &el_dudt);
     void AssembleFaceVector(const FiniteElement &el1, const FiniteElement &el2, FaceElementTransformations &Tr, const Vector &el_u, Vector &el_dudt) override;
     void AssembleElementVector(const FiniteElement &el, ElementTransformation &Tr, const Vector &el_u, Vector &el_dutdt) override;

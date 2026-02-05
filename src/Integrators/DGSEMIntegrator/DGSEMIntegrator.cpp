@@ -43,7 +43,8 @@ namespace Prandtl
     D_T.SetSize(Np_x);
     Dhat_T.SetSize(Np_x);
     Dhat2_T.SetSize(Np_x);
-
+    Dhat2.SetSize(Np_x*Np_x);
+ 
     Vector wBary(Np_x);
     wBary = 1.0;
 
@@ -80,6 +81,7 @@ namespace Prandtl
     Dhat2_T(0, 0) += 1.0 / ir->IntPoint(0).weight;
     Dhat2_T(Np - 1, Np - 1) -= 1.0 / ir->IntPoint(Np - 1).weight;
     Dhat2_T.Transpose();
+    std::memcpy(Dhat2.GetData(), Dhat2_T.Data(), sizeof(real_t)*Np_x*Np_x);
 
     D_T.Transpose();
 
@@ -153,15 +155,24 @@ if (debug_integrator)
 }
 
 void DGSEMIntegrator::GetGeometricOperators(mfem::Vector &elJac_x, mfem::Vector &elMetric_x,
-                                            mfem::DenseMatrix &D_T_x, mfem::DenseMatrix &Dhat_T_x,
-                                            mfem::DenseMatrix &Dhat2_T_x)
+                                            mfem::Vector &D, mfem::Vector &Dhat,
+                                            mfem::Vector &Dhat2)
 {
   elJac_x.MakeRef(elJac, 0, elJac.Size());
   elMetric_x.MakeRef(elMetric, 0, elMetric.Size());
+
   // TODO: Deal with D, too
-  D_T_x.UseExternalData(D_T.Data(), D_T.Height(), D_T.Width());
-  Dhat_T_x.UseExternalData(Dhat_T.Data(), Dhat_T.Height(), Dhat_T.Width());
-  Dhat2_T_x.UseExternalData(Dhat2_T.Data(), Dhat2_T.Height(), Dhat2_T.Width());
+  D.SetSize(Np_x*Np_x);
+  Dhat.SetSize(Np_x*Np_x);
+  Dhat2.SetSize(Np_x*Np_x);
+
+  std::memcpy(D.GetData(),     D_T.Data(),     sizeof(real_t)*Np_x*Np_x);
+  std::memcpy(Dhat.GetData(),  Dhat_T.Data(),  sizeof(real_t)*Np_x*Np_x);
+  std::memcpy(Dhat2.GetData(), Dhat2_T.Data(), sizeof(real_t)*Np_x*Np_x);  
+  // D_T_x.UseExternalData(D_T.Data(), D_T.Height(), D_T.Width());
+  // Dhat_T_x.UseExternalData(Dhat_T.Data(), Dhat_T.Height(), Dhat_T.Width());
+  // Dhat2_T_x.UseExternalData(Dhat2_T.Data(), Dhat2_T.Height(), Dhat2_T.Width());
+  
 }
 
 void DGSEMIntegrator::AssembleGeometricTerms()
@@ -469,6 +480,11 @@ OA                f *= r_hat;
     }
 }
 
+static inline mfem::Vector ColView(const mfem::Vector &A, int N, int j)
+{
+  // MFEM DenseMatrix layout is column-major: col j starts at j*N
+  return mfem::Vector(const_cast<real_t*>(A.GetData() + j*N), N);
+}
 
 void DGSEMIntegrator::AssembleElementVector(const FiniteElement &el,
         ElementTransformation &Tr, const Vector &el_u, Vector &el_dudt)
@@ -483,6 +499,7 @@ void DGSEMIntegrator::AssembleElementVector(const FiniteElement &el,
     int el_offset_metric = el_offset_jac*dim*dim;
     const real_t *elJac_d = elJac.Read() + el_offset_jac;
     const real_t *elMetric_d = elMetric.Read() + el_offset_metric;
+    const int N = Np_x;
 
     fes0->GetElementDofs(Tr.ElementNo, alpha_indx);
     alpha->GetSubVector(alpha_indx, el_alpha);
@@ -603,16 +620,19 @@ void DGSEMIntegrator::AssembleElementVector(const FiniteElement &el,
                     }
                 }
 
-                Dhat2_T.GetColumn(i, D_row); 
+                D_row.SetDataAndSize(const_cast<real_t *>(Dhat2 + i*N), N);
+                // Dhat2_T.GetColumn(i, D_row); 
                 F_inviscid(id1).Mult(D_row, dU_inviscid);
 
                 if (dim > 1)
                 {
-                    Dhat2_T.GetColumn(j, D_row);
+                  //Dhat2_T.GetColumn(j, D_row);
+                  D_row.SetDataAndSize(const_cast<real_t *>(Dhat2 + j*N), N);
                     G_inviscid(id1).AddMult(D_row, dU_inviscid);
                     if (dim > 2)
                     {
-                        Dhat2_T.GetColumn(k, D_row);
+                      D_row.SetDataAndSize(const_cast<real_t *>(Dhat2 + k*N), N);
+                      //Dhat2_T.GetColumn(k, D_row);
                         H_inviscid(id1).AddMult(D_row, dU_inviscid);
                     }
                 }

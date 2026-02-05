@@ -10,6 +10,7 @@ namespace Prandtl
     int ndof_scalar_el = 0;
     int num_eq = 0;
     int num_attr = 0;
+    int Np = 0;
     // Persistent device-resident aux arrays
     // Host-only handles used for gather/scatter
     const mfem::ElementRestrictionOperator *restr_v = nullptr; // for vfes (vector space)
@@ -19,8 +20,11 @@ namespace Prandtl
     mfem::Vector elJac;
     mfem::Vector elMetric;
     mfem::Vector elWaveSpeed;
-    mfem::DenseMatrix D_T;
-    mfem::DenseMatrix Dhat_T;
-    mfem::DenseMatrix Dhat2_T;
+    mfem::Vector D;
+    mfem::Vector Dhat;
+    mfem::Vector Dhat2;
+    // mfem::DenseMatrix D_T;
+    // mfem::DenseMatrix Dhat_T;
+    // mfem::DenseMatrix Dhat2_T;
   };
 }
