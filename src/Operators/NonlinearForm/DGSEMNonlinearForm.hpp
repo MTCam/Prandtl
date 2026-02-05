@@ -1,6 +1,7 @@
 #pragma once
 
 #include "mfem.hpp"
+#include "prandtl_device.hpp"
 #include "DGSEMIntegrator.hpp"
 #include "BdrFaceIntegrator.hpp"
 #include "../../../libs/mfem/general/forall.hpp"
@@ -8,7 +9,7 @@
 namespace Prandtl
 {
 
-using namespace mfem;
+  // using namespace mfem;
 
 class DGSEMNonlinearForm : public ParNonlinearForm
 {
@@ -45,6 +46,8 @@ public:
         bfnfi.Append(bfi);
         bfnfi_marker.Append(&bdr_marker);
     }
+
+  void AssembleDeviceCache(Prandtl::DGSEMCache &dgsem_device_cache);
 
 
 };

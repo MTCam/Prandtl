@@ -421,6 +421,69 @@ void DGSEMNonlinearForm::MultLifting(const Vector &u, Vector &dudx, Vector &dudy
     }
 }
 
+void DGSEMNonlinearForm::AssembleDeviceCache(Prandtl::DGSEMCache &dgsem_device_cache)
+  {
+    MFEM_VERIFY(fes, "fes must be set");
+    Mesh *mesh = fes->GetMesh();
+    MFEM_VERIFY(mesh, "mesh must be set");
+    
+    // ---- sizes / metadata ----------------------------------------------------
+    const int ne = fes->GetNE();
+    dgsem_device_cache.num_el = ne;
+    // Attribute count = max attribute id (1-based in MFEM)
+    dgsem_device_cache.num_attr = mesh->attributes.Size() ? mesh->attributes.Max() : 0;
+    
+    // ---- 1) Build combined attribute marker exactly like Mult() --------------
+    dgsem_device_cache.attr_marker.SetSize(dgsem_device_cache.num_attr);
+    dgsem_device_cache.attr_marker = 0;
+    
+    if (dnfi.Size() == 0 || dgsem_device_cache.num_attr == 0)
+      {
+        // If no domain integrators, nothing to do; marker stays 0.
+        // If "process all" is desired instead, set marker=1 here.
+      }
+    else
+      {
+        for (int k = 0; k < dnfi.Size(); k++)
+          {
+            if (dnfi_marker[k] == nullptr)
+              {
+                dgsem_device_cache.attr_marker = 1; // process all attrs
+                break;
+              }
+
+            const Array<int> &marker = *dnfi_marker[k];
+            MFEM_ASSERT(marker.Size() == dgsem_device_cache.attr_marker.Size(),
+                        "invalid marker for domain integrator #" << k);
+            
+            for (int i = 0; i < dgsem_device_cache.attr_marker.Size(); i++)
+              {
+                dgsem_device_cache.attr_marker[i] |= marker[i];
+              }
+          }
+      }
+
+    // ---- 2) Per-element attribute id array -----------------------------------
+    dgsem_device_cache.elem_attr.SetSize(ne);
+    for (int e = 0; e < ne; ++e)
+      {
+        const int attr = mesh->GetAttribute(e); // 1-based
+        dgsem_device_cache.elem_attr[e] = attr;
+      }
+
+    // Optional host-side sanity check (cheap, catches bad markers early):
+    if (dgsem_device_cache.num_attr > 0)
+      {
+        for (int e = 0; e < ne; ++e)
+          {
+            const int a = dgsem_device_cache.elem_attr[e];
+            MFEM_VERIFY(a >= 1 && a <= dgsem_device_cache.num_attr,
+                        "element attribute out of range: attr=" << a
+                        << " num_attr=" << dgsem_device_cache.num_attr);
+          }
+      }
+  }
+  
 void DGSEMNonlinearForm::MultLifting(const Vector &u, Vector &dudx, Vector &dudy, Vector &dudz) const
 {
     const Vector &pu = Prolongate(u);
