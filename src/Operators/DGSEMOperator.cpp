@@ -54,6 +54,59 @@ DGSEMOperator::~DGSEMOperator()
         delete ptr;
     }
 }
+  
+  // Call once after:
+  //  - fes is finalized
+  //  - dnfi/dnfi_marker are set
+  //  - DGSEMIntegrator has built elJac/elMetric, and Dcol
+  // and before entering the time loop.
+  void DGSEMOperator::AssembleDeviceCache()
+  {
+    // Get the integrator's device-ready cache data
+    nonlinearForm->AssembleDeviceCache(dgsem_device_cache);
+
+    // ---- ElementRestriction handles (for later gather/scatter) ------------
+    // For pre-existing restrictions , just store pointers here.
+    // Choose lex ordering for TPE friendly layout.
+    dgsem_device_cache.restr_v = vfes->GetElementRestriction(mfem::ElementDofOrdering::LEXICOGRAPHIC);
+    dgsem_device_cache.restr_s = fes0->GetElementRestriction(mfem::ElementDofOrdering::LEXICOGRAPHIC);
+    
+    // ---- Ensure device residency ------------------------------------------
+    // These make the arrays usable inside mfem::forall kernels.
+    dgsem_device_cache.elem_attr.UseDevice();
+    dgsem_device_cache.attr_marker.UseDevice();
+    dgsem_device_cache.elem_attr.Read();     // device read-ready
+    dgsem_device_cache.attr_marker.Read();   // device read-ready
+    
+    // ---- Allocate per-element wave speed output (device) ------------------
+    dgsem_device_cache.elWaveSpeed.SetSize(num_elements);
+    dgsem_device_cache.elWaveSpeed = 0.0;
+    dgsem_device_cache.elWaveSpeed.UseDevice();
+    dgsem_device_cache.elWaveSpeed.ReadWrite();
+    
+    // ---- Geometric terms 
+    integrator->GetGeometricOperators(dgsem_device_cache.elJac,
+                                      dgsem_device_cache.elMetric,
+                                      dgsem_device_cache.D_T,
+                                      dgsem_device_cache.Dhat_T,
+                                      dgsem_device_cache.Dhat2_T);
+    
+    dgsem_device_cache.elJac.UseDevice();
+    dgsem_device_cache.elMetric.UseDevice();
+    dgsem_device_cache.elJac.Read();
+    dgsem_device_cache.elMetric.Read();
+    // These aren't quite ready yet
+    // dgsem_device_cache.D_T.UseDevice(true);
+    // dgsem_device_cache.D_T.Read();
+    // dgsem_device_cache.Dhat_T.UseDevice(true);
+    // dgsem_device_cache.Dhat_T.Read();
+    // dgsem_device_cache.Dhat2_T.UseDevice(true);
+    // dgsem_device_cache.Dhat2_T.Read();
+    
+    // ---- 7) Any other PA operator/data needed in forall -------------
+    // Eventually - LTE gas might store a table here, and even
+    // step-specific interp metadata
+  }
 
 void DGSEMOperator::ComputeBlendingCoefficient(const Vector &x) const
 {

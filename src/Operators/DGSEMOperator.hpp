@@ -7,6 +7,7 @@
 #include "Indicator.hpp"
 #include "BasicOperations.hpp"
 #include "GasModel.hpp"
+#include "prandtl_device.hpp"
 
 namespace Prandtl
 {
@@ -61,12 +62,14 @@ private:
     mutable Array<int> ind_indx;
     mutable Vector ind_dof;
     mutable real_t alpha_dof;
+    Prandtl::DGSEMCache dgsem_device_cache;
 
     void ComputeGlobalEntropyVector(const Vector &u, Vector &global_entropy) const;
     void ComputeGlobalPrimitiveGradVector(const Vector &u, Vector &dudx) const;
     void ComputeGlobalPrimitiveGradVector(const Vector &u, Vector &dudx, Vector &dudy) const;
     void ComputeGlobalPrimitiveGradVector(const Vector &u, Vector &dudx, Vector &dudy, Vector &dudz) const;
     void ComputeBlendingCoefficient(const Vector &u) const;
+    void AssembleDeviceCache();
 
 #ifdef AXISYMMETRIC
     void BuildAxisIndexFromMarker();
