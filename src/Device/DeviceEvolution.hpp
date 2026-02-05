@@ -932,3 +932,107 @@ void DGSEMIntegrator::AssembleElementGeometricTerms(ElementTransformation &Tr)
     dev.restr_v->AddMultTranspose(dUe, pdudt);
   }
 }
+
+// Call once after:
+//  - fes is finalized
+//  - dnfi/dnfi_marker are set
+//  - DGSEMIntegrator has built elJac/elMetric (and Dcol if you have it)
+// and before you enter the time loop.
+
+void DGSEMNonlinearForm::AssembleDeviceCache(DGSEMCache &cache) const
+{
+  MFEM_VERIFY(fes, "fes must be set");
+  Mesh *mesh = fes->GetMesh();
+  MFEM_VERIFY(mesh, "mesh must be set");
+
+  // ---- sizes / metadata ----------------------------------------------------
+  const int ne = fes->GetNE();
+  cache.num_el = ne;
+
+  // Attribute count = max attribute id (1-based in MFEM)
+  cache.num_attr = mesh->attributes.Size() ? mesh->attributes.Max() : 0;
+
+  // ---- 1) Build combined attribute marker exactly like Mult() --------------
+  cache.attr_marker.SetSize(cache.num_attr);
+  cache.attr_marker = 0;
+
+  if (dnfi.Size() == 0 || cache.num_attr == 0)
+  {
+    // If you have no domain integrators, nothing to do; marker stays 0.
+    // If you *want* "process all" in this case, set marker=1 here.
+  }
+  else
+  {
+    for (int k = 0; k < dnfi.Size(); k++)
+    {
+      if (dnfi_marker[k] == nullptr)
+      {
+        cache.attr_marker = 1; // process all attrs
+        break;
+      }
+
+      const Array<int> &marker = *dnfi_marker[k];
+      MFEM_ASSERT(marker.Size() == cache.attr_marker.Size(),
+                  "invalid marker for domain integrator #" << k);
+
+      for (int i = 0; i < cache.attr_marker.Size(); i++)
+      {
+        cache.attr_marker[i] |= marker[i];
+      }
+    }
+  }
+
+  // ---- 2) Per-element attribute id array -----------------------------------
+  cache.elem_attr.SetSize(ne);
+  for (int e = 0; e < ne; ++e)
+  {
+    const int attr = mesh->GetAttribute(e); // 1-based
+    cache.elem_attr[e] = attr;
+  }
+
+  // Optional host-side sanity check (cheap, catches bad markers early):
+  if (cache.num_attr > 0)
+  {
+    for (int e = 0; e < ne; ++e)
+    {
+      const int a = cache.elem_attr[e];
+      MFEM_VERIFY(a >= 1 && a <= cache.num_attr,
+                  "element attribute out of range: attr=" << a
+                  << " num_attr=" << cache.num_attr);
+    }
+  }
+
+  // ---- 3) ElementRestriction handles (for later gather/scatter) ------------
+  // If you already have restrictions elsewhere, just store pointers here.
+  // Choose lex ordering if you want tensor-product friendly layout.
+  cache.restr_v = fes->GetElementRestriction(mfem::ElementDofOrdering::LEXICOGRAPHIC);
+  // If you have a scalar space too, wire it similarly:
+  // cache.restr_s = fes0->GetElementRestriction(mfem::ElementDofOrdering::LEXICOGRAPHIC);
+
+  // ---- 4) Ensure device residency ------------------------------------------
+  // These make the arrays usable inside mfem::forall kernels.
+  cache.elem_attr.UseDevice(true);
+  cache.attr_marker.UseDevice(true);
+
+  cache.elem_attr.Read();     // device read-ready
+  cache.attr_marker.Read();   // device read-ready
+
+  // ---- 5) Allocate per-element wave speed output (device) ------------------
+  cache.elWaveSpeed.SetSize(ne);
+  cache.elWaveSpeed = 0.0;
+  cache.elWaveSpeed.UseDevice(true);
+  cache.elWaveSpeed.ReadWrite();
+
+  // ---- 6) Geometric terms: assume already assembled, just ensure device -----
+  // You said elJac/elMetric are correct; just guarantee they're device-ready.
+  cache.elJac.UseDevice(true);
+  cache.elMetric.UseDevice(true);
+  cache.elJac.Read();
+  cache.elMetric.Read();
+
+  // ---- 7) Any other PA operator data you dereference in forall -------------
+  // Example: if you store Dcol in cache (recommended), ensure UseDevice(true) + Read().
+  // cache.Dcol.UseDevice(true);
+  // cache.Dcol.Read();
+}
+
