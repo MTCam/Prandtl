@@ -11,6 +11,13 @@ namespace Prandtl
 
   class DGSEMIntegrator : public NonlinearFormIntegrator
   {
+  public:
+    struct OperatorCache {
+      mfem::Vector elJac;
+      mfem::Vector elMetric;
+      mfem::Vector Dhat2;
+    };
+    OperatorCache cache;
   private:
     std::shared_ptr<ParMesh> pmesh;
     std::shared_ptr<ParFiniteElementSpace> fes0;
@@ -32,7 +39,6 @@ namespace Prandtl
     Vector shape1, shape2;
     Vector state1, state2;
     Vector f, g, h;
-    Vector elJac, elMetric;
     
     Vector flux_num;
     DenseMatrix flux_mat1, flux_mat2, flux_mat;
@@ -87,6 +93,7 @@ namespace Prandtl
     void AssembleElementVectorOG(const FiniteElement &el, ElementTransformation &Tr, const Vector &el_u, Vector &el_dudt);
     void AssembleFaceVector(const FiniteElement &el1, const FiniteElement &el2, FaceElementTransformations &Tr, const Vector &el_u, Vector &el_dudt) override;
     void AssembleElementVector(const FiniteElement &el, ElementTransformation &Tr, const Vector &el_u, Vector &el_dutdt) override;
+    real_t AssembleElementVectorHost(const FiniteElement &el, ElementTransformation &Tr, const Vector &el_u, Vector &el_dutdt);
     
     void AssembleFaceVector(const FiniteElement &el, const FiniteElement &el2, FaceElementTransformations &Tr, const Vector &el_u, const Vector &el_dudx, const Vector &el_dudy, const Vector &el_dudz, Vector &el_dudt);
     void AssembleFaceVector(const FiniteElement &el, const FiniteElement &el2, FaceElementTransformations &Tr, const Vector &el_u, const Vector &el_dudx, const Vector &el_dudy, Vector &el_dudt);
