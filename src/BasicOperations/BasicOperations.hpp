@@ -50,6 +50,6 @@ namespace Prandtl
 
     const Table& ElementIndextoBdrElementIndex(Mesh &mesh);
 
-    MFEM_HOST_DEVICE void hunt(const Vector &arr, const real_t &x, int &ind_lo);
-    
+    MFEM_HOST_DEVICE int hunt(const real_t *arr, int n, real_t x, int ind_lo);
+
 }

@@ -351,11 +351,10 @@ const Table& ElementIndextoBdrElementIndex(Mesh &mesh)
 
 // CL NOTE: The following code finds the indices that bracket x in the lookup table.
 // It is adapted from Numerical Recipes and performs a exponential search followed by a bracketed binary search.
-void hunt(const Vector &arr, const real_t &x, int &ind_lo)
+MFEM_HOST_DEVICE int hunt(const real_t *arr, int n, real_t x, int ind_lo)
 {
-    int ind_hi, ind_mid, n;
+    int ind_hi, ind_mid;
     int incr = 1;
-    n = arr.Size();
     bool ascend = (arr[n-1] >= arr[0]);
 
     if (ind_lo < 0 || ind_lo >= n)
@@ -369,10 +368,10 @@ void hunt(const Vector &arr, const real_t &x, int &ind_lo)
         if ( (x >= arr[ind_lo]) == ascend)
         {
             // Hunt right
-            if (ind_lo == n-1) return;
+            if (ind_lo == n-1) return ind_lo;
             ind_hi = ind_lo + incr;
 
-            while ( (x >= arr[ind_hi]) == ascend)
+            while (ind_hi < n && ((x >= arr[ind_hi]) == ascend))
             {
                 ind_lo = ind_hi;
                 incr *= 2;
@@ -390,10 +389,11 @@ void hunt(const Vector &arr, const real_t &x, int &ind_lo)
             if (ind_lo == 0)
             {
                 ind_lo = -1;
-                return;
+                return ind_lo;
             }
-            ind_hi = ind_lo--;
-            while ( (x < arr[ind_lo]) == ascend)
+            ind_hi = ind_lo;
+            ind_lo = ind_lo-1;
+            while (ind_lo >= 0 && ((x < arr[ind_lo]) == ascend))
             {
                 ind_hi = ind_lo;
                 incr *= 2;
@@ -423,6 +423,7 @@ void hunt(const Vector &arr, const real_t &x, int &ind_lo)
 
     if(x == arr[n-1]) ind_lo = n-2;
     if(x == arr[0]) ind_lo = 0;
+    return ind_lo;
 }
 
 }
