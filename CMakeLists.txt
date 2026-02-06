@@ -10,11 +10,11 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 project(Prandtl)
 
+option(BUILD_TESTING "Build unit tests" ON)
 option(PARABOLIC "Enable Compressible Navier-Stokes Solver" OFF)
 option(SUBCELL_FV_BLENDING "Enable subcell blending" ON)
 option(AXISYMMETRIC "Enable Axisymmetric domain solver" OFF)
 option(SUTHERLAND "Enable Sutherland transport model" OFF)
-option(BUILD_TESTING "Build unit tests" ON)
 
 find_package(MPI REQUIRED)
 include_directories(${MPI_CXX_INCLUDE_PATH})
@@ -40,7 +40,7 @@ message(STATUS "CONFIG_FILE = ${CONFIG_FILE}")
 if(NOT "${CONFIG_FILE}" STREQUAL "")
     message(STATUS "Parsing configuration file: ${FULL_CONFIG_PATH}")
     execute_process(
-        COMMAND python3 "${CMAKE_CURRENT_SOURCE_DIR}/parse_compile_config.py ${FULL_CONFIG_PATH}"
+        COMMAND python3 "${CMAKE_CURRENT_SOURCE_DIR}/parse_compile_config.py" "${FULL_CONFIG_PATH}"
         WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
         OUTPUT_VARIABLE COMPILE_DEFINES
         OUTPUT_STRIP_TRAILING_WHITESPACE
@@ -115,6 +115,7 @@ target_include_directories(${PROJECT_NAME}
     PUBLIC ${CMAKE_SOURCE_DIR}/libs/metis-5.1.0/include
     PUBLIC ${CMAKE_SOURCE_DIR}/src/Operators/NonlinearForm
     PUBLIC ${CMAKE_SOURCE_DIR}/src/Operators
+    PUBLIC ${CMAKE_SOURCE_DIR}/src/Device
     PUBLIC ${CMAKE_SOURCE_DIR}/src/RiemannSolvers
     PUBLIC ${CMAKE_SOURCE_DIR}/src/BasicOperations
     PUBLIC ${CMAKE_SOURCE_DIR}/src/Filters

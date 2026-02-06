@@ -172,10 +172,10 @@ jobs:
           python scripts/compare_viz.py RegressionTests/LidDrivenCavity/ParaView/Cycle004000/data.pvtu TestCases/GoldenData/LidDrivenCavity/Cycle004000/data.pvtu --atol 1e-12 --rtol 1e-12
 
       - name: Unit tests (Euler)
-        run: ctest --test-dir build-euler -j2 --output-on-failure
+        run: ctest --test-dir build-euler --output-on-failure
       - name: Unit tests (CNS)
-        run: ctest --test-dir build-cns -j2 --output-on-failure
-        
+        run: ctest --test-dir build-cns --output-on-failure
+
       - name: Upload quick artifacts (logs)
         if: failure()
         uses: actions/upload-artifact@v4

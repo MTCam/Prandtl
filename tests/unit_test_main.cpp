@@ -9,7 +9,7 @@ static int list_tests()
     std::cout << "  " << tc.name << std::endl;
   }
 
-  return(0);
+  return 0;
 }
 
 // Test return code conventions:
@@ -63,7 +63,7 @@ int run_tests(std::vector<std::string> &testNames)
     int failed = 0;
     int except = 0;
     int notfound = 0;
-    int rc = 0;
+
     std::vector<std::string> passedTests;
     std::vector<std::string> failedTests;
     std::vector<std::string> missingTests;
@@ -73,7 +73,7 @@ int run_tests(std::vector<std::string> &testNames)
         testNames.push_back(tc.name);
       }
     }
-    std::cout << "Checking  " << testNames.size() << " tests...\n";
+    std::cout << "Checking " << testNames.size() << " tests...\n";
     for (const auto& name : testNames){
       int test_rc = run_test_by_name(name);
       if(test_rc == -1){
@@ -144,7 +144,7 @@ int main(int argc, char** argv){
   std::vector<std::string> testNames;
   while(argv[argn]){
     std::string arg(argv[argn++]);
-    if(arg[0] != '-'){
+    if(!arg.empty() && arg[0] != '-'){
       testNames.push_back(arg);
     } else {
       if(arg == "--list" || arg == "-l"){
@@ -161,8 +161,7 @@ int main(int argc, char** argv){
       } else if(arg == "--verbose" || arg == "-v"){
         set_unit_test_verbosity(1);
       } else {
-        std::cerr << programName << ": Unknown option (" << arg << "),"
-          " --help for usage." << std::endl;
+        std::cerr << programName << ": Unknown option '" << arg << "', --help for usage." << std::endl;
         return 1;
       }
     }

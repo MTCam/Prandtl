@@ -3,19 +3,19 @@
 
 namespace Prandtl
 {
-bool debug_integrator = false;
+constexpr bool debug_integrator = false;
 
 DGSEMIntegrator::DGSEMIntegrator(
       std::shared_ptr<ParMesh> pmesh_,
       std::shared_ptr<ParFiniteElementSpace> fes0_,
       std::shared_ptr<ParGridFunction> alpha_,
       std::shared_ptr<LiftingScheme> liftingScheme_,
-      NumericalFlux &rsolver_, int Np, real_t gamma)
-    : NonlinearFormIntegrator(), pmesh(pmesh_), fes0(fes0_), alpha(alpha_), liftingScheme(liftingScheme_),
-      rsolver(rsolver_), fluxFunction(rsolver_.GetFluxFunction()),
+      NumericalFlux &rsolver_, int Np)
+    : NonlinearFormIntegrator(), pmesh(pmesh_), fes0(fes0_), alpha(alpha_),
+      liftingScheme(liftingScheme_), rsolver(rsolver_), fluxFunction(rsolver_.GetFluxFunction()),
       Np_x(Np), Np_y(fluxFunction.dim > 1 ? Np : 1), Np_z(fluxFunction.dim > 2 ? Np : 1),
-      num_equations(fluxFunction.num_equations), dim(num_equations - 2), num_elements(pmesh->GetNE()),
-      GLIntRules(0, Quadrature1D::GaussLobatto), gammaM1(gamma - 1.0)
+      num_equations(fluxFunction.num_equations), dim(fluxFunction.dim), num_elements(pmesh->GetNE()),
+      GLIntRules(0, Quadrature1D::GaussLobatto)
 {
     IntegrationOrder = 2 * Np_x - 3;
 
@@ -408,22 +408,24 @@ void DGSEMIntegrator::AssembleElementVector(const FiniteElement &el,
                     std::cout << "________________________________________________________________________________________________________________" << "\n";
                 }
 
+                // TODO: Axisym source term is misplaced here. Need source term constructs
+                //       to fix. It is a code smell that this bit of physics is leaking out to
+                //       this level.  Currently, we are forced to make a utility in NS object
+                //       to fetch the pressure to code around this breakage of the abstraction.
 #ifdef AXISYMMETRIC
                 
                 {
-                    
-                    const real_t p = PressureFromConservative(state1);
-                    //dU_inviscid(2) += p;
-                    el_dudt_mat(id1, 2) += p;
- 
-                if (debug_integrator)
-                {
-                    const DenseMatrix &Jm = Tr.Jacobian();
-                    const real_t dr_deta_dbg = (Jm.NumRows() > 1 && Jm.NumCols() > 1) ? Jm(1,1) : 0.0;
-                    std::cout << "[AssembleElement]" << " p = " << p << "\n"; //", r = " << r_hat << ", dr/deta = " << dr_deta_dbg << "\n";
-                    std::cout << "[AssembleElement]" << " rdU_inviscid[2]-pJ      = [" << dU_inviscid[0] << ", " << dU_inviscid[1] << ", " << dU_inviscid[2] << ", " << dU_inviscid[3] << "]\n";
-                }
-                    
+                  const real_t p = fluxFunction.pressure(state1.GetData());
+                  el_dudt_mat(id1, 2) += p;
+                  
+                  if (debug_integrator)
+                    {
+                      const DenseMatrix &Jm = Tr.Jacobian();
+                      const real_t dr_deta_dbg = (Jm.NumRows() > 1 && Jm.NumCols() > 1) ? Jm(1,1) : 0.0;
+                      std::cout << "[AssembleElement]" << " p = " << p << "\n"; //", r = " << r_hat << ", dr/deta = " << dr_deta_dbg << "\n";
+                      std::cout << "[AssembleElement]" << " rdU_inviscid[2]-pJ      = [" << dU_inviscid[0] << ", " << dU_inviscid[1] << ", " << dU_inviscid[2] << ", " << dU_inviscid[3] << "]\n";
+                    }
+                  
                 }            
 #endif
                 AddRow(el_dudt_mat, dU_inviscid, id1);
@@ -1302,18 +1304,5 @@ void DGSEMIntegrator::ComputeSubcellMetrics()
         }
     }   
 }
-
-#ifdef AXISYMMETRIC
-inline real_t DGSEMIntegrator::PressureFromConservative(const Vector& U) const
-{
-    const real_t rho = U(0);
-    const real_t mz  = U(1);
-    const real_t mr  = U(2);
-    const real_t E   = U(3);
-    const real_t ke = 0.5 * ((mz*mz + mr*mr) / rho);
-    return gammaM1 * (E - ke);
-}
-#endif
-
 
 }

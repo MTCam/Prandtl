@@ -5,7 +5,7 @@
 // 
 // To add a new test suite executable (for example named 'mysuite'):
 //   - Create mysuite_tests.cpp (include 'unit_test.hpp')
-//   - Define tests using TEST(Name) { ...; return 0( for success )}
+//   - Define tests using TEST(Name) { ...; return 0 (for success) }
 //   - In tests/CMakeLists.txt, add an executable 'mysuite_tests'
 //     with unit_test_main.cpp and mysuite_tests.cpp as sources:
 //   - Register it with CTest with:

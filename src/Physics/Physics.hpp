@@ -1,16 +1,9 @@
 #pragma once
 
-#include "mfem.hpp"
-
-#ifndef MFEM_HOST_DEVICE
-#define MFEM_HOST_DEVICE
-#endif
+#include "Kernels.hpp"
 
 namespace Prandtl
 {
-
-  //using namespace mfem;
-  using real_t = mfem::real_t;
 
   struct PhysicsConstants
   {
