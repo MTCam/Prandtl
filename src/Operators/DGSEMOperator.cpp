@@ -63,14 +63,14 @@ DGSEMOperator::~DGSEMOperator()
   void DGSEMOperator::AssembleDeviceCache()
   {
     // Get the integrator's device-ready cache data
-    nonlinearForm->AssembleDeviceCache(dgsem_device_cache);
+    nonlinearForm->GetOperatorCache(dgsem_device_cache);
 
     // ---- ElementRestriction handles (for later gather/scatter) ------------
     // For pre-existing restrictions , just store pointers here.
     // Choose lex ordering for TPE friendly layout.
     dgsem_device_cache.restr_v = vfes->GetElementRestriction(mfem::ElementDofOrdering::LEXICOGRAPHIC);
     dgsem_device_cache.restr_s = fes0->GetElementRestriction(mfem::ElementDofOrdering::LEXICOGRAPHIC);
-    
+
     // ---- Ensure device residency ------------------------------------------
     // These make the arrays usable inside mfem::forall kernels.
     dgsem_device_cache.elem_attr.UseDevice();
@@ -625,13 +625,13 @@ void DGSEMOperator::Mult(const Vector &u, Vector &dudt) const
 
 #else
 
-    nonlinearForm->Mult(Ustate, dudt);
+    max_char_speed = nonlinearForm->MultInviscid(Ustate, dudt);
 
     #ifdef AXISYMMETRIC
         ZeroAxisRadialMom(dudt);
     #endif
 
-    max_char_speed = integrator->GetMaxCharSpeed();
+        // max_char_speed = integrator->GetMaxCharSpeed();
     for (int b = 0; b < bfnfi.size(); b++)
     {
         max_char_speed = std::max(bfnfi[b]->GetMaxCharSpeed(), max_char_speed);
