@@ -4,31 +4,38 @@
 #include "prandtl_device.hpp"
 #include "DGSEMIntegrator.hpp"
 #include "BdrFaceIntegrator.hpp"
-#include "../../../libs/mfem/general/forall.hpp"
+#include "general/forall.hpp"
 
 namespace Prandtl
 {
-
+  
   // using namespace mfem;
-
-class DGSEMNonlinearForm : public ParNonlinearForm
-{
-private:
-    mutable Vector aux2_x, aux2_y, aux2_z;
-    Array<DGSEMIntegrator*> dnfi, fnfi;
-    Array<BdrFaceIntegrator*> bfnfi;
-    mutable ParGridFunction GRAD_X, GRAD_Y, GRAD_Z;
-public:
+  
+  class DGSEMNonlinearForm : public ParNonlinearForm
+  {
+  public:
+    struct OperatorCache {
+      int num_el = 0;
+      int num_attr = 0;
+      mfem::Array<int> elem_attr;    // size ne, values are 1-based attributes
+      mfem::Array<int> attr_marker;  // size nattr, 0/1
+      mfem::Array<int> dnfi_marker;  // size nattr, 0/1
+      mutable mfem::Vector elWaveSpeed; // size nelements
+      const mfem::ElementRestrictionOperator *restr_v = nullptr; // for vfes (vector space)
+    };
+    OperatorCache cache;
     DGSEMNonlinearForm(ParFiniteElementSpace *pfes);
     void MultLifting(const Vector &u, Vector &dudx, Vector &dudy, Vector &dudz) const;
     void MultLifting(const Vector &u, Vector &dudx, Vector &dudy) const;
     void MultLifting(const Vector &u, Vector &dudx) const;
-
+    
     void Mult(const Vector &u, const Vector &dudx, const Vector &dudy, const Vector &dudz, Vector &dudt) const;
     void Mult(const Vector &u, const Vector &dudx, const Vector &dudy, Vector &dudt) const;
     void Mult(const Vector &u, const Vector &dudx, Vector &dudt) const;
     void Mult(const Vector &u, Vector &dudt) const;
-
+    void MultOG(const Vector &u, Vector &dudt) const;
+    real_t MultInviscid(const Vector &u, Vector &dudt) const;
+    real_t MultInviscidVolumeHost(const Vector &pu, Vector &pdudt) const;
     void AddDomainIntegrator(DGSEMIntegrator *nlfi)
     {
         dnfi.Append(nlfi);
@@ -47,9 +54,12 @@ public:
         bfnfi_marker.Append(&bdr_marker);
     }
 
-  void AssembleDeviceCache(Prandtl::DGSEMCache &dgsem_device_cache);
-
-
-};
-
+  void CreateOperatorCache();
+  void GetOperatorCache(Prandtl::DGSEMCache &dgsem_cache);
+  private:
+    mutable Vector aux2_x, aux2_y, aux2_z;
+    Array<DGSEMIntegrator*> dnfi, fnfi;
+    Array<BdrFaceIntegrator*> bfnfi;
+    mutable ParGridFunction GRAD_X, GRAD_Y, GRAD_Z;
+  };  
 }
