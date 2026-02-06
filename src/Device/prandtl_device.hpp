@@ -17,6 +17,7 @@ namespace Prandtl
     const mfem::ElementRestrictionOperator *restr_s = nullptr; // for fes (scalar space)
     mfem::Array<int> elem_attr;    // size ne, values are 1-based attributes
     mfem::Array<int> attr_marker;  // size nattr, 0/1
+    mfem::Array<int> dnfi_marker;  // size nattr, 0/1
     mfem::Vector elJac;
     mfem::Vector elMetric;
     mfem::Vector elWaveSpeed;
