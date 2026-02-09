@@ -42,7 +42,24 @@ namespace Prandtl
     // Optional scalar support (forward-looking)
     int eq_scalar0;       // index of first scalar component (or -1 if none)
     int num_scalars;      // number of scalar components
-    
+
+    // LTE table specific quantities
+    int nx, ny;                // dimensions of LTE table
+    int num_species;           // number of species in gas mixture
+    int num_properties = 9;    // CL NOTE : change the num_properties if more are being stored
+
+    // Property indices in the LTE table
+    int P_idx        = 0;  // pressure
+    int T_idx        = 1;  // temperature
+    int H_idx        = 2;  // total enthalpy
+    int c_idx        = 3;  // sound speed
+    int cv_idx       = 4;  // specific heat at constant volume
+    int cp_idx       = 5;  // specific heat at constant pressure
+    int gamma_eq_idx = 6;  // gamma-eq
+    int mu_idx       = 7;  // shear viscosity
+    int lambda_idx   = 8;  // thermal conductivity
+    int sp_0_idx     = 9; // index of first species 
+
     /**
      * Set up after creation.
      *
@@ -76,10 +93,33 @@ namespace Prandtl
         }
     }
 
+    /**
+     * Set up after creation.
+     *
+     *
+     * @param dim_             Spatial dimension (1, 2, or 3)
+     * @param num_dofs_scalar_ Number of DOFs per scalar field
+     * @param nx_              Number of x points in LTE table (\rho)
+     * @param ny_              Number of y points in LTE table (\rho E)
+     * @param num_species_     Number of species in gas mixture
+     * @param num_scalars_     Number of scalar components (default: 0)
+     */
+    void setup_lte(int dim_, int num_dofs_scalar_, int nx_, int ny_, int num_species_, int num_scalars_ = 0)
+    {
+      setup(dim_, num_dofs_scalar_, num_scalars_);
+      nx = nx_;
+      ny = ny_;
+      num_species = num_species_;
+    }
+
     // Canonical ordering:
     //   [rho, rho*u_0,-, rho*u_(dim-1), rho*E, scalars-]
     StateLayout(int dim_, int num_dofs_scalar_, int num_scalars_ = 0)
     { setup(dim_, num_dofs_scalar_, num_scalars_);}
+
+    // LTE Constructor
+    StateLayout(int dim_, int num_dofs_scalar_, int nx_, int ny_, int num_species_,int num_scalars_ = 0)
+    { setup_lte(dim_, num_dofs_scalar_, nx_, ny_, num_species_, num_scalars_);}
 
     // Convenience for nequations
     MFEM_HOST_DEVICE inline int nequations() const
@@ -97,6 +137,24 @@ namespace Prandtl
     {
       assert(validate(equation, dof) == 0);
       return equation * num_dofs_scalar + dof;
+    }
+
+    // Flat index of properties in the flattened 3D LTE Table
+    MFEM_HOST_DEVICE inline int lte_property_index(int property, int ind_x, int ind_y) const
+    {
+      int index;
+      assert(property < num_properties);
+      index = property*ny*nx + ind_y*nx + ind_x;
+      return index;
+    }
+
+    // Flat index of species mole fractions in the flattened 3D LTE Table
+    MFEM_HOST_DEVICE inline int lte_mole_frac_index(int sp_idx, int ind_x, int ind_y) const
+    {
+      int index;
+      assert(sp_idx < num_species);
+      index = (sp_0_idx + sp_idx)*ny*nx + ind_y*nx + ind_x;
+      return index;
     }
   };
   

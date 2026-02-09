@@ -128,6 +128,74 @@ TEST(StateLayout_Indexing_WithScalars_3D)
     return 0;
 }
 
+TEST(LTE_StateLayout_Indexing_NoScalars_2D)
+{
+    const int dim   = 2;
+    const int ndofs = 5;
+    const int nx    = 3;
+    const int ny    = 3;
+    const int num_species = 3;
+
+    Prandtl::StateLayout layout(dim, ndofs, nx, ny, num_species);
+
+    // Basic metadata
+    EXPECT_CLOSE(layout.dim,             dim,     0.0);
+    EXPECT_CLOSE(layout.num_dofs_scalar, ndofs,   0.0);
+    EXPECT_CLOSE(layout.eq_mass,         0,       0.0);
+    EXPECT_CLOSE(layout.eq_mom0,         1,       0.0);
+    EXPECT_CLOSE(layout.eq_mom[0],       1,       0.0);
+    EXPECT_CLOSE(layout.eq_mom[1],       2,       0.0);
+    EXPECT_CLOSE(layout.eq_mom[2],      -1,       0.0); // unused in 2D
+    EXPECT_CLOSE(layout.eq_energy,       dim+1,   0.0);
+    EXPECT_CLOSE(layout.eq_scalar0,     -1,       0.0);
+    EXPECT_CLOSE(layout.num_scalars,     0,       0.0);
+
+    EXPECT_CLOSE(layout.nx,              nx,      0.0);
+    EXPECT_CLOSE(layout.ny,              ny,      0.0);
+    EXPECT_CLOSE(layout.num_species,      3,      0.0);
+    EXPECT_CLOSE(layout.num_properties,   9,      0.0);
+    EXPECT_CLOSE(layout.P_idx,            0,      0.0);
+    EXPECT_CLOSE(layout.T_idx,            1,      0.0);
+    EXPECT_CLOSE(layout.H_idx,            2,      0.0);
+    EXPECT_CLOSE(layout.c_idx,            3,      0.0);
+    EXPECT_CLOSE(layout.cv_idx,           4,      0.0);
+    EXPECT_CLOSE(layout.cp_idx,           5,      0.0);
+    EXPECT_CLOSE(layout.gamma_eq_idx,     6,      0.0);
+    EXPECT_CLOSE(layout.mu_idx,           7,      0.0);
+    EXPECT_CLOSE(layout.lambda_idx,       8,      0.0);
+    EXPECT_CLOSE(layout.sp_0_idx,         9,      0.0);
+
+    // Flat index should be eq * ndofs + dof
+    const int num_eq = dim + 2; // rho + dim momenta + energy
+    for (int eq = 0; eq < num_eq; ++eq)
+    {
+        for (int i = 0; i < ndofs; ++i)
+        {
+            const int expected = eq * ndofs + i;
+            EXPECT_CLOSE(layout.index(eq, i), expected, 0.0);
+        }
+    }
+
+    // Flat index for thermodynamic properties in flattened 3D LTE Table
+    int ind_x = 1, ind_y = 1;
+    int index = 4;
+    for (int prop_idx = 0; prop_idx < layout.num_properties; ++prop_idx)
+    {
+      EXPECT_CLOSE(layout.lte_property_index(prop_idx, ind_x, ind_y), index, 0.0);
+      index = index + nx*ny;
+    }
+
+    // Flat index for species mole-fractions in flattened 3D LTE Table
+    int sp_0_idx = layout.sp_0_idx;
+    for (int sp_idx = 0; sp_idx < layout.num_species; ++sp_idx)
+    {
+      EXPECT_CLOSE(layout.lte_mole_frac_index(sp_idx, ind_x, ind_y), index, 0.0);
+      index = index + nx*ny;
+    }
+
+    return 0;
+}
+
 TEST(DofStateView_ReadsExpectedComponents)
 {
     const int dim   = 3;
