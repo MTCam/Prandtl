@@ -7,18 +7,19 @@
 namespace Prandtl
 {
 
-class ChandrashekarFlux : public NumericalFlux
-{
-private:
-  mutable Vector metric;
-  const IdealGasModel gasModel;
-public:
-  ChandrashekarFlux(const NavierStokesFlux &fluxFunction, const IdealGasModel &gasModel_);
-  real_t ComputeFaceFlux(const Vector &state1, const Vector &state2, const Vector &nor, Vector &flux) const override;
-  real_t ComputeVolumeFlux(const Vector &state1, const Vector &state2, const Vector &metric1, const Vector &metric2, Vector &F_tilde) override;
-
-};
-
+  class ChandrashekarFlux : public NumericalFlux
+  {
+  private:
+    mutable Vector metric;
+    const IdealGasModel gasModel;
+  public:
+    ChandrashekarFlux(const NavierStokesFlux &fluxFunction, const IdealGasModel &gasModel_);
+    real_t ComputeFaceFlux(const Vector &state1, const Vector &state2,
+                           const Vector &nor, Vector &flux) const override;
+    real_t ComputeVolumeFlux(const Vector &state1, const Vector &state2, const Vector &metric1,
+                             const Vector &metric2, Vector &F_tilde) override;
+    
+  };
   namespace Chandrashekar {
     // This is Riemann solver that computes the numerical flux for 2 point states
     // Will be ctx.iflux.ComputeVolumeFlux
@@ -105,5 +106,14 @@ public:
       
       return lambda_max;
     }
+
+    struct InviscidFlux {
+      MFEM_HOST_DEVICE inline real_t ComputeVolumeFlux(const IdealGasModel &gasModel,
+                                                       const real_t *q1, const real_t *q2,
+                                                       const real_t *met1, const real_t *met2,
+                                                       real_t *F_tilde) const{
+        return ComputeVolumeFluxKernel(gasModel, q1, q2, met1, met2, F_tilde); 
+      }
+    };
   }
 }
