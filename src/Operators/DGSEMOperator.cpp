@@ -45,6 +45,15 @@ DGSEMOperator::DGSEMOperator(std::shared_ptr<ParFiniteElementSpace> vfes_,
 #ifdef PARABOLIC
     global_entropy.SetSize(vfes->GetVSize());
 #endif
+    // TODO: Figure out how to handle fes0 vs. vfes
+    // I think fes0 is only used for subcell blending
+    const int ndof_from_fes0 = fes0->GetFE(0)->GetDof();
+    const int ndof_from_vfes = vfes->GetFE(0)->GetDof();
+    std::cout << "NDOF fes0: " << ndof_from_fes0 << std::endl;
+    std::cout << "NDOF from vfes: " << ndof_from_vfes << std::endl;
+    //MFEM_VERIFY(ndof_from_fes0 == ndof_from_vfes,
+    //            "fes0 and vfes disagree on element scalar dofs");
+    nonlinearForm->CreateOperatorCache();
 }
 
 DGSEMOperator::~DGSEMOperator()
@@ -637,6 +646,7 @@ void DGSEMOperator::Mult(const Vector &u, Vector &dudt) const
         max_char_speed = std::max(bfnfi[b]->GetMaxCharSpeed(), max_char_speed);
     }
 #endif
+
 }
 
 void DGSEMOperator::AddBdrFaceIntegrator(BdrFaceIntegrator *bfi, Array<int> &bdr_marker)
