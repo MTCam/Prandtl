@@ -9,7 +9,6 @@ DGSEMNonlinearForm::DGSEMNonlinearForm(ParFiniteElementSpace *pf)
     GRAD_X.MakeRef(pf, NULL);
     GRAD_Y.MakeRef(pf, NULL);
     GRAD_Z.MakeRef(pf, NULL);
-    CreateOperatorCache();
 }
 
 void DGSEMNonlinearForm::MultLifting(const Vector &u, Vector &dudx) const
@@ -422,18 +421,26 @@ void DGSEMNonlinearForm::MultLifting(const Vector &u, Vector &dudx, Vector &dudy
     }
 }
 
+// This is called from OUTSIDE by DGSEMOperator.cpp
+// Because this call requires some setup to be done
+// *after* instantiation : can't be called from
+// constructor.
 void DGSEMNonlinearForm::CreateOperatorCache()
 {
     MFEM_VERIFY(fes, "fes must be set");
     Mesh *mesh = fes->GetMesh();
     MFEM_VERIFY(mesh, "mesh must be set");
-    
+    MFEM_VERIFY(dnfi[0] != nullptr, "Domain integrator must be set.");
+
     // ---- sizes / metadata ----------------------------------------------------
     const int ne = fes->GetNE();
     cache.num_el = ne;
     // Attribute count = max attribute id (1-based in MFEM)
     cache.num_attr = mesh->attributes.Size() ? mesh->attributes.Max() : 0;
-    
+    cache.ndof_scalar_el = fes->GetFE(0)->GetDof();
+    cache.num_eq = fes->GetVDim();
+    cache.dim = mesh->SpaceDimension();
+
     // ---- 1) Build combined attribute marker exactly like Mult() --------------
     cache.attr_marker.SetSize(cache.num_attr);
     cache.attr_marker = 0;
@@ -525,6 +532,21 @@ void DGSEMNonlinearForm::CreateOperatorCache()
     cache.elWaveSpeed = 0.0;
     cache.elWaveSpeed.UseDevice();
     //    cache.elWaveSpeed.Read();
+
+    // ---- Geometric terms 
+    dnfi[0]->GetGeometricOperators(cache.elJac, cache.elMetric, cache.D,
+                                   cache.Dhat, cache.Dhat2);
+
+    cache.elJac.UseDevice();
+    cache.elMetric.UseDevice();
+    cache.elJac.Read();
+    cache.elMetric.Read();
+    cache.D.UseDevice();
+    cache.Dhat.UseDevice();
+    cache.Dhat2.UseDevice();
+    cache.D.Read();
+    cache.Dhat.Read();
+    cache.Dhat2.Read();
 }
 
 void DGSEMNonlinearForm::GetOperatorCache(Prandtl::DGSEMCache &dgsem_cache)
@@ -1196,6 +1218,122 @@ real_t DGSEMNonlinearForm::MultInviscidVolumeHost(const Vector &pu, Vector &pdud
     return max_char_speed;
 }
 
+// This function is a TEST to make sure if we pass the restr_v->Mult(pu, Ue)
+// restructured *pu* vector (instead of ElementTransformation Tr) to the
+// Integrator for use, that we still get the correct data, and the correct
+// answer.  This tests our device version of element restriction of solution
+// data, and scattering the element RHS back to the system-wide storage.
+real_t DGSEMNonlinearForm::MultInviscidVolumeHost2(const Vector &pu, Vector &pdudt) const
+{
+
+  mfem::Vector Ue(cache.restr_v->Height());
+  mfem::Vector dUe(cache.restr_v->Height());
+  cache.restr_v->Mult(pu, Ue);
+  dUe = 0.0;
+
+  const real_t *Ue_d = Ue.Read();
+  real_t *dUe_d = dUe.ReadWrite();
+
+  const int ndof = cache.ndof_scalar_el;
+  const int neq = cache.num_eq;
+  const int estride = ndof*neq;
+  const int *attr_marker = cache.attr_marker.Read();
+  const int *elem_attr = cache.elem_attr.Read();
+  const int *dnfi_marker = cache.dnfi_marker.Read();
+  real_t *ws_d = cache.elWaveSpeed.ReadWrite();
+  real_t max_char_speed = 0.0;
+
+  if (dnfi.Size())
+    {
+      for (int i = 0; i < fes->GetNE(); i++)
+        {
+          const int attr = elem_attr[i];
+          if (attr_marker[attr-1] == 0) {
+            ws_d[i] = 0.0;
+            continue;
+          }
+          const int eoff = i * estride;
+          const real_t *u_el = Ue_d + eoff;
+          real_t *du_el = dUe_d + eoff;
+          ElementTransformation *T = fes->GetElementTransformation(i);
+          ws_d[i] = dnfi[0]->AssembleElementVolumeHost(i, *T, u_el, du_el);
+          // ws_d[i] = 0.0;
+          // pdudt.AddElementVector(vdofs, el_dudt);
+        }
+
+        const real_t *ws = cache.elWaveSpeed.Read();
+        for(int e = 0;e < cache.num_el;e++)
+          {
+            max_char_speed = std::max(max_char_speed, ws[e]);
+          }
+    }
+  // Scatter back to main storage
+  cache.restr_v->AddMultTranspose(dUe, pdudt);
+  return max_char_speed;
+}
+
+real_t DGSEMNonlinearForm::MultInviscidVolumeDevice(const Vector &pu, Vector &pdudt) const
+{
+  // dev and ctx are assumed class member data / constructs (for now)
+  // dev: prepared DGSEMCache member with vectors and shit
+  // ctx: prepared device-safe context can be passed to kernels
+  mfem::Vector Ue(cache.restr_v->Height());
+  mfem::Vector dUe(cache.restr_v->Height());
+  cache.restr_v->Mult(pu, Ue);
+  
+  dUe = 0.0;
+  
+  const real_t *Ue_d = Ue.Read();
+  real_t *dUe_d = dUe.ReadWrite();
+
+  const real_t *elJac_d    = cache.elJac.Read();
+  const real_t *elMetric_d = cache.elMetric.Read();
+  const int *elem_attr_d = cache.elem_attr.Read();
+  const int *attr_marker_d = cache.attr_marker.Read();
+  
+  //const auto ctx = dev.ctx;
+  const int dim = cache.dim;
+  const int ne = cache.num_el;
+  const int ndof = cache.ndof_scalar_el;
+  const int neq = cache.num_eq;
+  const int metric_stride = ndof * dim * dim;
+  const int jac_stride    = ndof;
+  const int estride = ndof*neq;
+  
+  real_t *ws_d = cache.elWaveSpeed.ReadWrite();
+  
+  mfem::forall(ne, [=] MFEM_HOST_DEVICE (int e)
+  {
+    
+    const real_t *jac_el    = elJac_d    + e * jac_stride;
+    const real_t *metric_el = elMetric_d + e * metric_stride;
+    
+    const int attr = elem_attr_d[e];
+    if (attr_marker_d[attr-1] == 0) {
+      ws_d[e] = 0.0;
+      return;
+    }
+    
+    const int eoff = e * estride;
+    const real_t *u_el = Ue_d + eoff;
+    real_t *du_el = dUe_d + eoff;
+
+    //const real_t cs_el = AssembleElementVolumeDevice(cache, u_el, jac_el, metric_el, du_el);
+    const real_t cs_el = 0.0;
+    ws_d[e] = cs_el;
+  });
+  
+  const real_t *ws = cache.elWaveSpeed.Read();
+  real_t max_char_speed = 0.0;
+  for(int e = 0;e < cache.num_el;e++)
+    {
+      max_char_speed = std::max(max_char_speed, ws[e]);
+    }
+  // Scatter back to main storage
+  cache.restr_v->AddMultTranspose(dUe, pdudt);
+  return max_char_speed;
+}
+
 real_t DGSEMNonlinearForm::MultInviscid(const Vector &u, Vector &dudt) const
 {
     const Vector &pu = Prolongate(u);
@@ -1204,10 +1342,12 @@ real_t DGSEMNonlinearForm::MultInviscid(const Vector &u, Vector &dudt) const
     {
         aux2.SetSize(P->Height());
     }
+
     Vector &pdudt = P ? aux2 : dudt;
     pdudt = 0.0;
+
     real_t max_char_speed = 0.0;
-    max_char_speed = MultInviscidVolumeHost(pu, pdudt);
+    max_char_speed = MultInviscidVolumeHost2(pu, pdudt);
     // real_t max_char_speed = MultInviscidVolumeDevice(pu, pdudt);
 
     Array<int> vdofs;

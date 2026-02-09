@@ -15,13 +15,21 @@ namespace Prandtl
   {
   public:
     struct OperatorCache {
+      int dim = 0;
       int num_el = 0;
       int num_attr = 0;
+      int ndof_scalar_el = 0;
+      int num_eq = 0;
       mfem::Array<int> elem_attr;    // size ne, values are 1-based attributes
       mfem::Array<int> attr_marker;  // size nattr, 0/1
       mfem::Array<int> dnfi_marker;  // size nattr, 0/1
       mutable mfem::Vector elWaveSpeed; // size nelements
       const mfem::ElementRestrictionOperator *restr_v = nullptr; // for vfes (vector space)
+      mfem::Vector elJac;
+      mfem::Vector elMetric;
+      mfem::Vector D;
+      mfem::Vector Dhat;
+      mfem::Vector Dhat2;
     };
     OperatorCache cache;
     DGSEMNonlinearForm(ParFiniteElementSpace *pfes);
@@ -35,7 +43,9 @@ namespace Prandtl
     void Mult(const Vector &u, Vector &dudt) const;
     void MultOG(const Vector &u, Vector &dudt) const;
     real_t MultInviscid(const Vector &u, Vector &dudt) const;
+    real_t MultInviscidVolumeDevice(const Vector &pu, Vector &pdudt) const;
     real_t MultInviscidVolumeHost(const Vector &pu, Vector &pdudt) const;
+    real_t MultInviscidVolumeHost2(const Vector &pu, Vector &pdudt) const;
     void AddDomainIntegrator(DGSEMIntegrator *nlfi)
     {
         dnfi.Append(nlfi);
