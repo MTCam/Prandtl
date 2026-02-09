@@ -86,7 +86,7 @@ namespace Prandtl
     D_T.Transpose();
 
     dof = dof1 = dof2 = ir_vol->GetNPoints();
-
+    
     shape1.SetSize(ir_vol->GetNPoints());
     shape2.SetSize(ir_vol->GetNPoints());
 
@@ -151,8 +151,28 @@ if (debug_integrator)
     ComputeSubcellMetrics();
 #endif
 
-    AssembleGeometricTerms();
+    CreateOperatorCache();
 }
+
+  void DGSEMIntegrator::CreateOperatorCache() {
+    cache.Np_x = Np_x;
+    cache.Np_y = Np_y;
+    cache.Np_z = Np_z;
+    cache.dim = dim;
+    cache.num_elements = fes0->GetNE();
+    cache.num_equations = num_equations;
+    AssembleGeometricTerms();
+    cache.D.UseDevice();
+    cache.Dhat.UseDevice();
+    cache.Dhat2.UseDevice();
+    cache.elJac.UseDevice();
+    cache.elMetric.UseDevice();
+    cache.D.Read();
+    cache.Dhat.Read();
+    cache.Dhat2.Read();
+    cache.elJac.Read();
+    cache.elMetric.Read();
+  }
 
 void DGSEMIntegrator::GetGeometricOperators(mfem::Vector &elJac_x, mfem::Vector &elMetric_x,
                                             mfem::Vector &D, mfem::Vector &Dhat,
@@ -161,30 +181,31 @@ void DGSEMIntegrator::GetGeometricOperators(mfem::Vector &elJac_x, mfem::Vector 
   elJac_x.MakeRef(cache.elJac, 0, cache.elJac.Size());
   elMetric_x.MakeRef(cache.elMetric, 0, cache.elMetric.Size());
 
-  // TODO: Deal with D, too
   D.SetSize(Np_x*Np_x);
   Dhat.SetSize(Np_x*Np_x);
   Dhat2.SetSize(Np_x*Np_x);
 
-  std::memcpy(D.GetData(),     D_T.Data(),     sizeof(real_t)*Np_x*Np_x);
-  std::memcpy(Dhat.GetData(),  Dhat_T.Data(),  sizeof(real_t)*Np_x*Np_x);
-  std::memcpy(Dhat2.GetData(), cache.Dhat2.GetData(), sizeof(real_t)*Np_x*Np_x);  
-  // D_T_x.UseExternalData(D_T.Data(), D_T.Height(), D_T.Width());
-  // Dhat_T_x.UseExternalData(Dhat_T.Data(), Dhat_T.Height(), Dhat_T.Width());
-  // Dhat2_T_x.UseExternalData(Dhat2_T.Data(), Dhat2_T.Height(), Dhat2_T.Width());
-  
+  std::memcpy(D.GetData(),     cache.D.GetData(),     sizeof(real_t)*Np_x*Np_x);
+  std::memcpy(Dhat.GetData(),  cache.Dhat.GetData(),  sizeof(real_t)*Np_x*Np_x);
+  std::memcpy(Dhat2.GetData(), cache.Dhat2.GetData(), sizeof(real_t)*Np_x*Np_x);
 }
 
+// Set up and populate elJac, elMetric, D, Dhat, Dhat2
 void DGSEMIntegrator::AssembleGeometricTerms()
   {
     int nelem = fes0->GetNE();
     assert(nelem == num_elements);
     cache.elJac.SetSize(Np_x*Np_y*Np_z*num_elements);
     cache.elMetric.SetSize(dim*dim*Np_x*Np_y*Np_z*num_elements);
-    cache.Dhat2.SetSize(Np_x*Np_x);
-    std::memcpy(cache.Dhat2.GetData(), Dhat2_T.Data(), sizeof(real_t)*Np_x*Np_x);
 
-    // std::cout << "AssembleGeometricTerms::Number of elements: " << nelem << std::endl;
+    cache.D.SetSize(Np_x*Np_x);
+    cache.Dhat.SetSize(Np_x*Np_x);
+    cache.Dhat2.SetSize(Np_x*Np_x);
+
+    // Currently just copy the ole D_T, Dhat_T, and Dhat2_T
+    std::memcpy(cache.D.GetData(),     D_T.Data(),     sizeof(real_t)*Np_x*Np_x);
+    std::memcpy(cache.Dhat.GetData(),  Dhat_T.Data(),  sizeof(real_t)*Np_x*Np_x);
+    std::memcpy(cache.Dhat2.GetData(), Dhat2_T.Data(), sizeof(real_t)*Np_x*Np_x);
 
     for (int i = 0; i < nelem; i++)
       {
@@ -193,6 +214,46 @@ void DGSEMIntegrator::AssembleGeometricTerms()
         AssembleElementGeometricTerms(*T);
       }
   }
+
+// Builds element-specific Jac/Metric and stuffs into cache.elJac, cache.elMetric
+void DGSEMIntegrator::AssembleElementGeometricTerms(ElementTransformation &Tr)
+{
+
+  if (debug_integrator)
+    {
+      std::cout << "===== Entering DGSEMIntegrator::AssembleElementGeometricalTerms =====" << std::endl;
+    }
+  
+  real_t *Jinv_h = cache.elJac.HostWrite();
+  real_t *Met_h  = cache.elMetric.HostWrite();
+
+  const int e = Tr.ElementNo;
+  const int nq = Np_x * Np_y * Np_z;
+  
+  for (int q = 0; q < nq; ++q)
+    {
+      const IntegrationPoint &ip = ir_vol->IntPoint(q);
+      Tr.SetIntPoint(&ip);
+      const real_t J = Tr.Weight();
+      Jinv_h[e*nq + q] = J;
+      
+      const mfem::DenseMatrix &adj = Tr.AdjugateJacobian();              
+      for (int dir = 0; dir < dim; ++dir)
+        {
+          // adj.GetRow(dir, metricRow) pattern:
+          // metricRow is a mfem::Vector of size dim you already have (e.g. member 'metric1')
+          adj.GetRow(dir, metric1);  // metric1.Size() == dim
+          
+          for (int d = 0; d < dim; ++d)
+            {
+              const int idxM = (((e*nq + q)*dim + dir)*dim + d);
+              Met_h[idxM] = metric1(d);
+            }
+        }
+    }
+  // cache.elJac.Read();
+  // cache.elMetric.Read();
+}
 
 void DGSEMIntegrator::AssembleFaceVector(const FiniteElement &el1, const FiniteElement &el2,
                                          FaceElementTransformations &Tr, const Vector &el_u,
@@ -839,45 +900,193 @@ real_t DGSEMIntegrator::AssembleElementVectorHost(const FiniteElement &el,
     return max_char_speed;
 }
 
-void DGSEMIntegrator::AssembleElementGeometricTerms(ElementTransformation &Tr)
+// This function is a TEST that makes sure that our caller (DGSEMNonlinearForm)
+// using element restriction operator instead of ElementTransformation Tr works
+// and gets us the correct data in the correct shape.
+real_t DGSEMIntegrator::AssembleElementVolumeHost(const int e,ElementTransformation &Tr,
+                                                  const real_t *el_u, real_t *el_dudt)
 {
-
-  if (debug_integrator)
+    if (debug_integrator)
     {
-      std::cout << "===== Entering DGSEMIntegrator::AssembleElementGeometricalTerms =====" << std::endl;
+        std::cout << "===== Entering DGSEMIntegrator::AssembleElementVolumeHost =====" << std::endl;
     }
-  
-  real_t *Jinv_h = cache.elJac.HostWrite();
-  real_t *Met_h  = cache.elMetric.HostWrite();
 
-  const int e = Tr.ElementNo;
-  const int nq = Np_x * Np_y * Np_z;
-  
-  for (int q = 0; q < nq; ++q)
-    {
-      const IntegrationPoint &ip = ir_vol->IntPoint(q);
-      Tr.SetIntPoint(&ip);
-      const real_t J = Tr.Weight();
-      Jinv_h[e*nq + q] = J;
-      
-      const mfem::DenseMatrix &adj = Tr.AdjugateJacobian();              
-      for (int dir = 0; dir < dim; ++dir)
-        {
-          // adj.GetRow(dir, metricRow) pattern:
-          // metricRow is a mfem::Vector of size dim you already have (e.g. member 'metric1')
-          adj.GetRow(dir, metric1);  // metric1.Size() == dim
-          
-          for (int d = 0; d < dim; ++d)
-            {
-              const int idxM = (((e*nq + q)*dim + dir)*dim + d);
-              Met_h[idxM] = metric1(d);
+    // int e = Tr.ElementNo;
+    const int Np_x = cache.Np_x;
+    const int Np_y = cache.Np_y;
+    const int Np_z = cache.Np_z;
+    const int dim = cache.dim;
+    const int dof = Np_x * Np_y * Np_z;
+    const int num_equations = cache.num_equations;
+    int el_offset_jac = e*Np_x*Np_y*Np_z;
+    int el_offset_metric = el_offset_jac*dim*dim;
+    const real_t *elJac_d = cache.elJac.Read() + el_offset_jac;
+    const real_t *elMetric_d = cache.elMetric.Read() + el_offset_metric;
+    const int N = Np_x;
+    const real_t *Dhat2_d = cache.Dhat2.Read();
+    for (int q = 0;q < dof * num_equations;q++){
+      el_dudt[q] = 0.0;
+    }
+    // el_dudt.SetSize(dof * num_equations);
+    // el_dudt = 0.0;
+
+    const DenseMatrix el_u_mat(const_cast<real_t*>(el_u), dof, num_equations);
+    DenseMatrix el_dudt_mat(el_dudt, dof, num_equations);
+
+#ifdef SUBCELL_FV_BLENDING
+    fes0->GetElementDofs(e, alpha_indx);
+    alpha->GetSubVector(alpha_indx, el_alpha);
+    ComputeFVFluxes(el_u_mat, el_alpha(0), Tr, el_dudt_mat);
+#endif
+    
+    for (int k = 0; k < Np_z; k++)
+      {
+        for (int j = 0; j < Np_y; j++)
+          {
+            for (int i = 0; i < Np_x; i++)
+              {
+                id1 = k * Np_y * Np_x + j * Np_x + i;
+                // const IntegrationPoint &ip1 = ir_vol->IntPoint(id1);
+                // Tr.SetIntPoint(&ip1);
+                el_u_mat.GetRow(id1, state1);
+                // J = Tr.Weight();
+                // double Jnew = elJac_d[id1];
+                //double Jdiff = std::abs(J - Jnew);
+                J = elJac_d[id1];
+                //std::cout << "  Jerr: " << Jdiff << std::endl;
+                // assert(Jdiff < 1e-12);
+                // adj1 = Tr.AdjugateJacobian();
+                // adj1.GetRow(0, metric1);
+                real_t *m1ptr = const_cast<real_t *>(elMetric_d+id1*dim*dim);
+                met1.SetDataAndSize(m1ptr,dim);
+                f = 0.0;
+                F_inviscid(id1).SetCol(i, f);
+
+                for (int m = i + 1; m < Np_x; m++)
+                {
+                    id2 = k * Np_y * Np_x + j * Np_x + m;
+                    // const IntegrationPoint &ip2 = ir_vol->IntPoint(id2);
+                    // Tr.SetIntPoint(&ip2);
+                    el_u_mat.GetRow(id2, state2);
+                    // adj2 = Tr.AdjugateJacobian();
+                    // adj2.GetRow(0, metric2);
+                    real_t *m2ptr = const_cast<real_t *>(elMetric_d+id2*dim*dim);
+                    met2.SetDataAndSize(m2ptr, dim);
+              
+                max_char_speed = std::max(max_char_speed, rsolver.ComputeVolumeFlux(state1, state2, met1, met2, f));
+
+                //IntegrationPoint ipm = ip1;
+                //ipm.x = 0.5*(ip1.x + ip2.x);
+                //Vector phys(dim);
+                //Tr.Transform(ipm, phys);
+                //real_t r_hat = phys[1]; 
+
+                //#ifdef AXISYMMETRIC
+                //                f *= r_hat;
+                //#endif
+
+                    F_inviscid(id1).SetCol(m, f);
+                    F_inviscid(id2).SetCol(i, f);
+                }
+
+                if (dim > 1)
+                {
+                  // adj1.GetRow(1, metric1);
+                  m1ptr = const_cast<real_t *>(elMetric_d+id1*dim*dim+dim);
+                  met1.SetDataAndSize(m1ptr,dim);
+                    g = 0.0;
+                    G_inviscid(id1).SetCol(j, g);
+                    for (int m = j + 1; m < Np_y; m++)
+                    {
+                        id2 = k * Np_y * Np_x + m * Np_x + i;
+                        // const IntegrationPoint &ip3 = ir_vol->IntPoint(id2);
+                        // Tr.SetIntPoint(&ip3);
+                        el_u_mat.GetRow(id2, state2);  
+                        //adj2 = Tr.AdjugateJacobian();
+                        // adj2.GetRow(1, metric2);
+                        real_t *m2ptr = const_cast<real_t *>(elMetric_d+id2*dim*dim+dim);
+                        met2.SetDataAndSize(m2ptr, dim);
+
+                max_char_speed = std::max(max_char_speed, rsolver.ComputeVolumeFlux(state1, state2, met1, met2, g));
+
+                // IntegrationPoint ipm = ip1;
+                // ipm.y = 0.5*(ip1.y + ip3.y);
+                // Vector phys(dim);
+                // Tr.Transform(ipm, phys);
+                // real_t r_hat = phys[1]; 
+                // #ifdef AXISYMMETRIC
+                // g *= r_hat;
+                // #endif
+
+                        G_inviscid(id1).SetCol(m, g);
+                        G_inviscid(id2).SetCol(j, g);
+                    }
+                    if (dim > 2)
+                    {
+                      m1ptr = const_cast<real_t *>(elMetric_d+id1*dim*dim+2*dim);
+                      met1.SetDataAndSize(m1ptr,dim);
+                      //  adj1.GetRow(2, metric1);
+                        h = 0.0;
+                        H_inviscid(id1).SetCol(k, h);
+                        for (int m = k + 1; m < Np_z; m++)
+                        {
+                            id2 = m * Np_y * Np_x + j * Np_x + i;
+                            //const IntegrationPoint &ip4 = ir_vol->IntPoint(id2);
+                            el_u_mat.GetRow(id2, state2);
+                            // Tr.SetIntPoint(&ip4);
+                            // adj2 = Tr.AdjugateJacobian();
+                            //  adj2.GetRow(2, metric2);
+                            real_t *m2ptr = const_cast<real_t *>(elMetric_d+id2*dim*dim+2*dim);
+                            met2.SetDataAndSize(m2ptr, dim);
+                            max_char_speed = std::max(max_char_speed,
+                                                      rsolver.ComputeVolumeFlux(state1, state2, met1, met2, h));
+                            H_inviscid(id1).SetCol(m, h);
+                            H_inviscid(id2).SetCol(k, h);
+                        }
+                    }
+                }
+                real_t *dhat_ptr = const_cast<real_t*>(Dhat2_d + i*N);
+                D_row.SetDataAndSize(dhat_ptr, N);
+                // Dhat2_T.GetColumn(i, D_row); 
+                F_inviscid(id1).Mult(D_row, dU_inviscid);
+
+                if (dim > 1)
+                {
+                  //Dhat2_T.GetColumn(j, D_row);
+                  dhat_ptr = const_cast<real_t*>(Dhat2_d + j*N);
+                  D_row.SetDataAndSize(dhat_ptr, N);
+                    G_inviscid(id1).AddMult(D_row, dU_inviscid);
+                    if (dim > 2)
+                    {
+                      dhat_ptr = const_cast<real_t*>(Dhat2_d + k*N);
+                      D_row.SetDataAndSize(dhat_ptr, N);
+                      //Dhat2_T.GetColumn(k, D_row);
+                        H_inviscid(id1).AddMult(D_row, dU_inviscid);
+                    }
+                }
+
+                 dU_inviscid.Neg();
+                
+#ifdef SUBCELL_FV_BLENDING
+                 dU_inviscid *= (1.0 - el_alpha(0));
+#endif
+                dU_inviscid /= J;
+
+#ifdef AXISYMMETRIC
+                
+                {
+                  Prandtl::PointStateView S{state1.GetData(), stateLayout.get()};
+                  const real_t p = gasModel.pressure(S);
+                    //dU_inviscid(2) += p;
+                    el_dudt_mat(id1, 2) += p; 
+                }            
+#endif
+                AddRow(el_dudt_mat, dU_inviscid, id1);
             }
         }
-    }
-  cache.elJac.Read();
-  cache.elMetric.Read();
+      }
+    return max_char_speed;
 }
-
 
 void DGSEMIntegrator::AssembleFaceVector(const FiniteElement &el1, const FiniteElement &el2,
                                          FaceElementTransformations &Tr, const Vector &el_u,
