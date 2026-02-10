@@ -4,11 +4,12 @@
 
 namespace Prandtl
 {
-  struct DGSEMCache
+
+  struct DGSEMOperatorCache
   {
-    int num_el = 0;
+    int num_elements = 0;
     int ndof_scalar_el = 0;
-    int num_eq = 0;
+    int num_equations = 0;
     int num_attr = 0;
     int Np = 0;
     // Persistent device-resident aux arrays
