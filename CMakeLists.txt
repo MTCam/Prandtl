@@ -62,6 +62,8 @@ endif()
 if(SUBCELL_FV_BLENDING)
   message(STATUS "Building Prandtl with: Subcell FV Blending enabled")
   target_compile_definitions(${PROJECT_NAME} PRIVATE SUBCELL_FV_BLENDING)
+else()
+  message(STATUS "Building Prandtl with: Subcell FV Blending OFF")
 endif()
 
 if(SUTHERLAND)
