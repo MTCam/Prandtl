@@ -1,4 +1,5 @@
 #include "DGSEMNonlinearForm.hpp"
+#include "timer.hpp"
 
 namespace Prandtl
 {
@@ -646,6 +647,7 @@ void DGSEMNonlinearForm::MultLifting(const Vector &u, Vector &dudx, Vector &dudy
 
 void DGSEMNonlinearForm::Mult(const Vector &u, Vector &dudt) const
 {
+  ScopedTimer timer("MultInviscid");
     const Vector &pu = Prolongate(u);
     
     if (P)
@@ -664,19 +666,20 @@ void DGSEMNonlinearForm::Mult(const Vector &u, Vector &dudt) const
 
     if (dnfi.Size())
     {
-        // Which attributes need to be processed?
-        Array<int> attr_marker(mesh->attributes.Size() ?
-                                mesh->attributes.Max() : 0);
-        attr_marker = 0;
-        for (int k = 0; k < dnfi.Size(); k++)
+      ScopedTimer timer_v("MultInviscidVolume");
+      // Which attributes need to be processed?
+      Array<int> attr_marker(mesh->attributes.Size() ?
+                             mesh->attributes.Max() : 0);
+      attr_marker = 0;
+      for (int k = 0; k < dnfi.Size(); k++)
         {
-            if (dnfi_marker[k] == NULL)
+          if (dnfi_marker[k] == NULL)
             {
-                attr_marker = 1;
-                break;
+              attr_marker = 1;
+              break;
             }
-            Array<int> &marker = *dnfi_marker[k];
-            MFEM_ASSERT(marker.Size() == attr_marker.Size(),
+          Array<int> &marker = *dnfi_marker[k];
+          MFEM_ASSERT(marker.Size() == attr_marker.Size(),
                         "invalid marker for domain integrator #"
                         << k << ", counting from zero");
             for (int i = 0; i < attr_marker.Size(); i++)

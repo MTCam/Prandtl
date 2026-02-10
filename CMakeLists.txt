@@ -96,6 +96,7 @@ target_include_directories(${PROJECT_NAME}
     PUBLIC ${CMAKE_SOURCE_DIR}/src/Integrators/DGSEMIntegrator
     PUBLIC ${CMAKE_SOURCE_DIR}/src/ModalBasis
     PUBLIC ${CMAKE_SOURCE_DIR}/src/Physics
+    PUBLIC ${CMAKE_SOURCE_DIR}/src/Device
     PUBLIC ${CMAKE_SOURCE_DIR}/src/Limiters
     PUBLIC ${CMAKE_SOURCE_DIR}/src/Indicators
     PUBLIC ${CMAKE_SOURCE_DIR}/src/Simulation
