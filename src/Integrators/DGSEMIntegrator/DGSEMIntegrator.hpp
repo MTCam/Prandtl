@@ -4,6 +4,8 @@
 #include "NumericalFlux.hpp"
 #include "LiftingScheme.hpp"
 #include "ChandrashekarFlux.hpp"
+#include "prandtl_device.hpp"
+#include "dgsem_device_cache.hpp"
 
 namespace Prandtl
 {
@@ -110,6 +112,7 @@ namespace Prandtl
                     NumericalFlux &rsolver, int Np);
 
     void CreateOperatorCache();
+    void GetDeviceCache(Prandtl::DGSEMDeviceCache &dgsem_device_cache); 
     void AssembleGeometricTerms();
     void AssembleElementGeometricTerms(ElementTransformation &Tr);
     void GetGeometricOperators(mfem::Vector &elJac_x, mfem::Vector &elMetric_x,
@@ -118,6 +121,12 @@ namespace Prandtl
     void AssembleElementVectorOG(const FiniteElement &el, ElementTransformation &Tr, const Vector &el_u, Vector &el_dudt);
     void AssembleFaceVector(const FiniteElement &el1, const FiniteElement &el2, FaceElementTransformations &Tr, const Vector &el_u, Vector &el_dudt) override;
     real_t AssembleElementVolumeHost(const int e, ElementTransformation &Tr, const real_t *el_u, real_t *el_dutdt);
+    real_t AssembleElementVolumeHost2(const DGSEMDeviceCache &device_cache, const int e,
+                                      const real_t *el_u, const real_t *jac_d,
+                                      const real_t *metric_d, real_t *el_dudt);
+      real_t AssembleElementVolumeDevice(const Prandtl::DGSEMDeviceCache &ctx,
+                                       const real_t *el_u, const real_t *elJac_d,
+                                       const real_t *elMetric_d, real_t *el_dudt);
     void AssembleElementVector(const FiniteElement &el, ElementTransformation &Tr, const Vector &el_u, Vector &el_dutdt) override;
     real_t AssembleElementVectorHost(const FiniteElement &el, ElementTransformation &Tr, const Vector &el_u, Vector &el_dutdt);
     
@@ -137,142 +146,127 @@ namespace Prandtl
     void AssembleLiftingElementVector(const FiniteElement &el, ElementTransformation &Tr, const Vector &el_u, Vector &el_dudx, Vector &el_dudy);
     void AssembleLiftingElementVector(const FiniteElement &el, ElementTransformation &Tr, const Vector &el_u, Vector &el_dudx);
     ~DGSEMIntegrator() = default;
-  };
+  public:
 
-  namespace DGSEM {
-
-  // Originally DGSEMIntegrator.cpp::AssembleElementVector
+    // Originally DGSEMIntegrator.cpp::AssembleElementVector
+    template<typename ContextType>
     MFEM_HOST_DEVICE inline
-    real_t AssembleElementVolumeKernel(const DGSEMIntegrator::DeviceCache &ctx,
-                                       const real_t *el_u, const real_t *elJac_d,
-                                       const real_t *elMetric_d, real_t *el_dudt)
-  {
-    const int Np_x = ctx.Np_x;
-    const int Np_y = ctx.Np_y;
-    const int Np_z = ctx.Np_z;
-    const int dim = ctx.dim;
-    const int neq = ctx.num_equations;
-    const real_t *Dhat2_d = ctx.Dhat2_d;
-    //    real_t f[MAX_EQ];
-    real_t f[5] = {0.,0.,0.,0.,0.};
-    real_t J = 0.0;
-    real_t max_char_speed = 0.0;
-    { // X-direction (metric row 0)
-      // Zero'ing probably unnecessary: Chandrashekar flux overwrites it every time
-      // for(int q = 0;q < neq;q++) f[q] = 0.0;
-      for (int k = 0; k < Np_z; k++)
-        for (int j = 0; j < Np_y; j++)
-          for (int i = 0; i < Np_x; i++)
-            {
-              int id1 = k * Np_y * Np_x + j * Np_x + i;
-              const real_t *state1 = el_u + id1*neq;
-              J = elJac_d[id1];
-              const real_t *met1 = elMetric_d+id1*dim*dim;
-              for (int m = i + 1; m < Np_x; m++)
-                {
-                  int id2 = k * Np_y * Np_x + j * Np_x + m;
-                  const real_t *state2 = el_u + id2*neq;
-                  const real_t *met2 = elMetric_d + id2*dim*dim;
+    static real_t AssembleElementVolumeKernel(const ContextType &ctx,
+                                              const real_t *el_u, const real_t *elJac_d,
+                                              const real_t *elMetric_d, real_t *el_dudt)
+    {
+      // TODO: bring subcell blending back SUBCELL_FV_BLENDING 
+      const int Np_x = ctx.Np_x;
+      const int Np_y = ctx.Np_y;
+      const int Np_z = ctx.Np_z;
+      const int dof = Np_x * Np_y * Np_z;
+      const int dim = ctx.dim;
+      const int neq = ctx.num_equations;
+      const real_t *Dhat2_d = ctx.Dhat2_d;
+      //    real_t f[MAX_EQ];
+      real_t f[5] = {0.,0.,0.,0.,0.};
+      real_t state1[5];
+      real_t state2[5];
+      real_t J = 0.0;
+      real_t max_char_speed = 0.0;
+      { // X-direction (metric row 0)
+        // Zero'ing probably unnecessary: Chandrashekar flux overwrites it every time
+        // for(int q = 0;q < neq;q++) f[q] = 0.0;
+        for (int k = 0; k < Np_z; k++)
+          for (int j = 0; j < Np_y; j++)
+            for (int i = 0; i < Np_x; i++)
+              {
+                int id1 = k * Np_y * Np_x + j * Np_x + i;
+                Prandtl::Kernels::el_gather_state(el_u, dof, neq, id1, state1);
+                J = elJac_d[id1];
+                const real_t *met1 = elMetric_d+id1*dim*dim;
+                for (int m = i + 1; m < Np_x; m++)
+                  {
+                    int id2 = k * Np_y * Np_x + j * Np_x + m;
+                    Prandtl::Kernels::el_gather_state(el_u, dof, neq, id2, state2);
+                    const real_t *met2 = elMetric_d + id2*dim*dim;
+                    
+                    const real_t cs = ctx.iflux.ComputeVolumeFlux(ctx.gas, state1, state2, met1, met2, f);
+                    max_char_speed = Prandtl::Kernels::rmax(cs, max_char_speed);
+                    
+                    const real_t c1 = Dhat2_d[m + Np_x*i];
+                    const real_t c2 = Dhat2_d[i + Np_x*m];
+                    Prandtl::Kernels::el_scatter_add(f, dof, neq, id1, c1, el_dudt);
+                    Prandtl::Kernels::el_scatter_add(f, dof, neq, id2, c2, el_dudt);
 
-                  const real_t cs = ctx.iflux.ComputeVolumeFlux(ctx.gas, state1, state2, met1, met2, f);
-                  max_char_speed = Prandtl::Kernels::rmax(cs, max_char_speed);
+                  }
+              }
+      } // X-direction block
 
-                  const real_t c1 = Dhat2_d[m + Np_x*i];
-                  const real_t c2 = Dhat2_d[i + Np_x*m];
+      // Y-direction (metric row 1)
+      if(dim > 1) {
+        for (int k = 0; k < Np_z; ++k)
+          for (int j = 0; j < Np_y; ++j)
+            for (int i = 0; i < Np_x; ++i)
+              {
+                const int id1 = k*Np_y*Np_x + j*Np_x + i;
+                Prandtl::Kernels::el_gather_state(el_u, dof, neq, id1, state1);
+                const real_t *met1 = elMetric_d + id1*dim*dim + 1*dim;
+                
+                for (int m = j+1; m < Np_y; ++m)
+                  {
+                    const int id2 = k*Np_y*Np_x + m*Np_x + i;
+                    Prandtl::Kernels::el_gather_state(el_u, dof, neq, id2, state2);
+                    const real_t *met2 = elMetric_d + id2*dim*dim + dim;
+                    // ComputeVolumeFlux *overwrites* f, so don't worry about reuse
+                    const real_t cs = ctx.iflux.ComputeVolumeFlux(ctx.gas, state1, state2, met1, met2, f);
+                    max_char_speed = Prandtl::Kernels::rmax(max_char_speed, cs);
+                    
+                    const real_t c1 = Dhat2_d[m + Np_y*j]; // column j, entry m
+                    const real_t c2 = Dhat2_d[j + Np_y*m]; // column m, entry j
+                    Prandtl::Kernels::el_scatter_add(f, dof, neq, id1, c1, el_dudt);
+                    Prandtl::Kernels::el_scatter_add(f, dof, neq, id2, c2, el_dudt);
+                    
+                  }
+              }
+      } // Y-direction block
+      
+      if (dim > 2) { // Z-direction (metric row 2)
+        for (int k = 0; k < Np_z; ++k)
+          for (int j = 0; j < Np_y; ++j)
+            for (int i = 0; i < Np_x; ++i)
+              {
+                const int id1 = k*Np_y*Np_x + j*Np_x + i;
+                Prandtl::Kernels::el_gather_state(el_u, dof, neq, id1, state1);
+                const real_t *met1 = elMetric_d + id1*dim*dim + 2*dim;
+                
+                for (int m = k+1; m < Np_z; ++m)
+                  {
+                    const int id2 = m*Np_y*Np_x + j*Np_x + i;
+                    Prandtl::Kernels::el_gather_state(el_u, dof, neq, id2, state2);
+                    const real_t *met2 = elMetric_d + id2*dim*dim + 2*dim;
+                    
+                    const real_t cs = ctx.iflux.ComputeVolumeFlux(ctx.gas, state1, state2, met1, met2, f);
+                    max_char_speed = Prandtl::Kernels::rmax(max_char_speed, cs);
+                    
+                    const real_t c1 = Dhat2_d[m + Np_z*k];
+                    const real_t c2 = Dhat2_d[k + Np_z*m];
+                    Prandtl::Kernels::el_scatter_add(f, dof, neq, id1, c1, el_dudt);
+                    Prandtl::Kernels::el_scatter_add(f, dof, neq, id2, c2, el_dudt);
+                    
+                  }
+              }
+      } // Z-direction block
+      // const int NPtot = Np_x * Np_y * Np_z; // = Np_x * Np_x * Np_x (!)
+      Prandtl::Kernels::el_scale(elJac_d, -1.0, dof, neq, el_dudt);
+      // for(int id = 0;id < NPtot;id++){
+      //   // Subcell blending off (for now)
+      //   // const real_t invJ = (-blend_factor) / elJac_d[id];
+      //   const real_t invJ = -1.0/elJac_d[id];
+      //   for(int q = 0;q < neq;q++) { el_dudt[id + q*NPtot] *= invJ; }
+      // }
 
-                  real_t *rhs1 = el_dudt + id1*neq;
-                  real_t *rhs2 = el_dudt + id2*neq;
-                  
-                  for(int q = 0;q < neq;q++)
-                    {
-                      rhs1[q] += c1 * f[q];
-                      rhs2[q] += c2 * f[q];
-                    }
-                }
-            }
-    } // X-direction block
-    
-    // Y-direction (metric row 1)
-    if(dim > 1) {
-      for (int k = 0; k < Np_z; ++k)
-        for (int j = 0; j < Np_y; ++j)
-          for (int i = 0; i < Np_x; ++i)
-            {
-              const int id1 = k*Np_y*Np_x + j*Np_x + i;
-              const real_t *state1 = el_u + id1*neq;
-              const real_t *met1 = elMetric_d + id1*dim*dim + 1*dim;
-
-              for (int m = j+1; m < Np_y; ++m)
-                {
-                  const int id2 = k*Np_y*Np_x + m*Np_x + i;
-                  const real_t *state2 = el_u + id2*neq;
-                  const real_t *met2 = elMetric_d + id2*dim*dim + dim;
-                  // ComputeVolumeFlux *overwrites* f, so don't worry about reuse
-                  const real_t cs = ctx.iflux.ComputeVolumeFlux(ctx.gas, state1, state2, met1, met2, f);
-                  max_char_speed = Prandtl::Kernels::rmax(max_char_speed, cs);
-
-                  const real_t c1 = Dhat2_d[m + Np_y*j]; // column j, entry m
-                  const real_t c2 = Dhat2_d[j + Np_y*m]; // column m, entry j
-
-                  real_t *rhs1 = el_dudt + id1*neq;
-                  real_t *rhs2 = el_dudt + id2*neq;
-
-                  for (int q = 0; q < neq; ++q)
-                    {
-                      rhs1[q] += c1 * f[q];
-                      rhs2[q] += c2 * f[q];
-                    }
-                }
-            }
-    } // Y-direction block
-    
-    if (dim > 2) { // Z-direction (metric row 2)
-      for (int k = 0; k < Np_z; ++k)
-        for (int j = 0; j < Np_y; ++j)
-          for (int i = 0; i < Np_x; ++i)
-            {
-              const int id1 = k*Np_y*Np_x + j*Np_x + i;
-              const real_t *state1 = el_u + id1*neq;
-              const real_t *met1 = elMetric_d + id1*dim*dim + 2*dim;
-
-              for (int m = k+1; m < Np_z; ++m)
-                {
-                  const int id2 = m*Np_y*Np_x + j*Np_x + i;
-                  const real_t *state2 = el_u + id2*neq;
-                  const real_t *met2 = elMetric_d + id2*dim*dim + 2*dim;
-
-                  const real_t cs = ctx.iflux.ComputeVolumeFlux(ctx.gas, state1, state2, met1, met2, f);
-                  max_char_speed = Prandtl::Kernels::rmax(max_char_speed, cs);
-
-                  const real_t c1 = Dhat2_d[m + Np_z*k];
-                  const real_t c2 = Dhat2_d[k + Np_z*m];
-
-                  real_t *rhs1 = el_dudt + id1*neq;
-                  real_t *rhs2 = el_dudt + id2*neq;
-
-                  for (int q = 0; q < neq; ++q)
-                    {
-                      rhs1[q] += c1 * f[q];
-                      rhs2[q] += c2 * f[q];
-                    }
-                }
-            }
-    } // Z-direction block
-    const int NPtot = Np_x * Np_y * Np_z; // = Np_x * Np_x * Np_x (!)
-    for(int id = 0;id < NPtot;id++){
-      // Subcell blending off (for now)
-      // const real_t invJ = (-blend_factor) / elJac_d[id];
-      const real_t invJ = -1.0/elJac_d[id];
-      real_t *rhs = el_dudt + id*neq;
-      for(int q = 0;q < neq;q++) { rhs[q] *= invJ; }
+      // NOTE: Old routine saved max_char_speed as member data (ugh!)
+      // This routine returns max_char_speed which should be saved
+      // into an array (size = num_elements) on the caller side, and
+      // then reduce/max over local elements and over ranks.
+      // TODO: Fix up max_char_speed treatment on caller, and usage site
+      return max_char_speed;
     }
-
-    // NOTE: Old routine saved max_char_speed as member data (ugh!)
-    // This routine returns max_char_speed which should be saved
-    // into an array (size = num_elements) on the caller side, and
-    // then reduce/max over local elements and over ranks.
-    // TODO: Fix up max_char_speed treatment on caller, and usage site
-    return max_char_speed;
-}
-  }
+  };
 }
