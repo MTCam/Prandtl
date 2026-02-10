@@ -8,12 +8,13 @@
 #include "BasicOperations.hpp"
 #include "GasModel.hpp"
 #include "prandtl_device.hpp"
+#include "dgsem_device_cache.hpp"
 
 namespace Prandtl
 {
 
 using namespace mfem;
-
+  
 class DGSEMOperator : public TimeDependentOperator
 {
 private:
@@ -62,7 +63,9 @@ private:
     mutable Array<int> ind_indx;
     mutable Vector ind_dof;
     mutable real_t alpha_dof;
-    Prandtl::DGSEMCache dgsem_device_cache;
+    const mfem::ElementRestrictionOperator *restr_v = nullptr; // for vfes (vector space)
+    const mfem::ElementRestrictionOperator *restr_s = nullptr; // for fes (scalar space)
+    Prandtl::DGSEMDeviceCache dgsem_device_cache;
 
     void ComputeGlobalEntropyVector(const Vector &u, Vector &global_entropy) const;
     void ComputeGlobalPrimitiveGradVector(const Vector &u, Vector &dudx) const;
@@ -136,7 +139,6 @@ public:
         p_floor_abs = std::max(p_floor_abs, p_fac * p_inf);
     }
 #endif
-
 };
 
 }
