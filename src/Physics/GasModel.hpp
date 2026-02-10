@@ -19,7 +19,9 @@ namespace Prandtl
     StateLayout L;
     EOSImpl eos;
     TransportImpl transport;
-    
+
+    MFEM_HOST_DEVICE GasModel() = default;
+
     MFEM_HOST_DEVICE
     GasModel(const PhysicsConstants &phys_in, const StateLayout &L_in,
              const EOSImpl &eos_in, const TransportImpl &tr_in)

@@ -43,6 +43,7 @@ namespace Prandtl
     int eq_scalar0;       // index of first scalar component (or -1 if none)
     int num_scalars;      // number of scalar components
     
+    MFEM_HOST_DEVICE StateLayout() = default;
     /**
      * Set up after creation.
      *
