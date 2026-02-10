@@ -48,5 +48,54 @@ namespace Prandtl
           return (y - x) / Kernels::rlog(xi);
         }
     }
+    // Element storage: component-major (q blocks), length = dof*num_eq
+    // u[q*dof + id]
+    MFEM_HOST_DEVICE inline
+    real_t el_get(const real_t *u, int dof, int num_eq, int id, int q)
+    {
+      (void)num_eq; // not needed for this layout
+      return u[q*dof + id];
+    }
+    
+    MFEM_HOST_DEVICE inline
+    void el_gather_state(const real_t *u, const int dof, const int num_eq, const int id, real_t *dst)
+    {
+      for (int q = 0; q < num_eq; ++q)
+        dst[q] = u[q*dof + id];
+    }
+    
+    MFEM_HOST_DEVICE inline
+    void el_scatter_add(const real_t *f,
+                        const int dof,
+                        const int num_eq,
+                        const int id,
+                        const real_t scale,
+                        real_t *du)
+    {
+      // Element storage is component-major (byVDIM):
+      // du[q*dof + id] corresponds to "row id, component q" in DenseMatrix(dof, num_eq)
+      for (int q = 0; q < num_eq; ++q)
+        {
+          du[id + q*dof] += scale * f[q];
+        }
+    }
+
+    MFEM_HOST_DEVICE inline
+    void el_scale(const real_t *scale_d,
+                  const real_t fac,
+                  const int dof,      // scalar dofs per element
+                  const int neq,
+                  real_t *el_soln)        // num equations
+    {
+      for (int id = 0; id < dof; ++id)
+        {
+          const real_t invJ = fac / scale_d[id];
+          for (int q = 0; q < neq; ++q)
+            {
+              el_soln[id + q*dof] *= invJ;
+            }
+        }
+    }
+    
   }
 }
