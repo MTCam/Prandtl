@@ -480,7 +480,6 @@ void Simulation::LoadConfig(const std::string &config_file_path)
     //    bool use_partial_assembly = true;
     auto integrator =
       std::make_unique<Prandtl::DGSEMIntegrator>(pmesh, fes0, alpha, liftingScheme, *numericalFlux, order+1);
-    //      std::make_unique<Prandtl::DGSEMIntegrator>(pmesh, fes0, alpha, liftingScheme, *numericalFlux, order+1, use_partial_assembly);
 
     auto indicator =
       std::make_unique<Prandtl::PerssonPeraireIndicator>(vfes, fes0, eta,
@@ -859,7 +858,9 @@ void Simulation::LoadConfig(const std::string &config_file_path)
                 }
             }
             pd->RegisterField("Pressure", p.get());
+#ifdef SUBCELL_FV_BLENDING
             pd->RegisterField("Blending Coeff", alpha.get());
+#endif
             pd->SetLevelsOfDetail(order);
             pd->SetDataFormat(VTKFormat::BINARY);
             pd->SetHighOrderOutput(true);
@@ -886,7 +887,9 @@ void Simulation::LoadConfig(const std::string &config_file_path)
                 }
             }
             vd->RegisterField("Pressure", p.get());
+#ifdef SUBCELL_FV_BLENDING
             vd->RegisterField("Blending Coeff", alpha.get());
+#endif
         }
     }
 }
