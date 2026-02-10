@@ -174,20 +174,31 @@ if (debug_integrator)
     cache.elMetric.Read();
   }
 
+  void DGSEMIntegrator::GetDeviceCache(Prandtl::DGSEMDeviceCache &dgsem_device_cache)
+  {
+    dgsem_device_cache.Np = cache.Np_x;
+    dgsem_device_cache.Np_x = cache.Np_x;
+    dgsem_device_cache.Np_y = cache.Np_y;
+    dgsem_device_cache.Np_z = cache.Np_z;
+    dgsem_device_cache.dim = cache.dim;
+    dgsem_device_cache.num_elements = cache.num_elements;
+    dgsem_device_cache.num_equations = cache.num_equations;
+    dgsem_device_cache.elJac_d = cache.elJac.Read();
+    dgsem_device_cache.elMetric_d = cache.elMetric.Read();
+    dgsem_device_cache.D_d = cache.D.Read();
+    dgsem_device_cache.Dhat_d = cache.Dhat.Read();
+    dgsem_device_cache.Dhat2_d = cache.Dhat2.Read();
+  }
+
 void DGSEMIntegrator::GetGeometricOperators(mfem::Vector &elJac_x, mfem::Vector &elMetric_x,
                                             mfem::Vector &D, mfem::Vector &Dhat,
                                             mfem::Vector &Dhat2)
 {
   elJac_x.MakeRef(cache.elJac, 0, cache.elJac.Size());
   elMetric_x.MakeRef(cache.elMetric, 0, cache.elMetric.Size());
-
-  D.SetSize(Np_x*Np_x);
-  Dhat.SetSize(Np_x*Np_x);
-  Dhat2.SetSize(Np_x*Np_x);
-
-  std::memcpy(D.GetData(),     cache.D.GetData(),     sizeof(real_t)*Np_x*Np_x);
-  std::memcpy(Dhat.GetData(),  cache.Dhat.GetData(),  sizeof(real_t)*Np_x*Np_x);
-  std::memcpy(Dhat2.GetData(), cache.Dhat2.GetData(), sizeof(real_t)*Np_x*Np_x);
+  D.MakeRef(cache.D, 0, cache.D.Size());
+  Dhat.MakeRef(cache.Dhat, 0, cache.Dhat.Size());
+  Dhat2.MakeRef(cache.Dhat2, 0, cache.Dhat2.Size());
 }
 
 // Set up and populate elJac, elMetric, D, Dhat, Dhat2
@@ -240,8 +251,6 @@ void DGSEMIntegrator::AssembleElementGeometricTerms(ElementTransformation &Tr)
       const mfem::DenseMatrix &adj = Tr.AdjugateJacobian();              
       for (int dir = 0; dir < dim; ++dir)
         {
-          // adj.GetRow(dir, metricRow) pattern:
-          // metricRow is a mfem::Vector of size dim you already have (e.g. member 'metric1')
           adj.GetRow(dir, metric1);  // metric1.Size() == dim
           
           for (int d = 0; d < dim; ++d)
@@ -251,8 +260,6 @@ void DGSEMIntegrator::AssembleElementGeometricTerms(ElementTransformation &Tr)
             }
         }
     }
-  // cache.elJac.Read();
-  // cache.elMetric.Read();
 }
 
 void DGSEMIntegrator::AssembleFaceVector(const FiniteElement &el1, const FiniteElement &el2,
@@ -268,7 +275,7 @@ void DGSEMIntegrator::AssembleFaceVector(const FiniteElement &el1, const FiniteE
 
     const DenseMatrix el_u_mat1(el_u.GetData(), dof1, num_equations);
     const DenseMatrix el_u_mat2(el_u.GetData() + dof1 * num_equations, dof2, num_equations);
-    
+
     DenseMatrix el_dudt_mat1(el_dudt.GetData(), dof1, num_equations);
     DenseMatrix el_dudt_mat2(el_dudt.GetData() + dof1 * num_equations, dof2, num_equations);
 
@@ -900,6 +907,13 @@ real_t DGSEMIntegrator::AssembleElementVectorHost(const FiniteElement &el,
     return max_char_speed;
 }
 
+real_t DGSEMIntegrator::AssembleElementVolumeDevice(const Prandtl::DGSEMDeviceCache &ctx,
+                                                    const real_t *el_u, const real_t *elJac_d,
+                                                    const real_t *elMetric_d, real_t *el_dudt)
+{
+  return AssembleElementVolumeKernel(ctx, el_u, elJac_d, elMetric_d, el_dudt);
+}
+
 // This function is a TEST that makes sure that our caller (DGSEMNonlinearForm)
 // using element restriction operator instead of ElementTransformation Tr works
 // and gets us the correct data in the correct shape.
@@ -1084,6 +1098,137 @@ real_t DGSEMIntegrator::AssembleElementVolumeHost(const int e,ElementTransformat
                 AddRow(el_dudt_mat, dU_inviscid, id1);
             }
         }
+      }
+    return max_char_speed;
+}
+
+// This function is a TEST that makes sure that our caller (DGSEMNonlinearForm)
+// using element restriction operator instead of ElementTransformation Tr works
+// and gets us the correct data in the correct shape.
+real_t DGSEMIntegrator::AssembleElementVolumeHost2(const DGSEMDeviceCache &device_cache, const int e,
+                                                   const real_t *el_u, const real_t *jac_d,
+                                                   const real_t *metric_d, real_t *el_dudt)
+{
+    if (debug_integrator)
+    {
+        std::cout << "===== Entering DGSEMIntegrator::AssembleElementVolumeHost =====" << std::endl;
+    }
+
+    // int e = Tr.ElementNo;
+    const int Np_x = device_cache.Np_x;
+    const int Np_y = device_cache.Np_y;
+    const int Np_z = device_cache.Np_z;
+    const int dim = device_cache.dim;
+    const int dof = Np_x * Np_y * Np_z;
+    const int num_equations = device_cache.num_equations;
+    const real_t *elJac_d = jac_d;
+    const real_t *elMetric_d = metric_d;
+    const real_t *Dhat2_d = device_cache.Dhat2_d;
+    const int N = Np_x;
+    for (int q = 0;q < dof * num_equations;q++){
+      el_dudt[q] = 0.0;
+    }
+    real_t s1[10];
+    real_t s2[10];
+
+    DenseMatrix el_dudt_mat(el_dudt, dof, num_equations);
+    mfem::Vector state3, state4;
+    
+    for (int k = 0; k < Np_z; k++)
+      {
+        for (int j = 0; j < Np_y; j++)
+          {
+            for (int i = 0; i < Np_x; i++)
+              {
+                id1 = k * Np_y * Np_x + j * Np_x + i;
+                Prandtl::Kernels::el_gather_state(el_u, dof, num_equations, id1, s1);
+                state3.SetDataAndSize(s1, num_equations);
+                J = elJac_d[id1];
+                real_t *m1ptr = const_cast<real_t *>(elMetric_d+id1*dim*dim);
+                met1.SetDataAndSize(m1ptr,dim);
+                f = 0.0;
+                F_inviscid(id1).SetCol(i, f);
+
+                for (int m = i + 1; m < Np_x; m++)
+                {
+                    id2 = k * Np_y * Np_x + j * Np_x + m;
+                    Prandtl::Kernels::el_gather_state(el_u, dof, num_equations, id2, s2);
+                    state4.SetDataAndSize(s2, num_equations);
+                    real_t *m2ptr = const_cast<real_t *>(elMetric_d+id2*dim*dim);
+                    met2.SetDataAndSize(m2ptr, dim);
+              
+                    max_char_speed = std::max(max_char_speed, rsolver.ComputeVolumeFlux(state3, state4, met1, met2, f));
+                    F_inviscid(id1).SetCol(m, f);
+                    F_inviscid(id2).SetCol(i, f);
+                }
+
+                if (dim > 1)
+                  {
+                    m1ptr = const_cast<real_t *>(elMetric_d+id1*dim*dim+dim);
+                    met1.SetDataAndSize(m1ptr,dim);
+                    g = 0.0;
+                    G_inviscid(id1).SetCol(j, g);
+                    for (int m = j + 1; m < Np_y; m++)
+                      {
+                        id2 = k * Np_y * Np_x + m * Np_x + i;
+                        Prandtl::Kernels::el_gather_state(el_u, dof, num_equations, id2, s2);
+                        state4.SetDataAndSize(s2, num_equations);
+                        real_t *m2ptr = const_cast<real_t *>(elMetric_d+id2*dim*dim+dim);
+                        met2.SetDataAndSize(m2ptr, dim);
+                        max_char_speed = std::max(max_char_speed, rsolver.ComputeVolumeFlux(state3, state4, met1, met2, g));
+                        G_inviscid(id1).SetCol(m, g);
+                        G_inviscid(id2).SetCol(j, g);
+                    }
+                    if (dim > 2)
+                    {
+                      m1ptr = const_cast<real_t *>(elMetric_d+id1*dim*dim+2*dim);
+                      met1.SetDataAndSize(m1ptr,dim);
+                      h = 0.0;
+                      H_inviscid(id1).SetCol(k, h);
+                      for (int m = k + 1; m < Np_z; m++)
+                        {
+                          id2 = m * Np_y * Np_x + j * Np_x + i;
+                          Prandtl::Kernels::el_gather_state(el_u, dof, num_equations, id2, s2);
+                          state4.SetDataAndSize(s2, num_equations);
+                          real_t *m2ptr = const_cast<real_t *>(elMetric_d+id2*dim*dim+2*dim);
+                          met2.SetDataAndSize(m2ptr, dim);
+                          max_char_speed = std::max(max_char_speed,
+                                                    rsolver.ComputeVolumeFlux(state3, state4, met1, met2, h));
+                          H_inviscid(id1).SetCol(m, h);
+                          H_inviscid(id2).SetCol(k, h);
+                        }
+                    }
+                  }
+                real_t *dhat_ptr = const_cast<real_t*>(Dhat2_d + i*N);
+                D_row.SetDataAndSize(dhat_ptr, N);
+                F_inviscid(id1).Mult(D_row, dU_inviscid);
+                
+                if (dim > 1)
+                {
+                  dhat_ptr = const_cast<real_t*>(Dhat2_d + j*N);
+                  D_row.SetDataAndSize(dhat_ptr, N);
+                    G_inviscid(id1).AddMult(D_row, dU_inviscid);
+                    if (dim > 2)
+                    {
+                      dhat_ptr = const_cast<real_t*>(Dhat2_d + k*N);
+                      D_row.SetDataAndSize(dhat_ptr, N);
+                      H_inviscid(id1).AddMult(D_row, dU_inviscid);
+                    }
+                }
+                dU_inviscid.Neg();
+                dU_inviscid /= J;
+                
+#ifdef AXISYMMETRIC
+                
+                {
+                  Prandtl::PointStateView S{state3.GetData(), stateLayout.get()};
+                  const real_t p = gasModel.pressure(S);
+                  el_dudt_mat(id1, 2) += p; 
+                }            
+#endif
+                AddRow(el_dudt_mat, dU_inviscid, id1);
+              }
+          }
       }
     return max_char_speed;
 }
