@@ -3,8 +3,10 @@
 #include "mfem.hpp"
 #include "prandtl_device.hpp"
 #include "DGSEMIntegrator.hpp"
+#include "dgsem_device_cache.hpp"
 #include "BdrFaceIntegrator.hpp"
 #include "general/forall.hpp"
+#include "dgsem_device_cache.hpp"
 
 namespace Prandtl
 {
@@ -16,10 +18,10 @@ namespace Prandtl
   public:
     struct OperatorCache {
       int dim = 0;
-      int num_el = 0;
+      int num_elements = 0;
       int num_attr = 0;
       int ndof_scalar_el = 0;
-      int num_eq = 0;
+      int num_equations = 0;
       mfem::Array<int> elem_attr;    // size ne, values are 1-based attributes
       mfem::Array<int> attr_marker;  // size nattr, 0/1
       mfem::Array<int> dnfi_marker;  // size nattr, 0/1
@@ -32,7 +34,13 @@ namespace Prandtl
       mfem::Vector Dhat2;
     };
     OperatorCache cache;
+    Prandtl::DGSEMDeviceCache device_cache;
+
     DGSEMNonlinearForm(ParFiniteElementSpace *pfes);
+    void SetDeviceCache(const Prandtl::DGSEMDeviceCache &dgsem_device_cache)
+    {
+      device_cache = dgsem_device_cache;
+    }
     void MultLifting(const Vector &u, Vector &dudx, Vector &dudy, Vector &dudz) const;
     void MultLifting(const Vector &u, Vector &dudx, Vector &dudy) const;
     void MultLifting(const Vector &u, Vector &dudx) const;
@@ -65,7 +73,8 @@ namespace Prandtl
     }
 
   void CreateOperatorCache();
-  void GetOperatorCache(Prandtl::DGSEMCache &dgsem_cache);
+  void GetOperatorCache(Prandtl::DGSEMOperatorCache &dgsem_operator_cache);
+  void GetDeviceCache(Prandtl::DGSEMDeviceCache &dgsem_device_cache);
   private:
     mutable Vector aux2_x, aux2_y, aux2_z;
     Array<DGSEMIntegrator*> dnfi, fnfi;
