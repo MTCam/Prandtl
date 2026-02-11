@@ -58,7 +58,7 @@ namespace Prandtl
     int gamma_eq_idx = 6;  // gamma-eq
     int mu_idx       = 7;  // shear viscosity
     int lambda_idx   = 8;  // thermal conductivity
-    int sp_0_idx     = 9; // index of first species 
+    int sp_0_idx     = 9;  // index of first species 
 
     /**
      * Set up after creation.

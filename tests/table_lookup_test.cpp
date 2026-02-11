@@ -286,3 +286,93 @@ TEST(LTEGasEOS_BilinearInterpolation_test)
 
     return 0;
 }
+
+TEST(InverseLTETable_test)
+{
+    // -------------------------------- Mixtures Definitions -----------------------
+    // Mutation++ object for Equilibrium state
+    MixtureOptions opts("air_5");
+    opts.setStateModel("Equil");
+    opts.setThermodynamicDatabase("RRHO");
+    opts.setViscosityAlgorithm("Chapmann-Enskog_LDLT");
+    Mixture mix1(opts);
+    mix1.addComposition("N:0.8, O:0.2", true);
+
+    MixtureOptions opts2("air_5");
+    opts2.setStateModel("EquilTP");
+    opts2.setThermodynamicDatabase("RRHO");
+    Mixture mix2(opts2);
+    mix2.addComposition("N:0.8, O:0.2", true);
+
+    // -------------------------------- LTE Table Generation -----------------------
+
+    // Range and resolution of the table (Evenly spaced table in this test)
+    int nx = 100, ny = 100;
+    real_t rho_min  = 0.5  , rho_max  = 1.5  , rho_step  = (rho_max-rho_min)/(nx-1);
+    real_t rhoe_min = 2.0e5, rhoe_max = 1.1e6, rhoe_step = (rhoe_max-rhoe_min)/(ny-1);
+
+    int num_species = 5, num_properties = 9;
+    const int dim = 3, ndofs = 1;
+
+    // Data arrays for table lookup for LTE properties
+    mfem::Vector lte_table( (num_species + num_properties) * (nx*ny) ); // LTE-Tables
+    mfem::Vector rho_grid(nx), rhoe_grid(ny); // 1-D grids of rho and rhoE
+    mfem::Array<int> hunt_arr( ndofs * 2 );   // Array of hunted indices
+
+    StateLayout L(dim, ndofs, nx, ny, num_species);
+    const int num_eq = L.eq_energy + 1;
+    LTEGasEOS eos;
+
+    // Populating the 1D grid of density and rho*internal energy
+    for(int ind_x=0; ind_x < nx; ind_x++) rho_grid[ind_x] = rho_min + ind_x * rho_step;
+    for(int ind_y=0; ind_y < ny; ind_y++) rhoe_grid[ind_y] = rhoe_min + ind_y * rhoe_step;
+
+    // Generation of LTE table
+    for(int ind_y=0; ind_y < ny; ind_y++)
+    {
+        for(int ind_x=0; ind_x < nx; ind_x++)
+        {
+            mix1.setState(&rho_grid[ind_x], &rhoe_grid[ind_y], 0);
+            lte_table[L.lte_property_index(L.P_idx, ind_x, ind_y)] = mix1.P();
+            lte_table[L.lte_property_index(L.T_idx, ind_x, ind_y)] = mix1.T();
+        }
+    }
+
+    std::shared_ptr<PhysicsConstants> phys =
+      std::make_shared<PhysicsConstants>(lte_table.Read(), hunt_arr.ReadWrite(),
+                                         rho_grid.Read(), rhoe_grid.Read());
+
+    // -------------------------------- LTE TABLE Look-up --------------------------
+
+    real_t rho_true  = 0.753;
+    real_t rhoe_true = 580000.0;
+    const real_t u1[3] = {10.0, -3.0, 5.0};
+
+    std::vector<real_t> U(num_eq * ndofs);
+    fill_single_dof_state(L, U, dim, rho_true, u1, rhoe_true);
+    DofStateView S1(U.data(), 0);
+
+    mix1.setState(&rho_true, &rhoe_true, 0);
+    real_t P_true = mix1.P();
+    real_t T_true = mix1.T();
+
+    phys->hunt[0] = hunt(rho_grid.Read(), nx, rho_true, 0);
+    phys->hunt[1] = hunt(rhoe_grid.Read(), ny, rhoe_true, 0);
+    real_t P_interpolated = eos.pressure(*phys, L, S1, 0);
+    real_t T_interpolated = eos.temperature(*phys, L, S1, 0);
+
+
+    // ------------------------------------ TESTS ----------------------------------
+
+    // TEST 1 - Mutation++ Inverse
+    mix2.setState(&T_true, &P_true, 0);
+    real_t rho_inverse = mix2.density();
+    EXPECT_CLOSE(rho_true, rho_inverse, 1e-12);
+
+    // TEST 2 - Inverse using Interpolated Pressure and Temperature
+    mix2.setState(&T_interpolated, &P_interpolated, 0);
+    real_t rho_inverse_interp = mix2.density();
+    EXPECT_CLOSE(rho_true, rho_inverse_interp, 1e-5);
+
+    return 0;
+}
