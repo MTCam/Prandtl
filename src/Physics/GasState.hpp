@@ -118,7 +118,7 @@ namespace Prandtl
     { setup(dim_, num_dofs_scalar_, num_scalars_);}
 
     // LTE Constructor
-    StateLayout(int dim_, int num_dofs_scalar_, int nx_, int ny_, int num_species_,int num_scalars_ = 0)
+    StateLayout(int dim_, int num_dofs_scalar_, int nx_, int ny_, int num_species_, int num_scalars_ = 0)
     { setup_lte(dim_, num_dofs_scalar_, nx_, ny_, num_species_, num_scalars_);}
 
     // Convenience for nequations
