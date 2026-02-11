@@ -92,7 +92,7 @@ TEST(hunt_gpu_test)
 // EOS test : Thermodynamic properties of a gas-mixture in LTE
 // The lte table is populated using Mutation++ property = property(rho x rhoe)
 // -----------------------------------------------------------------------------
-TEST(LTEGas_EOS)
+TEST(LTEGasEOS_Tablelookup_test)
 {
     // Range and resolution of the table (Evenly spaced table in this test)
     int nx = 11, ny = 11;
@@ -144,8 +144,8 @@ TEST(LTEGas_EOS)
 
 
     // Populate the 1-DOF state (Ensure the values are in ranges of the table)
-    real_t rho  = 0.753;
-    real_t rhoe = 600000.0;
+    real_t rho  = 0.75; // 0.753
+    real_t rhoe = 580000.0; // 600000.0
     const real_t u1[3] = {10.0, -3.0, 5.0};
 
     std::vector<real_t> U(num_eq * ndofs);
@@ -177,48 +177,112 @@ TEST(LTEGas_EOS)
         }
     }
 
+    return 0;
+}
+
+TEST(LTEGasEOS_BilinearInterpolation_test)
+{
+    // Range and resolution of the table (Evenly spaced table in this test)
+    int nx = 11, ny = 11;
+    real_t rho_min  = 0.5  , rho_max  = 1.5  , rho_step  = (rho_max-rho_min)/(nx-1);
+    real_t rhoe_min = 2.0e5, rhoe_max = 1.1e6, rhoe_step = (rhoe_max-rhoe_min)/(ny-1);
+
+    // Mutation++ object for Equilibrium state
+    MixtureOptions opts("air_5");          // Gas-Mixture (N, O, NO, N2, O2)
+    opts.setStateModel("Equil");           // Equilibrium state model
+    opts.setThermodynamicDatabase("RRHO"); // Default thermodynamic data base
+    opts.setViscosityAlgorithm("Chapmann-Enskog_LDLT"); // Viscosity algorithm
+    Mixture mix(opts);                     // Initializing mixture object
+        mix.addComposition("N:0.8, O:0.2", true); // composition
+    int num_species = 5, num_properties = 9;
+
+    const int dim = 3, ndofs = 1;
+
+    // Data arrays for table lookup for LTE properties
+    mfem::Vector lte_table( (num_species + 
+                             num_properties) * (nx*ny) ); // LTE-Tables
+    mfem::Vector rho_grid(nx), rhoe_grid(ny); // 1-D grids of rho and rhoE
+    mfem::Array<int> hunt_arr( ndofs * 2 );   // Array of hunted indices
+
+    StateLayout L(dim, ndofs, nx, ny, num_species);
+    const int num_eq = L.eq_energy + 1;
+    LTEGasEOS eos;
+
+    // Populating the 1D grid of density and rho*internal energy
+    for(int ind_x=0; ind_x < nx; ind_x++) rho_grid[ind_x] = rho_min + ind_x * rho_step;
+    for(int ind_y=0; ind_y < ny; ind_y++) rhoe_grid[ind_y] = rhoe_min + ind_y * rhoe_step;
+
+    // Generation of LTE table
+    for(int ind_y=0; ind_y < ny; ind_y++)
+    {
+        for(int ind_x=0; ind_x < nx; ind_x++)
+        {
+            mix.setState(&rho_grid[ind_x], &rhoe_grid[ind_y], 0);
+            lte_table[L.lte_property_index(L.P_idx, ind_x, ind_y)] = mix.P();
+            lte_table[L.lte_property_index(L.T_idx, ind_x, ind_y)] = mix.T();
+        }
+    }
+
+    // Setup the LTE EOS
+    std::shared_ptr<PhysicsConstants> phys =
+      std::make_shared<PhysicsConstants>(lte_table.Read(), hunt_arr.ReadWrite(), 
+                                         rho_grid.Read(), rhoe_grid.Read());
+
     // Testing Bi-linear Interpolation 
     // A (Choosing one corner)
-    rho  = 0.7;
-    rhoe = 560000.0;
+    real_t rho  = 0.7;
+    real_t rhoe = 560000.0;
+    const real_t u1[3] = {10.0, -3.0, 5.0};
+
+    std::vector<real_t> U(num_eq * ndofs);
+    fill_single_dof_state(L, U, dim, rho, u1, rhoe);
+    DofStateView S1(U.data(), 0);
+    
+    phys->hunt[0] = hunt(rho_grid.Read(), nx, rho, 0);
+    phys->hunt[1] = hunt(rhoe_grid.Read(), ny, rhoe, 0);
+    real_t P_interpolated = eos.pressure(*phys, L, S1, 0);
+    real_t T_interpolated = eos.temperature(*phys, L, S1, 0);
+
+    mix.setState(&rho, &rhoe, 0);
+    real_t P_true = mix.P();
+    real_t T_true = mix.T();
+
+    EXPECT_CLOSE(P_true, P_interpolated, 1e-6);
+    EXPECT_CLOSE(T_true, T_interpolated, 1e-6);
+
+
+    // Testing Bi-linear Interpolation 
+    // B (Mid point of a cell)
+    rho  = 0.75;
+    rhoe = 605000.0;
+    
     fill_single_dof_state(L, U, dim, rho, u1, rhoe);
     DofStateView S2(U.data(), 0);
     
     phys->hunt[0] = hunt(rho_grid.Read(), nx, rho, 0);
     phys->hunt[1] = hunt(rhoe_grid.Read(), ny, rhoe, 0);
-    real_t P_interpolated = eos.pressure(*phys, L, S2, 0);
-    real_t T_interpolated = eos.temperature(*phys, L, S2, 0);
 
-    mix.setState(&rho, &rhoe, 0);
-    P_true = mix.P();
-    T_true = mix.T();
+    P_interpolated = eos.pressure(*phys, L, S2, 0);
+    T_interpolated = eos.temperature(*phys, L, S2, 0);
 
-    EXPECT_CLOSE(P_true, P_interpolated, 1e-6);
-    EXPECT_CLOSE(T_true, T_interpolated, 1e-6);
+    int l_x = phys->hunt[0], l_y = phys->hunt[1];
 
-    // B (Choosing the mid-point of a cell)
-    rho  = 0.75;
-    rhoe = 580000.0;
-    fill_single_dof_state(L, U, dim, rho, u1, rhoe);
-    DofStateView S3(U.data(), 0);
+    P_true = 0;
+    T_true = 0;
+    for(int i=0; i < 2; i++)
+    {
+        for(int j=0; j < 2; j++)
+        {
+            P_true += phys->lte_table[L.lte_property_index(L.P_idx, l_x + i, l_y + j)];
+            T_true += phys->lte_table[L.lte_property_index(L.T_idx, l_x + i, l_y + j)];
+        }
+    }
 
-    phys->hunt[0] = hunt(rho_grid.Read(), nx, rho, 0);
-    phys->hunt[1] = hunt(rhoe_grid.Read(), ny, rhoe, 0);
-    P_interpolated = eos.pressure(*phys, L, S3, 0);
-    T_interpolated = eos.temperature(*phys, L, S3, 0);
+    P_true /= 4.0;
+    T_true /= 4.0;
 
-    mix.setState(&rho, &rhoe, 0);
-    P_true = mix.P();
-    T_true = mix.T();
-
-    std::cout << "\n Bilinear interpolation at mid point : " << std::endl;
-    std::cout << "P true: " << P_true << ", P interpolated: " << P_interpolated << std::endl;
-    std::cout << "T true: " << T_true << ", T interpolated: " << T_interpolated << std::endl;
-    std::cout << std::endl;
-
-    // CL NOTE : The table is too coarse to get accurate interpolated values hence write a new test
-    // EXPECT_CLOSE(P_true, P_interpolated, 1e-6);
-    // EXPECT_CLOSE(T_true, T_interpolated, 1e-6);
+    EXPECT_CLOSE(P_true, P_interpolated, 0.0);
+    EXPECT_CLOSE(T_true, T_interpolated, 0.0);
 
     return 0;
 }
