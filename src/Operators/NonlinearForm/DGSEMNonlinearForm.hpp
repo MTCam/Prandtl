@@ -34,10 +34,10 @@ namespace Prandtl
       mfem::Vector Dhat2;
     };
     OperatorCache cache;
-    Prandtl::DGSEMDeviceCache device_cache;
-
+    DGSEMDeviceCache device_cache;
+    
     DGSEMNonlinearForm(ParFiniteElementSpace *pfes);
-    void SetDeviceCache(const Prandtl::DGSEMDeviceCache &dgsem_device_cache)
+    void SetDeviceCache(const DGSEMDeviceCache &dgsem_device_cache)
     {
       device_cache = dgsem_device_cache;
     }
@@ -56,25 +56,25 @@ namespace Prandtl
     real_t MultInviscidVolumeHost2(const Vector &pu, Vector &pdudt) const;
     void AddDomainIntegrator(DGSEMIntegrator *nlfi)
     {
-        dnfi.Append(nlfi);
-        dnfi_marker.Append(NULL);
+      dnfi.Append(nlfi);
+      dnfi_marker.Append(NULL);
     }
-         
+    
     void AddInteriorFaceIntegrator(DGSEMIntegrator *nlfi)
     {
-        fnfi.Append(nlfi);
+      fnfi.Append(nlfi);
     }
-
-
+    
+    
     void AddBdrFaceIntegrator(BdrFaceIntegrator *bfi, Array<int> &bdr_marker)
     {
-        bfnfi.Append(bfi);
-        bfnfi_marker.Append(&bdr_marker);
+      bfnfi.Append(bfi);
+      bfnfi_marker.Append(&bdr_marker);
     }
-
-  void CreateOperatorCache();
-  void GetOperatorCache(Prandtl::DGSEMOperatorCache &dgsem_operator_cache);
-  void GetDeviceCache(Prandtl::DGSEMDeviceCache &dgsem_device_cache);
+    
+    void CreateOperatorCache();
+    void GetOperatorCache(DGSEMOperatorCache &dgsem_operator_cache);
+    void GetDeviceCache(DGSEMDeviceCache &dgsem_device_cache);
   private:
     mutable Vector aux2_x, aux2_y, aux2_z;
     Array<DGSEMIntegrator*> dnfi, fnfi;

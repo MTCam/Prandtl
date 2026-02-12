@@ -21,6 +21,6 @@ namespace Prandtl
     const real_t *Dhat2_d = nullptr;
     real_t *elWaveSpeed_d = nullptr;
     Prandtl::IdealGasModel gas;
-    Prandtl::Chandrashekar::InviscidFlux iflux;
+    Prandtl::ChandrashekarFlux::InviscidFlux iflux;
   };
 }

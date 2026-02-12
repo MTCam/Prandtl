@@ -110,7 +110,7 @@ if (ENABLE_ASAN_UBSAN AND CMAKE_CXX_COMPILER_ID MATCHES "Clang|AppleClang|GNU")
   endif()
 endif()
 
-option(NO_OPT "Disable optimizations for testing" ON)
+option(NO_OPT "Disable optimizations for testing" OFF)
 
 if (NO_OPT AND CMAKE_CXX_COMPILER_ID MATCHES "Clang|AppleClang|GNU")
   message(STATUS "Diabling all optimizations on target: myexe")

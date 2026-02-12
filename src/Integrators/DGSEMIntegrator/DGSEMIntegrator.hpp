@@ -28,21 +28,6 @@ namespace Prandtl
       mfem::Vector Dhat;
       mfem::Vector D;
     };
-    struct DeviceCache {
-      int Np_x;
-      int Np_y;
-      int Np_z;
-      int num_equations;
-      int dim;
-      int num_elements;
-      real_t *elJac_d;
-      real_t *elMetric_d;
-      real_t *Dhat2_d;
-      real_t *Dhat_d;
-      real_t *D_d;
-      const Prandtl::Chandrashekar::InviscidFlux iflux;
-      const IdealGasModel gas;
-    };
     OperatorCache cache;
   private:
     std::shared_ptr<ParMesh> pmesh;
@@ -112,7 +97,7 @@ namespace Prandtl
                     NumericalFlux &rsolver, int Np);
 
     void CreateOperatorCache();
-    void GetDeviceCache(Prandtl::DGSEMDeviceCache &dgsem_device_cache); 
+    void GetDeviceCache(DGSEMDeviceCache &dgsem_device_cache); 
     void AssembleGeometricTerms();
     void AssembleElementGeometricTerms(ElementTransformation &Tr);
     void GetGeometricOperators(mfem::Vector &elJac_x, mfem::Vector &elMetric_x,
@@ -124,7 +109,7 @@ namespace Prandtl
     real_t AssembleElementVolumeHost2(const DGSEMDeviceCache &device_cache, const int e,
                                       const real_t *el_u, const real_t *jac_d,
                                       const real_t *metric_d, real_t *el_dudt);
-      real_t AssembleElementVolumeDevice(const Prandtl::DGSEMDeviceCache &ctx,
+      real_t AssembleElementVolumeDevice(const DGSEMDeviceCache &ctx,
                                        const real_t *el_u, const real_t *elJac_d,
                                        const real_t *elMetric_d, real_t *el_dudt);
     void AssembleElementVector(const FiniteElement &el, ElementTransformation &Tr, const Vector &el_u, Vector &el_dutdt) override;
@@ -155,7 +140,8 @@ namespace Prandtl
                                               const real_t *el_u, const real_t *elJac_d,
                                               const real_t *elMetric_d, real_t *el_dudt)
     {
-      // TODO: bring subcell blending back SUBCELL_FV_BLENDING 
+      // TODO: bring subcell blending back SUBCELL_FV_BLENDING
+      // TODO: bring back axisymmetric terms
       const int Np_x = ctx.Np_x;
       const int Np_y = ctx.Np_y;
       const int Np_z = ctx.Np_z;
@@ -163,6 +149,7 @@ namespace Prandtl
       const int dim = ctx.dim;
       const int neq = ctx.num_equations;
       const real_t *Dhat2_d = ctx.Dhat2_d;
+      // TODO: Really integrate/use MAX_EQ or equivalent
       //    real_t f[MAX_EQ];
       real_t f[5] = {0.,0.,0.,0.,0.};
       real_t state1[5];
@@ -177,22 +164,22 @@ namespace Prandtl
             for (int i = 0; i < Np_x; i++)
               {
                 int id1 = k * Np_y * Np_x + j * Np_x + i;
-                Prandtl::Kernels::el_gather_state(el_u, dof, neq, id1, state1);
+                Kernels::el_gather_state(el_u, dof, neq, id1, state1);
                 J = elJac_d[id1];
                 const real_t *met1 = elMetric_d+id1*dim*dim;
                 for (int m = i + 1; m < Np_x; m++)
                   {
                     int id2 = k * Np_y * Np_x + j * Np_x + m;
-                    Prandtl::Kernels::el_gather_state(el_u, dof, neq, id2, state2);
+                    Kernels::el_gather_state(el_u, dof, neq, id2, state2);
                     const real_t *met2 = elMetric_d + id2*dim*dim;
                     
                     const real_t cs = ctx.iflux.ComputeVolumeFlux(ctx.gas, state1, state2, met1, met2, f);
-                    max_char_speed = Prandtl::Kernels::rmax(cs, max_char_speed);
+                    max_char_speed = Kernels::rmax(cs, max_char_speed);
                     
                     const real_t c1 = Dhat2_d[m + Np_x*i];
                     const real_t c2 = Dhat2_d[i + Np_x*m];
-                    Prandtl::Kernels::el_scatter_add(f, dof, neq, id1, c1, el_dudt);
-                    Prandtl::Kernels::el_scatter_add(f, dof, neq, id2, c2, el_dudt);
+                    Kernels::el_scatter_add(f, dof, neq, id1, c1, el_dudt);
+                    Kernels::el_scatter_add(f, dof, neq, id2, c2, el_dudt);
 
                   }
               }
@@ -205,22 +192,22 @@ namespace Prandtl
             for (int i = 0; i < Np_x; ++i)
               {
                 const int id1 = k*Np_y*Np_x + j*Np_x + i;
-                Prandtl::Kernels::el_gather_state(el_u, dof, neq, id1, state1);
+                Kernels::el_gather_state(el_u, dof, neq, id1, state1);
                 const real_t *met1 = elMetric_d + id1*dim*dim + 1*dim;
                 
                 for (int m = j+1; m < Np_y; ++m)
                   {
                     const int id2 = k*Np_y*Np_x + m*Np_x + i;
-                    Prandtl::Kernels::el_gather_state(el_u, dof, neq, id2, state2);
+                    Kernels::el_gather_state(el_u, dof, neq, id2, state2);
                     const real_t *met2 = elMetric_d + id2*dim*dim + dim;
                     // ComputeVolumeFlux *overwrites* f, so don't worry about reuse
                     const real_t cs = ctx.iflux.ComputeVolumeFlux(ctx.gas, state1, state2, met1, met2, f);
-                    max_char_speed = Prandtl::Kernels::rmax(max_char_speed, cs);
+                    max_char_speed = Kernels::rmax(max_char_speed, cs);
                     
                     const real_t c1 = Dhat2_d[m + Np_y*j]; // column j, entry m
                     const real_t c2 = Dhat2_d[j + Np_y*m]; // column m, entry j
-                    Prandtl::Kernels::el_scatter_add(f, dof, neq, id1, c1, el_dudt);
-                    Prandtl::Kernels::el_scatter_add(f, dof, neq, id2, c2, el_dudt);
+                    Kernels::el_scatter_add(f, dof, neq, id1, c1, el_dudt);
+                    Kernels::el_scatter_add(f, dof, neq, id2, c2, el_dudt);
                     
                   }
               }
@@ -232,28 +219,27 @@ namespace Prandtl
             for (int i = 0; i < Np_x; ++i)
               {
                 const int id1 = k*Np_y*Np_x + j*Np_x + i;
-                Prandtl::Kernels::el_gather_state(el_u, dof, neq, id1, state1);
+                Kernels::el_gather_state(el_u, dof, neq, id1, state1);
                 const real_t *met1 = elMetric_d + id1*dim*dim + 2*dim;
                 
                 for (int m = k+1; m < Np_z; ++m)
                   {
                     const int id2 = m*Np_y*Np_x + j*Np_x + i;
-                    Prandtl::Kernels::el_gather_state(el_u, dof, neq, id2, state2);
+                    Kernels::el_gather_state(el_u, dof, neq, id2, state2);
                     const real_t *met2 = elMetric_d + id2*dim*dim + 2*dim;
                     
                     const real_t cs = ctx.iflux.ComputeVolumeFlux(ctx.gas, state1, state2, met1, met2, f);
-                    max_char_speed = Prandtl::Kernels::rmax(max_char_speed, cs);
+                    max_char_speed = Kernels::rmax(max_char_speed, cs);
                     
                     const real_t c1 = Dhat2_d[m + Np_z*k];
                     const real_t c2 = Dhat2_d[k + Np_z*m];
-                    Prandtl::Kernels::el_scatter_add(f, dof, neq, id1, c1, el_dudt);
-                    Prandtl::Kernels::el_scatter_add(f, dof, neq, id2, c2, el_dudt);
-                    
+                    Kernels::el_scatter_add(f, dof, neq, id1, c1, el_dudt);
+                    Kernels::el_scatter_add(f, dof, neq, id2, c2, el_dudt);
                   }
               }
       } // Z-direction block
       // const int NPtot = Np_x * Np_y * Np_z; // = Np_x * Np_x * Np_x (!)
-      Prandtl::Kernels::el_scale(elJac_d, -1.0, dof, neq, el_dudt);
+      Kernels::el_scale(elJac_d, -1.0, dof, neq, el_dudt);
       // for(int id = 0;id < NPtot;id++){
       //   // Subcell blending off (for now)
       //   // const real_t invJ = (-blend_factor) / elJac_d[id];
