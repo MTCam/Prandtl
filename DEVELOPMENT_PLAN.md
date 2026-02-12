@@ -37,28 +37,28 @@ Discussion/question points are tagged `[Q1]`, `[Q2]`, etc, and link to the
 
 ### Steps
 - **Development process**
-  - [ ] Make an Issue to track Phase 0 readiness work
-  - [ ] Make a top-level branch to track Phase 0 development
-  - [ ] Make a top-level branch to encapsulate LTE (Track A) development
-  - [ ] Make a top-level branch to encapsulate GPU (Track B) development 
-  - [ ] Make an integration branch to test Track A/B integration
-  - [ ] Create a (draft) PR that closes the readiness Issue
+  - [x] Make an Issue to track Phase 0 readiness work
+  - [x] Make a top-level branch to track Phase 0 development
+  - [x] Make a top-level branch to encapsulate LTE (Track A) development
+  - [x] Make a top-level branch to encapsulate GPU (Track B) development 
+  - [x] Make an integration branch to test Track A/B integration
+  - [x] Create a (draft) PR that closes the readiness Issue
 
-- [ ] **Prepare baseline tests (Euler, ideal gas)**
-  - [ ] 1D Sod shock tube
-  - [ ] 2D Euler test
-  - [ ] CNS Problem with nontrivial BCs
-  - [ ] Record conserved quantities and expected profiles
+- [x] **Prepare baseline tests (Euler, ideal gas)**
+  - [x] 1D Sod shock tube
+  - [x] 2D Euler test
+  - [x] CNS Problem with nontrivial BCs
+  - [x] Record conserved quantities and expected profiles
   
-- [ ] Add regression testing infrastructure
-- [ ] Document the development plan (**this document**)
-- [ ] Discuss working agreement, branching model, PR coordination  
+- [x] Add regression testing infrastructure
+- [x] Document the development plan (**this document**)
+- [x] Discuss working agreement, branching model, PR coordination  
 
 ### Deliverables
-- [ ] Merge-ready PR for Phase 0  
-- [ ] Integration branch for combined Track A+B testing  
-- [ ] Initial version of *this* development plan text  
-- [ ] Regression tests to protect correctness  
+- [x] Merge-ready PR for Phase 0  
+- [x] Integration branch for combined Track A+B testing  
+- [x] Initial version of *this* development plan text  
+- [x] Regression tests to protect correctness  
 
 ### Outcomes
 - Team readiness for coordinated multi-track development  
@@ -124,14 +124,14 @@ Discussion/question points are tagged `[Q1]`, `[Q2]`, etc, and link to the
 
 ### Steps
 - **Development process**
-  - [ ] Create Issue for Track B Phase 1  
-  - [ ] Create top-level branch for device-readiness  
-  - [ ] Draft PR closing the Issue  
+  - [x] Create Issue for Track B Phase 1  
+  - [x] Create top-level branch for device-readiness  
+  - [x] Draft PR closing the Issue  
 
 - **Centralize and abstract state layout** [`[Q1]`](#q1--state-layout-stability-high-priority-before-development)
-  - [ ] Add unit tests for state
-  - [ ] Add accessors for all state components  
-  - [ ] Ensure layout supports future scalar transport `[c:A]`  
+  - [x] Add unit tests for state
+  - [x] Add accessors for all state components  
+  - [x] Ensure layout supports future scalar transport `[c:A]`  
   - [ ] Plan for persistent primitive/derived states [`[Q2]`](#q2--persistent-state-requirements)
 
 - [ ] **Make `DGSEMOperator` a thin MFEM `TimeDependentOperator`**

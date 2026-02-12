@@ -10,44 +10,72 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 project(Prandtl)
 
+option(BUILD_TESTING "Build unit tests" ON)
+option(PARABOLIC "Enable Compressible Navier-Stokes Solver" OFF)
+option(SUBCELL_FV_BLENDING "Enable subcell blending" ON)
+option(AXISYMMETRIC "Enable Axisymmetric domain solver" OFF)
+option(SUTHERLAND "Enable Sutherland transport model" OFF)
+
 find_package(MPI REQUIRED)
 include_directories(${MPI_CXX_INCLUDE_PATH})
 set(MPI_CXX_LIBRARIES ${MPI_CXX_LIBRARIES})
+
+# Find Mutation++
+find_package(mutation++ REQUIRED)
 
 message(STATUS "MPI CXX COMPILER: ${MPI_CXX_COMPILER}")
 message(STATUS "MPI INCLUDE PATH: ${MPI_INCLUDE_PATH}")
 message(STATUS "MPI LIBRARIES: ${MPI_CXX_LIBRARIES}")
 
-# Set the CONFIG_FILE variable, with a default if not provided
-set(CONFIG_FILE "${CONFIG_FILE}" CACHE STRING "Path to config file")
-
-message(STATUS "CONFIG_FILE = ${CONFIG_FILE}")
+add_executable(${PROJECT_NAME} main.cpp)
 
 # --- Python Script for Compile Definitions ---
 set(CONFIG_FILE "${CONFIG_FILE}" CACHE STRING "Path to config file")
-message(STATUS "CONFIG_FILE = ${CONFIG_FILE}")
-
 if(IS_ABSOLUTE "${CONFIG_FILE}")
     set(FULL_CONFIG_PATH "${CONFIG_FILE}")
 else()
     set(FULL_CONFIG_PATH "${CMAKE_CURRENT_SOURCE_DIR}/${CONFIG_FILE}")
 endif()
+message(STATUS "CONFIG_FILE = ${CONFIG_FILE}")
+if(NOT "${CONFIG_FILE}" STREQUAL "")
+    message(STATUS "Parsing configuration file: ${FULL_CONFIG_PATH}")
+    execute_process(
+        COMMAND python3 "${CMAKE_CURRENT_SOURCE_DIR}/parse_compile_config.py" "${FULL_CONFIG_PATH}"
+        WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+        OUTPUT_VARIABLE COMPILE_DEFINES
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+    )       
+    string(REPLACE "\n" ";" COMPILE_DEFINES_LIST "${COMPILE_DEFINES}")
+    message(STATUS "COMPILE_DEFINES_LIST = ${COMPILE_DEFINES_LIST}")
 
-execute_process(
-    COMMAND python3 "${CMAKE_CURRENT_SOURCE_DIR}/parse_compile_config.py"
-                    "${FULL_CONFIG_PATH}"
-    WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
-    OUTPUT_VARIABLE COMPILE_DEFINES
-    OUTPUT_STRIP_TRAILING_WHITESPACE
-)
-string(REPLACE "\n" ";" COMPILE_DEFINES_LIST "${COMPILE_DEFINES}")
-message(STATUS "COMPILE_DEFINES_LIST = ${COMPILE_DEFINES_LIST}")
+    target_compile_definitions(${PROJECT_NAME}
+        PRIVATE ${COMPILE_DEFINES_LIST}
+    )
+else()
+    message(STATUS "No configuration file given.")
+endif()
 
-add_executable(${PROJECT_NAME} main.cpp)
+if(PARABOLIC)
+  message(STATUS "Building Prandtl for: Compressible Navier-Stokes equations")
+  target_compile_definitions(${PROJECT_NAME} PRIVATE PARABOLIC)
+else()
+  message(STATUS "Building Prandtl for: Euler equations")
+endif()
 
-target_compile_definitions(${PROJECT_NAME}
-    PRIVATE ${COMPILE_DEFINES_LIST}
-)
+if(SUBCELL_FV_BLENDING)
+  message(STATUS "Building Prandtl with: Subcell FV Blending enabled")
+  target_compile_definitions(${PROJECT_NAME} PRIVATE SUBCELL_FV_BLENDING)
+endif()
+
+if(SUTHERLAND)
+  message(STATUS "Building Prandtl with: Sutherland transport model enabled")
+  target_compile_definitions(${PROJECT_NAME} PRIVATE SUTHERLAND)
+endif()
+
+if(AXISYMMETRIC)
+  message(STATUS "Building Prandtl with: Axisymmetric domain enabled")
+  target_compile_definitions(${PROJECT_NAME} PRIVATE AXISYMMETRIC)
+endif()
 
 target_sources(${PROJECT_NAME}
     PRIVATE src/Operators/DGSEMOperator.cpp 
@@ -87,6 +115,7 @@ target_include_directories(${PROJECT_NAME}
     PUBLIC ${CMAKE_SOURCE_DIR}/libs/metis-5.1.0/include
     PUBLIC ${CMAKE_SOURCE_DIR}/src/Operators/NonlinearForm
     PUBLIC ${CMAKE_SOURCE_DIR}/src/Operators
+    PUBLIC ${CMAKE_SOURCE_DIR}/src/Device
     PUBLIC ${CMAKE_SOURCE_DIR}/src/RiemannSolvers
     PUBLIC ${CMAKE_SOURCE_DIR}/src/BasicOperations
     PUBLIC ${CMAKE_SOURCE_DIR}/src/Filters
@@ -130,6 +159,9 @@ target_link_directories(${PROJECT_NAME}
     PUBLIC ${CMAKE_SOURCE_DIR}/libs/metis-5.1.0/lib
     )
 
-target_link_libraries(${PROJECT_NAME} mfem HYPRE metis MPI::MPI_CXX)
+target_link_libraries(${PROJECT_NAME} mfem HYPRE metis mutation++::mutation++ MPI::MPI_CXX)
 
-
+if (BUILD_TESTING)
+  include(CTest)
+  add_subdirectory(tests)
+endif()

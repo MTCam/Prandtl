@@ -30,10 +30,8 @@ void ComputeMean(const Vector &x, const Vector &y, Vector &mean)
 
 real_t ComputePressure(const Vector &state, real_t gammaM1)
 {
-    Vector V(state.GetData() + 1, state.Size() - 2);
-    V /= state(0);
-
-    return gammaM1 * (state(state.Size() - 1) - 0.5 * state(0) * (V * V));
+  Vector mom(state.GetData() + 1, state.Size() - 2);
+  return gammaM1 * (state(state.Size() - 1) - 0.5 * (mom * mom) / state(0));
 }
 
 real_t ComputeEntropy(real_t rho, real_t p, real_t gamma)
@@ -68,7 +66,6 @@ real_t ComputeTotalEnthalpy(const Vector &state, real_t gammaM1)
 void Conserv2Entropy(const DenseMatrix &vdof_mat, DenseMatrix &ent_mat, real_t gamma, real_t gammaM1, real_t gammaM1Inverse)
 {
     ent_mat = 0.0;
-    real_t s, beta;
     Vector state, ent_state(vdof_mat.Width());
     for (int d = 0; d < vdof_mat.Height(); d++)
     {
@@ -82,22 +79,23 @@ void Conserv2Entropy(const Vector &state, Vector &ent_state, real_t gamma, real_
 {
     real_t s, p, v_sq, beta;
 
-    Vector vel(state.GetData() + 1, state.Size() - 2);
-    vel /= state(0);
-    v_sq = 0.5 * (vel * vel);
+    Vector mom(state.GetData() + 1, state.Size() - 2);
+    const real_t rho = state(0);
+    const real_t rhom1 = 1.0 / rho;
+    v_sq = 0.5 * (mom * mom) * rhom1 * rhom1;
 
-    p = gammaM1 * (state(state.Size() - 1) - state(0) * v_sq);
-    beta = state(0) / p;
-    s = std::log(p * std::pow(state(0), -gamma));
+    p = gammaM1 * (state(state.Size() - 1) - rho * v_sq);
+    beta = rho / p;
+    s = std::log(p * std::pow(rho, -gamma));
 
     ent_state(0) = (gamma - s) * gammaM1Inverse - beta * v_sq;
-    ent_state(1) = beta * vel(0);
+    ent_state(1) = beta * mom(0) * rhom1;
     if (state.Size() > 3)
     {
-        ent_state(2) = beta * vel(1);
+        ent_state(2) = beta * mom(1) * rhom1;
         if (state.Size() > 4)
         {
-            ent_state(3) = beta * vel(2);
+            ent_state(3) = beta * mom(2) * rhom1;
         }
     }
     ent_state(state.Size() - 1) = -beta;
@@ -106,9 +104,9 @@ void Conserv2Entropy(const Vector &state, Vector &ent_state, real_t gamma, real_
 void Entropy2Conserv(const Vector &ent_state, Vector &state, real_t gamma, real_t gammaM1, real_t gammaM1Inverse)
 {
     int dim = ent_state.Size() - 2;
-    Vector vel(ent_state.GetData() + 1, dim);
+    Vector vel(dim);
     const real_t beta = -ent_state(dim + 1);
-    vel /= beta;
+    for(int i = 0;i < dim;i++) vel(i) = ent_state(i+1) / beta;
     const real_t s = gamma - (ent_state(0) + 0.5 * beta * (vel * vel)) * gammaM1;
     state(0) = std::pow(std::exp(-s) / beta, gammaM1Inverse);
     state(1) = state(0) * vel(0);
@@ -134,8 +132,8 @@ void EntropyGrad2PrimGrad(const DenseMatrix &vdof_mat, DenseMatrix &grad, real_t
         vdof_mat.GetRow(d, state);
         grad.GetRow(d, grad_state);
 
-        Vector vel(state.GetData() + 1, dim);
-        vel /= state(0);
+        Vector vel(dim);
+        for(int i = 0;i < dim;i++) vel(i) = state(i+1)/state(0);
         v_sq = 0.5 * (vel * vel);
         p = gammaM1 * (state(state.Size() - 1) - state(0) * v_sq);
         KE = v_sq * state(0);
@@ -169,6 +167,7 @@ void EntropyGrad2PrimGrad(const DenseMatrix &vdof_mat, DenseMatrix &grad, real_t
     }
 }
 
+
 void Conserv2Prim(const Vector &state, Vector &prim_state, real_t gammaM1)
 {
     prim_state.SetSize(state.Size());
@@ -179,13 +178,13 @@ void Conserv2Prim(const Vector &state, Vector &prim_state, real_t gammaM1)
         prim_state(2) = state(2) / state(0);
         if (state.Size() > 4)
         {
-            prim_state(3) = state(3) / state(0);
+          prim_state(3) = state(3) / state(0);
         }
     }
     prim_state(state.Size() - 1) = ComputePressure(state, gammaM1);
 }
 
-void Prim2Conserv(const Vector &state, Vector &conserv_state, real_t gammaM1Inverse)
+  void Prim2Conserv(const Vector &state, Vector &conserv_state, real_t gammaM1Inverse)
 {
     conserv_state.SetSize(state.Size());
     conserv_state(0) = state(0);
@@ -239,7 +238,7 @@ void RotateState(Vector &state, const Vector &nor)
 {
     MFEM_ASSERT(nor.Size() > 1, "Rotate only in 2D or 3D");
     MFEM_ASSERT(nor.Size() < 4, "Rotate only in 2D or 3D");
-
+ 
     Vector tan1;
     Vector rhoV(state.GetData() + 1, nor.Size());
 
@@ -256,6 +255,32 @@ void RotateState(Vector &state, const Vector &nor)
 
     rhoV(0) = rho_u;
     rhoV(1) = rho_v;
+}
+
+void RotateState(const StateLayout &layout, Vector &state, const Vector &nor)
+{
+  int dim = nor.Size();
+  MFEM_ASSERT(dim >= 1 and dim < 4, "RotateState: Invalid normal dimension");
+  
+  Prandtl::PointStateViewRW S{state.GetData()};
+  if(nor.Size() == 1){
+    S.set_momentum(layout, 0, S.momentum(layout, 0)*nor(0));
+    return;
+  }
+  Vector tan1;
+  Vector rhoV(state.GetData() + layout.eq_mom[0], dim);
+  Normal(nor, tan1);
+  real_t rho_u = rhoV * nor;
+  real_t rho_v = rhoV * tan1;
+
+  if (dim == 3)
+    {
+      Vector tan2;
+      Cross(nor, tan1, tan2);
+      rhoV(2) = rhoV * tan2;
+    }
+  rhoV(0) = rho_u;
+  rhoV(1) = rho_v;
 }
 
 void RotateBack(Vector &state, const Vector &nor)
@@ -283,6 +308,32 @@ void RotateBack(Vector &state, const Vector &nor)
     rhoV(1) = rho_v;
 }
 
+void RotateBack(Vector &state, const Vector &nor, const StateLayout &layout)
+{
+  int dim = nor.Size();
+  MFEM_ASSERT(dim >= 1 and dim < 4, "RotateBack: Invalid normal dimension");
+  Vector rhoV(state.GetData() + layout.eq_mom[0], nor.Size());
+  if (dim == 1){
+    rhoV(0) = rhoV(0) / nor(0);
+    return;
+  }
+  Vector tan1;
+  Normal(nor, tan1);
+  real_t rho_u = rhoV(0) * nor(0) + rhoV(1) * tan1(0);
+  real_t rho_v = rhoV(0) * nor(1) + rhoV(1) * tan1(1);
+
+    if (dim == 3)
+    {
+        Vector tan2;
+        Cross(nor, tan1, tan2);
+        rho_u += rhoV(2) * tan2(0);
+        rho_v += rhoV(2) * tan2(1);
+        rhoV(2) = rhoV(0) * nor(2) + rhoV(1) * tan1(2) + rhoV(2) * tan2(2);
+    }
+
+    rhoV(0) = rho_u;
+    rhoV(1) = rho_v;
+}
 
 Vector ComputeRoeAverage(const Vector &state1, const Vector &state2, const real_t gammaM1)
 {
@@ -347,6 +398,83 @@ const Table& ElementIndextoBdrElementIndex(Mesh &mesh)
 
     bdr_el2el->~Table();
     return *el2bdr_el;
+}
+
+// CL NOTE: The following code finds the indices that bracket x in the lookup table.
+// It is adapted from Numerical Recipes and performs a exponential search followed by a bracketed binary search.
+MFEM_HOST_DEVICE int hunt(const real_t *arr, int n, real_t x, int ind_lo)
+{
+    int ind_hi, ind_mid;
+    int incr = 1;
+    bool ascend = (arr[n-1] >= arr[0]);
+
+    if (ind_lo < 0 || ind_lo >= n)
+    {
+        ind_lo = -1;
+        ind_hi =  n;
+    }
+    else 
+    {
+        // Right or Left Hunt
+        if ( (x >= arr[ind_lo]) == ascend)
+        {
+            // Hunt right
+            if (ind_lo == n-1) return ind_lo;
+            ind_hi = ind_lo + incr;
+
+            while (ind_hi < n && ((x >= arr[ind_hi]) == ascend))
+            {
+                ind_lo = ind_hi;
+                incr *= 2;
+                ind_hi = ind_lo + incr;
+                if (ind_hi > n-1)
+                {
+                    ind_hi = n;
+                    break;
+                }
+            }
+        }
+        // Hunt left
+        else
+        {
+            if (ind_lo == 0)
+            {
+                ind_lo = -1;
+                return ind_lo;
+            }
+            ind_hi = ind_lo;
+            ind_lo = ind_lo-1;
+            while (ind_lo >= 0 && ((x < arr[ind_lo]) == ascend))
+            {
+                ind_hi = ind_lo;
+                incr *= 2;
+                if (incr >= ind_hi)
+                {
+                    ind_lo = -1;
+                    break;
+                }
+                else ind_lo = ind_hi - incr;
+            }
+        }
+    }
+
+    // Binary Search in the estimated bracket
+    while(ind_hi - ind_lo != 1)
+    {
+        ind_mid = ind_lo + (ind_hi - ind_lo)/2;
+        if( (x >= arr[ind_mid]) == ascend)
+        {
+            ind_lo = ind_mid;
+        }
+        else
+        {
+            ind_hi = ind_mid;
+        }   
+    }
+
+    if(x == arr[n-1]) ind_lo = n-2;
+    if(x == arr[0]) ind_lo = 0;
+    return ind_lo;
 }
 
 }
