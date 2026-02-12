@@ -38,6 +38,15 @@ make distclean
 make parallel -j4 MFEM_USE_METIS_5=YES METIS_DIR="$(cd ../metis-5.1.0/ && pwd)" HYPRE_DIR="$(cd ../hypre/src/hypre && pwd)"
 cd ../../
 
+# --- Build Mutation++
+echo "--- Building Parallel Mutation++ ---"
+cd libs/Mutationpp
+rm -rf build install
+mkdir -p install
+mkdir build && cd build
+cmake -DCMAKE_INSTALL_PREFIX:PATH="$(cd ../install/ && pwd)" ..
+make -j 8 install
+
 # --- Step 4: Build GLVis ---
 if [ "$IS_HPC" = false ]; then
 echo "--- Building GLVis ---"
