@@ -18,7 +18,7 @@ namespace Prandtl
     inline real_t R_gas(const PhysicsConstants &phys, const StateLayout &L,
                         const StateView &S, const int dof) const
     {
-      std::cerr<< " R_gas is currently not stored in LTE tables "<<phys.R_gas<<std::endl;
+      std::cerr<< " CL ALERT : R_gas is currently not stored in LTE tables " << phys.R_gas << std::endl;
       return phys.R_gas;
     }
  

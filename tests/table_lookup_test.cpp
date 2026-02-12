@@ -106,17 +106,16 @@ TEST(LTEGasEOS_Tablelookup_test)
     opts.setViscosityAlgorithm("Chapmann-Enskog_LDLT"); // Viscosity algorithm
     Mixture mix(opts);                     // Initializing mixture object
         mix.addComposition("N:0.8, O:0.2", true); // composition
-    int num_species = 5, num_properties = 9;
+    int num_properties = 9;
 
     const int dim = 3, ndofs = 1;
 
     // Data arrays for table lookup for LTE properties
-    mfem::Vector lte_table( (num_species + 
-                             num_properties) * (nx*ny) ); // LTE-Tables
+    mfem::Vector lte_table( (num_properties) * (nx*ny) ); // LTE-Tables
     mfem::Vector rho_grid(nx), rhoe_grid(ny); // 1-D grids of rho and rhoE
     mfem::Array<int> hunt_arr( ndofs * 2 );   // Array of hunted indices
 
-    StateLayout L(dim, ndofs, nx, ny, num_species);
+    StateLayout L(dim, ndofs, nx, ny);
     const int num_eq = L.eq_energy + 1;
     LTEGasEOS eos;
 
@@ -194,17 +193,16 @@ TEST(LTEGasEOS_BilinearInterpolation_test)
     opts.setViscosityAlgorithm("Chapmann-Enskog_LDLT"); // Viscosity algorithm
     Mixture mix(opts);                     // Initializing mixture object
         mix.addComposition("N:0.8, O:0.2", true); // composition
-    int num_species = 5, num_properties = 9;
+    int num_properties = 9;
 
     const int dim = 3, ndofs = 1;
 
     // Data arrays for table lookup for LTE properties
-    mfem::Vector lte_table( (num_species + 
-                             num_properties) * (nx*ny) ); // LTE-Tables
+    mfem::Vector lte_table( (num_properties) * (nx*ny) ); // LTE-Tables
     mfem::Vector rho_grid(nx), rhoe_grid(ny); // 1-D grids of rho and rhoE
     mfem::Array<int> hunt_arr( ndofs * 2 );   // Array of hunted indices
 
-    StateLayout L(dim, ndofs, nx, ny, num_species);
+    StateLayout L(dim, ndofs, nx, ny);
     const int num_eq = L.eq_energy + 1;
     LTEGasEOS eos;
 
@@ -311,15 +309,15 @@ TEST(InverseLTETable_test)
     real_t rho_min  = 0.5  , rho_max  = 1.5  , rho_step  = (rho_max-rho_min)/(nx-1);
     real_t rhoe_min = 2.0e5, rhoe_max = 1.1e6, rhoe_step = (rhoe_max-rhoe_min)/(ny-1);
 
-    int num_species = 5, num_properties = 9;
+    int num_properties = 9;
     const int dim = 3, ndofs = 1;
 
     // Data arrays for table lookup for LTE properties
-    mfem::Vector lte_table( (num_species + num_properties) * (nx*ny) ); // LTE-Tables
+    mfem::Vector lte_table( (num_properties) * (nx*ny) ); // LTE-Tables
     mfem::Vector rho_grid(nx), rhoe_grid(ny); // 1-D grids of rho and rhoE
     mfem::Array<int> hunt_arr( ndofs * 2 );   // Array of hunted indices
 
-    StateLayout L(dim, ndofs, nx, ny, num_species);
+    StateLayout L(dim, ndofs, nx, ny);
     const int num_eq = L.eq_energy + 1;
     LTEGasEOS eos;
 

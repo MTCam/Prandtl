@@ -45,7 +45,6 @@ namespace Prandtl
 
     // LTE table specific quantities
     int nx, ny;                // dimensions of LTE table
-    int num_species;           // number of species in gas mixture
     int num_properties = 9;    // CL NOTE : change the num_properties if more are being stored
 
     // Property indices in the LTE table
@@ -58,7 +57,6 @@ namespace Prandtl
     int gamma_eq_idx = 6;  // gamma-eq
     int mu_idx       = 7;  // shear viscosity
     int lambda_idx   = 8;  // thermal conductivity
-    int sp_0_idx     = 9;  // index of first species 
 
     /**
      * Set up after creation.
@@ -101,15 +99,13 @@ namespace Prandtl
      * @param num_dofs_scalar_ Number of DOFs per scalar field
      * @param nx_              Number of x points in LTE table (\rho)
      * @param ny_              Number of y points in LTE table (\rho E)
-     * @param num_species_     Number of species in gas mixture
      * @param num_scalars_     Number of scalar components (default: 0)
      */
-    void setup_lte(int dim_, int num_dofs_scalar_, int nx_, int ny_, int num_species_, int num_scalars_ = 0)
+    void setup_lte(int dim_, int num_dofs_scalar_, int nx_, int ny_, int num_scalars_ = 0)
     {
       setup(dim_, num_dofs_scalar_, num_scalars_);
       nx = nx_;
       ny = ny_;
-      num_species = num_species_;
     }
 
     // Canonical ordering:
@@ -118,8 +114,8 @@ namespace Prandtl
     { setup(dim_, num_dofs_scalar_, num_scalars_);}
 
     // LTE Constructor
-    StateLayout(int dim_, int num_dofs_scalar_, int nx_, int ny_, int num_species_, int num_scalars_ = 0)
-    { setup_lte(dim_, num_dofs_scalar_, nx_, ny_, num_species_, num_scalars_);}
+    StateLayout(int dim_, int num_dofs_scalar_, int nx_, int ny_, int num_scalars_ = 0)
+    { setup_lte(dim_, num_dofs_scalar_, nx_, ny_, num_scalars_);}
 
     // Convenience for nequations
     MFEM_HOST_DEVICE inline int nequations() const
@@ -145,15 +141,6 @@ namespace Prandtl
       int index;
       assert(property < num_properties);
       index = property*ny*nx + ind_y*nx + ind_x;
-      return index;
-    }
-
-    // Flat index of species mole fractions in the flattened 3D LTE Table
-    MFEM_HOST_DEVICE inline int lte_mole_frac_index(int sp_idx, int ind_x, int ind_y) const
-    {
-      int index;
-      assert(sp_idx < num_species);
-      index = (sp_0_idx + sp_idx)*ny*nx + ind_y*nx + ind_x;
       return index;
     }
   };
