@@ -22,6 +22,7 @@ set(MPI_CXX_LIBRARIES ${MPI_CXX_LIBRARIES})
 
 # Find Mutation++
 find_package(mutation++ REQUIRED)
+find_package(Eigen3 REQUIRED)
 
 message(STATUS "MPI CXX COMPILER: ${MPI_CXX_COMPILER}")
 message(STATUS "MPI INCLUDE PATH: ${MPI_INCLUDE_PATH}")
@@ -159,7 +160,8 @@ target_link_directories(${PROJECT_NAME}
     PUBLIC ${CMAKE_SOURCE_DIR}/libs/metis-5.1.0/lib
     )
 
-target_link_libraries(${PROJECT_NAME} mfem HYPRE metis mutation++::mutation++ MPI::MPI_CXX)
+target_link_libraries(${PROJECT_NAME} mfem HYPRE metis mutation++::mutation++ MPI::MPI_CXX Eigen3::Eigen)
+
 
 if (BUILD_TESTING)
   include(CTest)

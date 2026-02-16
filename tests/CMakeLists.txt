@@ -97,7 +97,7 @@ target_include_directories(table_lookup_tests
     ${PROJECT_SOURCE_DIR}/src/Device
     PUBLIC ${MUTATIONPP_PREFIX}/include
     PUBLIC ${PROJECT_SOURCE_DIR}/libs/Mutationpp/data
-    PUBLIC /opt/homebrew/opt/eigen/include/eigen3
+    PUBLIC ${EIGEN3_INCLUDE_DIR}
 )
 
 target_link_directories(table_lookup_tests
@@ -109,7 +109,7 @@ target_link_directories(table_lookup_tests
 
 target_link_libraries(table_lookup_tests
     mfem HYPRE metis MPI::MPI_CXX
-    mutation++
+    mutation++ Eigen3::Eigen
 )
 
 add_test(NAME TableLookupTestingSuite COMMAND table_lookup_tests)
