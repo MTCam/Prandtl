@@ -274,15 +274,18 @@ void Simulation::LoadConfig(const std::string &config_file_path)
         mesh->bdr_attribute_sets.SetAttributeSet("left", left);
         mesh->bdr_attribute_sets.SetAttributeSet("right", right);
     }
-
+    if (!periodic && mesh->GetNBE() == 0){
+      mesh->GenerateBoundaryElements();
+    }
     if (runtime.contains("ser_ref_levels"))
-    {
+      {
         ref_levels = runtime.value("ser_ref_levels", 0);
         for (int lev = 0; lev < ref_levels; lev++)
         {
             mesh->UniformRefinement();
         }
     }
+    mesh->FinalizeTopology();
 
     if (mesh->GetNE() < Mpi::WorldSize())
     {
@@ -303,11 +306,14 @@ void Simulation::LoadConfig(const std::string &config_file_path)
         mesh->ReorderElements(mesh_ordering);
     }
 
-    if (dim > 1)
-    {
+    // TODO: Let's gate this for now
+    if (dim > 1 && runtime.value("use_nc_mesh", false))
+      {
         mesh->EnsureNCMesh();
-    }
+      }
 
+    // Completely finalize the mesh
+    mesh->FinalizeMesh(0, true);
     pmesh = std::make_shared<ParMesh>(MPI_COMM_WORLD, *mesh);
     mesh->Clear();
 
@@ -320,12 +326,18 @@ void Simulation::LoadConfig(const std::string &config_file_path)
         }
     }
 
+    pmesh->ExchangeFaceNbrData();
     fec = std::make_shared<DG_FECollection>(order, dim, btype);
     fec0 = std::make_shared<DG_FECollection>(0, dim);
     vfes = std::make_shared<ParFiniteElementSpace>(pmesh.get(), fec.get(), num_equations, ordering);
     fes0 = std::make_shared<ParFiniteElementSpace>(pmesh.get(), fec0.get());
     dfes = std::make_unique<ParFiniteElementSpace>(pmesh.get(), fec.get(), dim, ordering);
     fes = std::make_unique<ParFiniteElementSpace>(pmesh.get(), fec.get());
+    // Let's do an initial exchange to get the data structures populated
+    vfes->ExchangeFaceNbrData();
+    fes0->ExchangeFaceNbrData();
+    dfes->ExchangeFaceNbrData();
+    fes->ExchangeFaceNbrData();
 
     num_dofs_scalar = fes->GetNDofs();
     num_dofs_system = vfes->GetVSize();
