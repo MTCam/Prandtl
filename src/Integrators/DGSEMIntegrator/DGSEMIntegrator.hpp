@@ -22,11 +22,17 @@ namespace Prandtl
       int num_equations;
       int dim;
       int num_elements;
+      int num_face_points;
+      int num_interior_faces;
       mfem::Vector elJac;
       mfem::Vector elMetric;
       mfem::Vector Dhat2;
       mfem::Vector Dhat;
       mfem::Vector D;
+      mfem::Vector face_normals;
+      mfem::Vector face_wt_minus;
+      mfem::Vector face_wt_plus;
+      const mfem::FaceRestriction *restr_f = nullptr; // for face vfes (vector space)
     };
     OperatorCache cache;
   private:
@@ -97,14 +103,13 @@ namespace Prandtl
                     NumericalFlux &rsolver, int Np);
 
     void CreateOperatorCache();
-    void GetDeviceCache(DGSEMDeviceCache &dgsem_device_cache); 
     void AssembleGeometricTerms();
     void AssembleElementGeometricTerms(ElementTransformation &Tr);
-    void GetGeometricOperators(mfem::Vector &elJac_x, mfem::Vector &elMetric_x,
-                               mfem::Vector &D, mfem::Vector &Dhat,
-                               mfem::Vector &Dhat2);
     void AssembleElementVectorOG(const FiniteElement &el, ElementTransformation &Tr, const Vector &el_u, Vector &el_dudt);
     void AssembleFaceVector(const FiniteElement &el1, const FiniteElement &el2, FaceElementTransformations &Tr, const Vector &el_u, Vector &el_dudt) override;
+    void AssembleFaceVectorInviscid(const FiniteElement &el1, const FiniteElement &el2,
+                                    FaceElementTransformations &Tr, const Vector &el_u,
+                                    Vector &el_dudt);
     real_t AssembleElementVolumeHost(const int e, ElementTransformation &Tr, const real_t *el_u, real_t *el_dutdt);
     real_t AssembleElementVolumeHost2(const DGSEMDeviceCache &device_cache, const int e,
                                       const real_t *el_u, const real_t *jac_d,
@@ -252,6 +257,49 @@ namespace Prandtl
       // into an array (size = num_elements) on the caller side, and
       // then reduce/max over local elements and over ranks.
       // TODO: Fix up max_char_speed treatment on caller, and usage site
+      return max_char_speed;
+    }
+
+    template<typename ContextT>
+    MFEM_HOST_DEVICE static real_t AssembleElementFaceKernel(const ContextT &ctx, const real_t *u_face,
+                                                             const real_t *nor_face,const real_t *w_minus,
+                                                             const real_t *w_plus, real_t *rhs_face)
+    { // TODO: Fix hard-coded sizes (5)
+      real_t max_char_speed = 0.0;
+      real_t point_flux[5];
+      real_t qMinus[5];
+      real_t qPlus[5];
+      const int nfp = ctx.num_face_points;
+      const int neq = ctx.num_equations;
+      const int dim = ctx.dim;
+      // auto idx = [=](int side, int fp, int eq) -> int
+      // {
+      //   return (((side)*neq + eq)*nfp + fp);
+      // };
+      for (int i = 0; i < nfp; i++)
+        {
+          const real_t *nor_d = nor_face + i*dim;
+          const real_t wminus = -w_minus[i];
+          const real_t wplus = w_plus[i];
+          // Could avoid these copy-in,out 
+          for(int j = 0;j < neq;j++){
+            qMinus[j] = u_face[ctx.iface_idx(0,i,j)];
+            qPlus[j] = u_face[ctx.iface_idx(1,i,j)];
+          }
+          max_char_speed = std::max(max_char_speed,
+                                    ctx.iflux.ComputeFacialFlux(ctx.gas, qMinus, qPlus,
+                                                                nor_d, point_flux));
+          for(int j = 0;j < neq;j++){
+            rhs_face[ctx.iface_idx(0, i, j)] = wminus * point_flux[j];
+            rhs_face[ctx.iface_idx(1, i, j)] = wplus * point_flux[j];
+          }
+        }
+      // #ifdef AXISYMMETRIC
+      //        Vector phys(dim);
+      //        Tr.Transform(ip, phys);
+      //        real_t r = phys[1]; 
+      //        flux_num *= r;
+      // #endif
       return max_char_speed;
     }
   };

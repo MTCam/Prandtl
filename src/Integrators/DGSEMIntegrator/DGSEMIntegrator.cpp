@@ -151,8 +151,9 @@ if (debug_integrator)
     ComputeSubcellMetrics();
 #endif
 
-    CreateOperatorCache();
-}
+     CreateOperatorCache();
+    
+  }
 
   void DGSEMIntegrator::CreateOperatorCache() {
     cache.Np_x = Np_x;
@@ -173,33 +174,6 @@ if (debug_integrator)
     cache.elJac.Read();
     cache.elMetric.Read();
   }
-
-  void DGSEMIntegrator::GetDeviceCache(Prandtl::DGSEMDeviceCache &dgsem_device_cache)
-  {
-    dgsem_device_cache.Np = cache.Np_x;
-    dgsem_device_cache.Np_x = cache.Np_x;
-    dgsem_device_cache.Np_y = cache.Np_y;
-    dgsem_device_cache.Np_z = cache.Np_z;
-    dgsem_device_cache.dim = cache.dim;
-    dgsem_device_cache.num_elements = cache.num_elements;
-    dgsem_device_cache.num_equations = cache.num_equations;
-    dgsem_device_cache.elJac_d = cache.elJac.Read();
-    dgsem_device_cache.elMetric_d = cache.elMetric.Read();
-    dgsem_device_cache.D_d = cache.D.Read();
-    dgsem_device_cache.Dhat_d = cache.Dhat.Read();
-    dgsem_device_cache.Dhat2_d = cache.Dhat2.Read();
-  }
-
-void DGSEMIntegrator::GetGeometricOperators(mfem::Vector &elJac_x, mfem::Vector &elMetric_x,
-                                            mfem::Vector &D, mfem::Vector &Dhat,
-                                            mfem::Vector &Dhat2)
-{
-  elJac_x.MakeRef(cache.elJac, 0, cache.elJac.Size());
-  elMetric_x.MakeRef(cache.elMetric, 0, cache.elMetric.Size());
-  D.MakeRef(cache.D, 0, cache.D.Size());
-  Dhat.MakeRef(cache.Dhat, 0, cache.Dhat.Size());
-  Dhat2.MakeRef(cache.Dhat2, 0, cache.Dhat2.Size());
-}
 
 // Set up and populate elJac, elMetric, D, Dhat, Dhat2
 void DGSEMIntegrator::AssembleGeometricTerms()
@@ -262,6 +236,7 @@ void DGSEMIntegrator::AssembleElementGeometricTerms(ElementTransformation &Tr)
     }
 }
 
+  // Orginal: For INVISCID cases
 void DGSEMIntegrator::AssembleFaceVector(const FiniteElement &el1, const FiniteElement &el2,
                                          FaceElementTransformations &Tr, const Vector &el_u,
                                          Vector &el_dudt)
@@ -329,12 +304,66 @@ void DGSEMIntegrator::AssembleFaceVector(const FiniteElement &el1, const FiniteE
    
         dU_face1 = dU_face2 = flux_num;
         dU_face1.Neg();
+        AddMult_a_VWt(+1.0 / (ir->IntPoint(0).weight * J1), shape1, dU_face1, el_dudt_mat1);
+        AddMult_a_VWt(+1.0 / (ir->IntPoint(0).weight * J2), shape2, dU_face2, el_dudt_mat2);
+    }
+}
+
+  // Tweaked from Original (AssembleFaceVector) for INVISCID cases
+void DGSEMIntegrator::AssembleFaceVectorInviscid(const FiniteElement &el1, const FiniteElement &el2,
+                                                 FaceElementTransformations &Tr, const Vector &el_u,
+                                                 Vector &el_dudt)
+{
+    if (debug_integrator) 
+    {
+        std::cout << "===== Entering DGSEMIntegrator::AssembleFaceVector =====" << std::endl;
+    }
+    el_dudt.SetSize((dof1 + dof2) * num_equations);
+    el_dudt = 0.0;
+
+    const DenseMatrix el_u_mat1(el_u.GetData(), dof1, num_equations);
+    const DenseMatrix el_u_mat2(el_u.GetData() + dof1 * num_equations, dof2, num_equations);
+
+    DenseMatrix el_dudt_mat1(el_dudt.GetData(), dof1, num_equations);
+    DenseMatrix el_dudt_mat2(el_dudt.GetData() + dof1 * num_equations, dof2, num_equations);
+
+    for (int i = 0; i < ir_face->GetNPoints(); i++)
+    {
+        const IntegrationPoint &ip = ir_face->IntPoint(i);
+        Tr.SetAllIntPoints(&ip);
+        J1 = Tr.GetElement1Transformation().Weight();
+        J2 = Tr.GetElement2Transformation().Weight();
+        el1.CalcShape(Tr.GetElement1IntPoint(), shape1);
+        el2.CalcShape(Tr.GetElement2IntPoint(), shape2);
+
+        el_u_mat1.MultTranspose(shape1, state1);
+        el_u_mat2.MultTranspose(shape2, state2);        
+
+        if (dim == 1)
+        {
+            nor(0) = (Tr.GetElement1IntPoint().x - 0.5) * 2.0;
+        }
+        else
+        {
+            CalcOrtho(Tr.Jacobian(), nor);
+        }
+        max_char_speed = std::max(max_char_speed, rsolver.ComputeFaceFlux(state1, state2, nor, flux_num));
+
+#ifdef AXISYMMETRIC
+        Vector phys(dim);
+        Tr.Transform(ip, phys);
+        real_t r = phys[1]; 
+        flux_num *= r;
+#endif
+        dU_face1 = dU_face2 = flux_num;
+        dU_face1.Neg();
 
         AddMult_a_VWt(+1.0 / (ir->IntPoint(0).weight * J1), shape1, dU_face1, el_dudt_mat1);
         AddMult_a_VWt(+1.0 / (ir->IntPoint(0).weight * J2), shape2, dU_face2, el_dudt_mat2);
     }
 }
 
+  // Original version - kept for reference until refactor complete
 void DGSEMIntegrator::AssembleElementVectorOG(const FiniteElement &el,
         ElementTransformation &Tr, const Vector &el_u, Vector &el_dudt)
 {
