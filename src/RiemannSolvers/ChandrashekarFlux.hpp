@@ -112,10 +112,9 @@ namespace Prandtl
     }
 
     template<typename GasModelT>
-    MFEM_HOST_DEVICE inline
-    static real_t ComputeFaceFluxKernel(const GasModelT &gasModel,const real_t *state1,
-                                        const real_t *state2, const real_t *nor,
-                                        real_t *flux)
+    MFEM_HOST_DEVICE inline static real_t ComputeFaceFluxKernel(const GasModelT &gasModel,const real_t *state1,
+                                                                const real_t *state2, const real_t *nor,
+                                                                real_t *flux)
     {
       const int dim = gasModel.dim();
       const int neq = gasModel.num_equations();
@@ -193,13 +192,21 @@ namespace Prandtl
       
       return lambda_max;
     }
-    
     struct InviscidFlux {
-      MFEM_HOST_DEVICE inline real_t ComputeVolumeFlux(const IdealGasModel &gasModel,
+ 
+      template<typename GasModelT>
+      MFEM_HOST_DEVICE inline real_t ComputeVolumeFlux(const GasModelT &gasModel,
                                                        const real_t *q1, const real_t *q2,
                                                        const real_t *met1, const real_t *met2,
                                                        real_t *F_tilde) const{
         return ComputeVolumeFluxKernel(gasModel, q1, q2, met1, met2, F_tilde); 
+      }
+
+      template<typename GasModelT>
+      MFEM_HOST_DEVICE inline real_t ComputeFacialFlux(const GasModelT &gasModel,const real_t *qminus,
+                                                       const real_t *qplus, const real_t *nor,
+                                                       real_t *flux) const {
+        return ComputeFaceFluxKernel(gasModel, qminus, qplus, nor, flux); 
       }
     };
   };
