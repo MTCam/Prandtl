@@ -59,31 +59,42 @@ void OutputOperatorCache(const DGSEMNonlinearForm::OperatorCache &cache)
   void DGSEMNonlinearForm::AssembleFaceGeomCacheInterior()
   {
     auto *mesh = fes->GetMesh();
+    auto *pmesh = dynamic_cast<mfem::ParMesh*>(mesh);
     auto *pfes = dynamic_cast<mfem::ParFiniteElementSpace*>(fes);
     cache.fqs_int = new mfem::FaceQuadratureSpace(*mesh, *cache.ir_face, mfem::FaceType::Interior);
-    
     MFEM_VERIFY(pfes, "need ParFiniteElementSpace");
     
     const int dim = mesh->Dimension();
     const int neq = pfes->GetVDim();
     const int nfp = cache.ir_face->GetNPoints();
-    
+
     auto &int_faces = mesh->GetFaceIndices(mfem::FaceType::Interior);
+    BuildFaceLists();
     const int nfaces = int_faces.Size();
-    std::cout << "Caching for " << nfaces << " faces." << std::endl;
+
+    // inv_map_all[face_slot*nfp + fp_perm] = fp_restr
+    cache.inv_fp_map.SetSize(nfaces * nfp);    
+    for (int face_slot = 0; face_slot < nfaces; ++face_slot)
+      {
+        for (int fp_restr = 0; fp_restr < nfp; ++fp_restr)
+          {
+            int fp_perm = cache.fqs_int->GetPermutedIndex(face_slot, fp_restr);
+            cache.inv_fp_map[face_slot*nfp + fp_perm] = fp_restr;
+          }
+      }
+
     double *nor_d  = cache.face_normals.HostWrite();
     double *inv1_d = cache.face_wt_minus.HostWrite();
     double *inv2_d = cache.face_wt_plus.HostWrite();
-    std::cout << "normal address: " << nor_d << std::endl;
     const real_t w0 = cache.ir->IntPoint(0).weight;
     
     auto store = [&](int fslot, int fp, const mfem::Vector &nor,
                      double inv_wJ1, double inv_wJ2)
     {
-      if(fslot == 0){
-        std::cout << "Normal = " << nor(0) << "," << nor(1)
-                  << std::endl;
-      }
+      // if(fslot == 0){
+      //   std::cout << "Normal = " << nor(0) << "," << nor(1)
+      //             << std::endl;
+      // }
       const int nbase = (fslot * nfp + fp) * dim;
       for (int d = 0; d < dim; ++d) { nor_d[nbase + d] = nor(d); }
       inv1_d[fslot * nfp + fp] = inv_wJ1;
@@ -91,39 +102,72 @@ void OutputOperatorCache(const DGSEMNonlinearForm::OperatorCache &cache)
     };
     
     mfem::Vector nor(dim);
-    
+    const int num_elements_pmesh = pmesh->GetNE();
     for (int fslot = 0; fslot < nfaces; ++fslot)
       {
         const int face_id = int_faces[fslot];
-        auto *tr = mesh->GetInteriorFaceTransformations(face_id);
-        MFEM_VERIFY(tr, "expected interior face");
-        bool face_is_flipped = false;
-        for (int fp_restr = 0; fp_restr < nfp; ++fp_restr)
-          {
-            const int fp_geom = MapFp(face_id, fp_restr);// <-- critical
-            if (fp_geom != fp_restr){
-              face_is_flipped = true;
+        if(cache.mesh_face_is_shared[face_id]){ // Do shared face caching
+          std::cout << "Shared face (slot/face): (" << fslot << "/" << face_id << ")"
+                    << std::endl;
+          auto *tr = pmesh->GetSharedFaceTransformationsByLocalIndex(face_id, true);
+          MFEM_VERIFY(tr, "expected shared face");
+          bool face_is_flipped = false;
+          for (int fp_restr = 0; fp_restr < nfp; ++fp_restr)
+            {
+              const int fp_geom = MapFp(fslot, fp_restr);// <-- critical
+              if (fp_geom != fp_restr){
+                face_is_flipped = true;
+              }
             }
-          }
-        for (int fp_restr = 0; fp_restr < nfp; ++fp_restr)
-          {
-            const int fp_geom = MapFp(face_id, fp_restr);// <-- critical
-            const mfem::IntegrationPoint &ip = cache.ir_face->IntPoint(fp_geom);
-            tr->SetAllIntPoints(&ip);
-            
-            const double J1 = tr->GetElement1Transformation().Weight();
-            const double J2 = tr->GetElement2Transformation().Weight();
-            
-            if (dim == 1) { nor(0) = (tr->GetElement1IntPoint().x - 0.5)*2.0; }
-            else          { mfem::CalcOrtho(tr->Jacobian(), nor); }
-            
-            //const real_t fac = face_is_flipped ? -1.0 : 1.0;
-            const real_t fac = 1.0;
-            store(fslot, fp_restr, nor, fac/(w0*J1), fac/(w0*J2));
-          }
+          for (int fp_restr = 0; fp_restr < nfp; ++fp_restr)
+            {
+              const int fp_geom = MapFp(fslot, fp_restr);// <-- critical
+              const mfem::IntegrationPoint &ip = cache.ir_face->IntPoint(fp_geom);
+              tr->SetAllIntPoints(&ip);
+              
+              const double J1 = tr->GetElement1Transformation().Weight();
+              const double J2 = tr->GetElement2Transformation().Weight();
+              
+              if (dim == 1) { nor(0) = (tr->GetElement1IntPoint().x - 0.5)*2.0; }
+              else          { mfem::CalcOrtho(tr->Jacobian(), nor); }
+              
+              //const real_t fac = face_is_flipped ? -1.0 : 1.0;
+              const real_t fac1 = 1.0;
+              const real_t fac2 = 0.0;
+              // std::cout << "J1/J2 = " << J1 << "/" << J2 << std::endl;
+              store(fslot, fp_restr, nor, fac1/(w0*J1), fac2/(w0*J2));
+            }
+        } else { // local internal face
+          std::cout << "Internal face (slot/face): (" << fslot << "/" << face_id << ")"
+                    << std::endl;
+          auto *tr = mesh->GetInteriorFaceTransformations(face_id);
+          MFEM_VERIFY(tr, "expected interior face");
+          bool face_is_flipped = false;
+          for (int fp_restr = 0; fp_restr < nfp; ++fp_restr)
+            {
+              const int fp_geom = MapFp(fslot, fp_restr);// <-- critical
+              if (fp_geom != fp_restr){
+                face_is_flipped = true;
+              }
+            }
+          for (int fp_restr = 0; fp_restr < nfp; ++fp_restr)
+            {
+              const int fp_geom = MapFp(fslot, fp_restr);// <-- critical
+              const mfem::IntegrationPoint &ip = cache.ir_face->IntPoint(fp_geom);
+              tr->SetAllIntPoints(&ip);
+              
+              const double J1 = tr->GetElement1Transformation().Weight();
+              const double J2 = tr->GetElement2Transformation().Weight();
+              
+              if (dim == 1) { nor(0) = (tr->GetElement1IntPoint().x - 0.5)*2.0; }
+              else          { mfem::CalcOrtho(tr->Jacobian(), nor); }
+              
+              //const real_t fac = face_is_flipped ? -1.0 : 1.0;
+              const real_t fac = 1.0;
+              store(fslot, fp_restr, nor, fac/(w0*J1), fac/(w0*J2));
+            }
+        } // Internal face processing
       }
-    std::cout << "nor_d[0:5] = " << nor_d[0] << "," << nor_d[1] << ","
-              << nor_d[2] << "," << nor_d[3] << "," << nor_d[4] << std::endl;
   }
 
   void DGSEMNonlinearForm::GetDeviceCache(Prandtl::DGSEMDeviceCache &dgsem_device_cache)
@@ -1615,17 +1659,14 @@ void DGSEMNonlinearForm::MultInteriorFacesInviscidHost(const Vector &pu, Vector 
       Array<int> vdofs2;
       auto &int_faces = mesh->GetFaceIndices(mfem::FaceType::Interior);
       int nfaces_int = int_faces.Size();
-      //      for (int i = 0; i < mesh->GetNumFaces(); i++)
       for (int iface = 0; iface < nfaces_int; iface++)
         {
-          //          Ostr << iface << std::endl;
           const int face_id = int_faces[iface];
           MFEM_VERIFY(iface==face_id, "Faces dont line up");
           tr = mesh->GetInteriorFaceTransformations(face_id);
           MFEM_VERIFY(tr, "Expected transformation");
           if (tr != NULL)
             {
-              // Ostr << face_id << std::endl;
               fes->GetElementVDofs(tr->Elem1No, vdofs);
               fes->GetElementVDofs(tr->Elem2No, vdofs2);
               vdofs.Append (vdofs2);              
@@ -1690,7 +1731,8 @@ real_t DGSEMNonlinearForm::MultInteriorFacesInviscidDevice(const Vector &pu, Vec
 
   Mesh *mesh = fes->GetMesh();
   auto *pfes = dynamic_cast<mfem::ParFiniteElementSpace*>(fes);
-
+  auto *pmesh = dynamic_cast<mfem::ParMesh*>(mesh);
+ 
   const int dim = pfes->GetMesh()->Dimension();
   const int neq = pfes->GetVDim();
   const int nfp = cache.num_face_points; // ir_face->GetNPoints();
@@ -1704,13 +1746,31 @@ real_t DGSEMNonlinearForm::MultInteriorFacesInviscidDevice(const Vector &pu, Vec
   mfem::Vector u_faces(cache.restr_f->Height());
   mfem::Vector rhs_faces(cache.restr_f->Height());
   mfem::Vector faces_dudt(pdudt);
+
+
+  // rhs_faces.UseDevice();
+  // u_faces.UseDevice();  
+  rhs_faces.HostWrite();
+  faces_dudt.HostWrite();
+  u_faces.HostReadWrite();
+  //  u_faces = 123456.789;
   faces_dudt = 0.0;
-  rhs_faces.UseDevice();
-  u_faces.UseDevice();
   rhs_faces = 0.0;
+  pu.HostRead();
 
-  cache.restr_f->Mult(pu, u_faces);
+  // scalar dofs per equation in the L-vector:
+  cache.restr_f->Mult(pu, u_faces); // I think this _creates_ a pgf and comm/exchange pu
 
+  u_faces.HostRead();  // force sync to host for printing
+
+  // Copy in state+ here using legacy processing (MFEM failed to do it right)
+  PopulateSharedStatePlusFromExchangeData(pu, u_faces);
+
+  const real_t *u_h = u_faces.Read();  // host pointer
+
+  const int face_stride = 2 * nfp * neq;
+  const int side_stride = nfp * neq;
+  
   const real_t *u_d = u_faces.Read();
   real_t *rhs_d = rhs_faces.Write();
 
@@ -1772,13 +1832,14 @@ real_t DGSEMNonlinearForm::MultInviscid(const Vector &u, Vector &dudt) const
     // This step overwrites contents of pdudt
     // max_char_speed = MultInviscidVolumeHost2(pu, pdudt);
     max_char_speed = MultVolumeInviscidDevice(pu, pdudt);
-    std::cout << "Volume wavespeed: " << max_char_speed << std::endl;
+    //    std::cout << "Volume wavespeed: " << max_char_speed << std::endl;
 
     // Testing this during development:
     real_t max_char_speed_facial = 0.0;
     max_char_speed_facial = MultInteriorFacesInviscidDevice(pu, pdudt);
-    std::cout << "Facial wavespeed: " << max_char_speed_facial << std::endl;
+    // std::cout << "Facial wavespeed: " << max_char_speed_facial << std::endl;
     // MultInteriorFacesInviscidHost(pu, pdudt);
+    max_char_speed = std::max(max_char_speed, max_char_speed_facial);
 
     Array<int> vdofs;
     Vector el_u, el_dudt;

@@ -327,12 +327,14 @@ void Simulation::LoadConfig(const std::string &config_file_path)
     }
 
     pmesh->ExchangeFaceNbrData();
-    fec = std::make_shared<DG_FECollection>(order, dim, btype);
     fec0 = std::make_shared<DG_FECollection>(0, dim);
-    vfes = std::make_shared<ParFiniteElementSpace>(pmesh.get(), fec.get(), num_equations, ordering);
     fes0 = std::make_shared<ParFiniteElementSpace>(pmesh.get(), fec0.get());
+
+    fec = std::make_shared<DG_FECollection>(order, dim, btype);
+    vfes = std::make_shared<ParFiniteElementSpace>(pmesh.get(), fec.get(), num_equations, ordering);
     dfes = std::make_unique<ParFiniteElementSpace>(pmesh.get(), fec.get(), dim, ordering);
     fes = std::make_unique<ParFiniteElementSpace>(pmesh.get(), fec.get());
+
     // Let's do an initial exchange to get the data structures populated
     vfes->ExchangeFaceNbrData();
     fes0->ExchangeFaceNbrData();
