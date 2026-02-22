@@ -307,7 +307,7 @@ void Simulation::LoadConfig(const std::string &config_file_path)
     }
 
     // TODO: Let's gate this for now
-    if (dim > 1 && runtime.value("use_nc_mesh", false))
+    if (dim > 1 && runtime.value("use_nc_mesh", true))
       {
         mesh->EnsureNCMesh();
       }
