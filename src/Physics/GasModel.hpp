@@ -26,12 +26,12 @@ namespace Prandtl
     GasModel(const PhysicsConstants &phys_in, const StateLayout &L_in,
              const EOSImpl &eos_in, const TransportImpl &tr_in)
       : phys(phys_in), L(L_in), eos(eos_in), transport(tr_in)
-    { }
+    { };
 
     MFEM_HOST_DEVICE
     GasModel(const PhysicsConstants &phys_in, const StateLayout &L_in)
       : phys(phys_in), L(L_in)
-    { }
+    { };
 
     // Utilities and constants etc
     MFEM_HOST_DEVICE
@@ -43,36 +43,36 @@ namespace Prandtl
     { return L.dim; };
 
     // State Access
-    MFEM_HOST_DEVICE
     template<typename StateView>
+    MFEM_HOST_DEVICE
     inline real_t velocity(const StateView &S, int d) const
-    { return S.velocity(L,d);}
+    { return S.velocity(L,d);};
 
-    MFEM_HOST_DEVICE
     template<typename StateView>
+    MFEM_HOST_DEVICE
     inline real_t momentum(const StateView &S, int d) const
-    { return S.momentum(L,d);}
+    { return S.momentum(L,d);};
 
     template<typename StateView>
     MFEM_HOST_DEVICE
     inline real_t density(const StateView &S) const
     {
       return eos.density(phys, L, S);
-    }
+    };
 
     template<typename StateView>
     MFEM_HOST_DEVICE
     inline real_t mass(const StateView &S) const
     {
       return eos.density(phys, L, S);
-    }
+    };
 
     template<typename StateView>
     MFEM_HOST_DEVICE
     inline real_t energy(const StateView &S) const
     {
       return S.energy(L);
-    }
+    };
 
     // --- Thermodynamics ------------------------------------------------------
     template<typename StateView>

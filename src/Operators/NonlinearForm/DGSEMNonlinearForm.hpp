@@ -18,6 +18,7 @@ namespace Prandtl
   class DGSEMNonlinearForm : public ParNonlinearForm
   {
   public:
+    mutable int entry_counter = 0;
     struct OperatorCache {
       // constants needed by kernels
       int p = 0;
@@ -68,7 +69,7 @@ namespace Prandtl
     // This function populates cache.face_is_shared
     // Also does some facial exploration to validate
     // Prandtl's assumptions about various face types.
-    void BuildFaceLists(bool output = true)
+    void BuildFaceLists(bool output = false)
     {
       auto *mesh = fes->GetMesh();
       auto *pfes = dynamic_cast<mfem::ParFiniteElementSpace*>(fes);

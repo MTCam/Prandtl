@@ -16,6 +16,10 @@ option(SUBCELL_FV_BLENDING "Enable subcell blending" ON)
 option(AXISYMMETRIC "Enable Axisymmetric domain solver" OFF)
 option(SUTHERLAND "Enable Sutherland transport model" OFF)
 
+find_package(MFEM REQUIRED)
+# target_link_libraries(${PROJECT_NAME} PRIVATE mfem)
+# target_compile_features(${PROJECT_NAME} PRIVATE cxx_std_17)
+
 find_package(MPI REQUIRED)
 include_directories(${MPI_CXX_INCLUDE_PATH})
 set(MPI_CXX_LIBRARIES ${MPI_CXX_LIBRARIES})
@@ -164,7 +168,7 @@ target_sources(${PROJECT_NAME}
     )
 
 target_include_directories(${PROJECT_NAME}
-    PUBLIC ${CMAKE_SOURCE_DIR}/libs/mfem
+    PUBLIC ${CMAKE_SOURCE_DIR}/libs/mfem/build
     PUBLIC ${CMAKE_SOURCE_DIR}/libs/hypre/src/hypre/include
     PUBLIC ${CMAKE_SOURCE_DIR}/libs/metis-5.1.0/include
     PUBLIC ${CMAKE_SOURCE_DIR}/src/Device
@@ -208,7 +212,7 @@ target_include_directories(${PROJECT_NAME}
     )
 
 target_link_directories(${PROJECT_NAME}
-    PUBLIC ${CMAKE_SOURCE_DIR}/libs/mfem
+    PUBLIC ${CMAKE_SOURCE_DIR}/libs/mfem/build
     PUBLIC ${CMAKE_SOURCE_DIR}/libs/hypre/src/lib
     PUBLIC ${CMAKE_SOURCE_DIR}/libs/metis-5.1.0/lib
     )
