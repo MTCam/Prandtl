@@ -2,37 +2,37 @@
 
 namespace Prandtl
 {
-DGSEMOperator::DGSEMOperator(std::shared_ptr<ParFiniteElementSpace> vfes_,
-                             std::shared_ptr<ParFiniteElementSpace> fes0_,
-                             std::shared_ptr<ParMesh> pmesh_,
-                             std::shared_ptr<ParGridFunction> eta_,
-                             std::shared_ptr<ParGridFunction> alpha_,
-                             std::vector<std::shared_ptr<ParGridFunction> > &grad_u_,
-                             std::unique_ptr<DGSEMIntegrator> integrator_,
-                             std::unique_ptr<Indicator> indicator_,
-                             const IdealGasModel &gasModel_,
-                             std::shared_ptr<ParGridFunction> r_gf_,
-                             const real_t alpha_max, const real_t alpha_min)
-                             : TimeDependentOperator(vfes_->GetTrueVSize()),
-                             vfes(vfes_), fes0(fes0_), pmesh(pmesh_),
-                               eta(eta_), alpha(alpha_), grad_u(grad_u_),
-                             integrator(std::move(integrator_)), indicator(std::move(indicator_)),
-                             gasModel(gasModel_),
-                             num_equations(vfes->GetVDim()), dim(pmesh->SpaceDimension()),
-                             order(vfes->GetElementOrder(0)), num_elements(pmesh->GetNE()),
-                             Ndofs(vfes->GetFE(0)->GetDof()),
-                             modalThreshold(0.5 * std::pow(10.0, -1.8 * std::pow(order, 0.25))),
-                             r_gf(r_gf_), alpha_max(alpha_max), alpha_min(alpha_min),
-                             num_dofs_scalar(vfes_->GetTrueVSize()/vfes_->GetVDim())
-                             #ifdef AXISYMMETRIC
-                             , U(vfes->GetTrueVSize())
-                             #endif
-{
+  DGSEMOperator::DGSEMOperator(std::shared_ptr<ParFiniteElementSpace> vfes_,
+                               std::shared_ptr<ParFiniteElementSpace> fes0_,
+                               std::shared_ptr<ParMesh> pmesh_,
+                               std::shared_ptr<ParGridFunction> eta_,
+                               std::shared_ptr<ParGridFunction> alpha_,
+                               std::vector<std::shared_ptr<ParGridFunction> > &grad_u_,
+                               std::unique_ptr<DGSEMIntegrator> integrator_,
+                               std::unique_ptr<Indicator> indicator_,
+                               const IdealGasModel &gasModel_,
+                               std::shared_ptr<ParGridFunction> r_gf_,
+                               const real_t alpha_max, const real_t alpha_min)
+  : TimeDependentOperator(vfes_->GetTrueVSize()),
+    vfes(vfes_), fes0(fes0_), pmesh(pmesh_),
+    eta(eta_), alpha(alpha_), grad_u(grad_u_),
+    integrator(std::move(integrator_)), indicator(std::move(indicator_)),
+    gasModel(gasModel_),
+    num_equations(vfes->GetVDim()), dim(pmesh->SpaceDimension()),
+    order(vfes->GetElementOrder(0)), num_elements(pmesh->GetNE()),
+    Ndofs(vfes->GetFE(0)->GetDof()),
+    modalThreshold(0.5 * std::pow(10.0, -1.8 * std::pow(order, 0.25))),
+    r_gf(r_gf_), alpha_max(alpha_max), alpha_min(alpha_min),
+    num_dofs_scalar(vfes_->GetTrueVSize()/vfes_->GetVDim())
+#ifdef AXISYMMETRIC
+  , U(vfes->GetTrueVSize())
+#endif
+  {
     nonlinearForm.reset(new DGSEMNonlinearForm(vfes.get()));
-
+    
     nonlinearForm->AddDomainIntegrator(integrator.get());
     nonlinearForm->AddInteriorFaceIntegrator(integrator.get());
-
+    
     std::vector<BdrFaceIntegrator*>::iterator it1 = bfnfi.begin();
     std::vector<Array<int>>::iterator it2 = bdr_marker.begin();
 
@@ -53,32 +53,468 @@ DGSEMOperator::DGSEMOperator(std::shared_ptr<ParFiniteElementSpace> vfes_,
     std::cout << "NDOF from vfes: " << ndof_from_vfes << std::endl;
     //MFEM_VERIFY(ndof_from_fes0 == ndof_from_vfes,
     //            "fes0 and vfes disagree on element scalar dofs");
-    nonlinearForm->CreateOperatorCache();
-    AssembleDeviceCache();
-    nonlinearForm->SetDeviceCache(dgsem_device_cache);
-}
+    // nonlinearForm->CreateOperatorCache();
+    CreateOperatorCache();
+    OperatorCacheToDeviceCache();
+    // AssembleDeviceCache();
+    nonlinearForm->SetOperatorCache(&cache);
+    nonlinearForm->SetDeviceCache(device_cache);
+  }
 
-DGSEMOperator::~DGSEMOperator()
-{
+  DGSEMOperator::~DGSEMOperator()
+  {
     for (auto ptr : bfnfi)
-    {
+      {
         delete ptr;
-    }
-}
+      }
+  }
+
+  void DGSEMOperator::CreateOperatorCache()
+  {
+    
+    const int p = vfes->GetFE(0)->GetOrder();
+    const int dim = pmesh->SpaceDimension();
+    const int ndof_scalar_el = vfes->GetFE(0)->GetDof();
+    const int neq = vfes->GetVDim();
+    const int Np = p + 1;
+    const int Np_x = Np;
+    const int Np_y = dim > 1 ? Np : 1;
+    const int Np_z = dim > 2 ? Np : 1;
+    const int nelem = vfes->GetNE();
+    const int nattr = pmesh->attributes.Size() ? pmesh->attributes.Max() : 0;
+  
+    cache.p = p;
+    cache.Np = Np;
+    cache.dim = dim;
+    cache.Np_x = Np_x;
+    cache.Np_y = Np_y;
+    cache.Np_z = Np_z;
+    cache.ndof_scalar_el = ndof_scalar_el;
+    cache.num_equations = neq;
+    cache.num_elements = nelem;
+    cache.restr_v = vfes->GetElementRestriction(mfem::ElementDofOrdering::LEXICOGRAPHIC);
+    cache.restr_f = vfes->GetFaceRestriction(mfem::ElementDofOrdering::LEXICOGRAPHIC,
+                                             mfem::FaceType::Interior,
+                                             mfem::L2FaceValues::DoubleValued);
+
+
+    // Attribute count = max attribute id (1-based in MFEM)
+    cache.num_attr = nattr;
+    cache.attr_marker.SetSize(nattr);
+    cache.attr_marker = 1;
+
+    // if (cache.num_attr == 0)
+    //   {
+    //     // If no domain integrators, nothing to do; marker stays 0.
+    //     // If "process all" is desired instead, set marker=1 here.
+    //     cache.attr_marker = 1;
+    //   }
+    // else
+    //   {
+    //     for (int k = 0; k < cache.volume_integrators.Size(); k++)
+    //       {
+    //         if (cache.volume_element_markers[k] == nullptr)
+    //           {
+    //             cache.attr_marker = 1; // process all attrs
+    //             break;
+    //           }
+
+    //         const Array<int> &marker = *cache.volume_element_markers[k];
+    //         MFEM_ASSERT(marker.Size() == cache.attr_marker.Size(),
+    //                     "invalid marker for domain integrator #" << k);
+            
+    //         for (int i = 0; i < cache.attr_marker.Size(); i++)
+    //           {
+    //             cache.attr_marker[i] |= marker[i];
+    //           }
+    //       }
+    //   }
+
+    // ---- 1b) Cache per-integrator marker (single dnfi assumption) -------------
+    cache.dnfi_marker.SetSize(nattr);
+    cache.dnfi_marker = 1;
+    
+    // if (cache.volume_integrators.Size() == 0 || cache.num_attr == 0)
+    //   {
+    //     cache.dnfi_marker = 1;
+    //   }
+    // else
+    //   {
+    //     MFEM_VERIFY(cache.volume_integrators.Size() == 1, "expected exactly one dnfi integrator");
+        
+    //     if (cache.volume_element_markers[0] == nullptr)
+    //       {
+    //         cache.dnfi_marker = 1; // applies to all attrs
+    //       }
+    //     else
+    //       {
+    //         const mfem::Array<int> &m0 = *cache.volume_element_markers[0];
+    //         MFEM_ASSERT(m0.Size() == cache.num_attr, "invalid dnfi_marker[0] size");
+            
+    //         for (int a = 0; a < cache.num_attr; ++a)
+    //           {
+    //             cache.dnfi_marker[a] = m0[a];
+    //           }
+    //       }
+    //   }
+    
+    // ---- 2) Per-element attribute id array -----------------------------------
+    cache.elem_attr.SetSize(nelem);
+    for (int e = 0; e < nelem; ++e)
+      {
+        const int attr = pmesh->GetAttribute(e); // 1-based
+        cache.elem_attr[e] = attr;
+      }
+
+    // Optional host-side sanity check (cheap, catches bad markers early):
+    if (cache.num_attr > 0)
+      {
+        for (int e = 0; e < nelem; ++e)
+          {
+            const int a = cache.elem_attr[e];
+            MFEM_VERIFY(a >= 1 && a <= cache.num_attr,
+                        "element attribute out of range: attr=" << a
+                        << " num_attr=" << cache.num_attr);
+          }
+      }
+
+    bool ud = cache.elem_attr.UseDevice();
+    //    MFEM_VERIFY(ud, "Device is off");
+    cache.attr_marker.UseDevice();
+    cache.dnfi_marker.UseDevice();
+    cache.elem_attr.Read();
+    cache.attr_marker.Read();
+    cache.dnfi_marker.Read();
+
+    cache.elWaveSpeed.SetSize(nelem);
+    cache.elWaveSpeed = 0.0;
+    cache.elWaveSpeed.UseDevice();
+    cache.elWaveSpeed.Read();
+
+    AssembleGeometricTerms();
+
+    cache.elJac.UseDevice();
+    cache.elMetric.UseDevice();
+    cache.D.UseDevice();
+    cache.Dhat.UseDevice();
+    cache.Dhat2.UseDevice();
+    cache.elJac.Read();
+    cache.elMetric.Read();
+    cache.D.Read();
+    cache.Dhat.Read();
+    cache.Dhat2.Read();
+
+    cache.face_normals.UseDevice();
+    cache.face_wt_minus.UseDevice();
+    cache.face_wt_plus.UseDevice();
+    cache.face_normals.Read();
+    cache.face_wt_minus.Read();
+    cache.face_wt_plus.Read();
+
+    cache.ifWaveSpeed.SetSize(cache.num_interior_faces);
+    cache.ifWaveSpeed = 0.0;
+    cache.ifWaveSpeed.UseDevice();
+    cache.ifWaveSpeed.Read();
+
+  }
+
+  // Set up and populate elJac, elMetric, D, Dhat, Dhat2
+  // Face normals, and weights
+  void DGSEMOperator::AssembleGeometricTerms()
+  {
+    int nelem = cache.num_elements;
+    int p = cache.p;
+    int Np = cache.Np;
+    int dim = cache.dim;
+    int Np_x = Np;
+    int Np_y = dim > 1 ? Np : 1;
+    int Np_z = dim > 2 ? Np : 1;
+    int neq = cache.num_equations;
+    
+    // Build integration rules
+    int IntegrationOrder = 2 * Np_x - 3;
+    cache.ir = &cache.GLIntRules.Get(mfem::Geometry::SEGMENT, IntegrationOrder);
+    if (dim == 1)
+      {
+        cache.ir_face = &cache.GLIntRules.Get(mfem::Geometry::POINT, IntegrationOrder);
+        cache.ir_vol = &cache.GLIntRules.Get(mfem::Geometry::SEGMENT, IntegrationOrder);
+      }
+    else if (dim == 2)
+      {
+        cache.ir_face = &cache.GLIntRules.Get(mfem::Geometry::SEGMENT, IntegrationOrder);
+        cache.ir_vol = &cache.GLIntRules.Get(mfem::Geometry::SQUARE, IntegrationOrder);
+      }
+    else
+      {
+        cache.ir_face = &cache.GLIntRules.Get(mfem::Geometry::SQUARE, IntegrationOrder);
+        cache.ir_vol = &cache.GLIntRules.Get(mfem::Geometry::CUBE, IntegrationOrder);
+      }
+    
+    MFEM_ASSERT(cache.ir->GetNPoints() == Np_x, "");
+    MFEM_ASSERT(cache.ir_vol->GetNPoints() == Np_x*Np_y*Np_z, "");
+    
+    // Populate element Jacobian determinant and metric terms
+    cache.elJac.SetSize(Np_x*Np_y*Np_z*nelem);
+    cache.elMetric.SetSize(dim*dim*Np_x*Np_y*Np_z*nelem);
+    for (int i = 0; i < nelem; i++)
+      {
+        ElementTransformation *T = vfes->GetElementTransformation(i);
+        assert(T->ElementNo == i);
+        AssembleElementVolumeGeometricTerms(*T);
+      }
+    
+    // Set up derivative operators
+    mfem::DenseMatrix D_T, Dhat_T, Dhat2_T;
+    D_T.SetSize(Np_x);
+    Dhat_T.SetSize(Np_x);
+    Dhat2_T.SetSize(Np_x);
+ 
+    Vector wBary(Np_x);
+    wBary = 1.0;
+    
+    for (int i = 1; i < Np_x; i++)
+      {
+        for (int j = 0; j < i; j++)
+          {
+            wBary(j) *= (cache.ir->IntPoint(j).x - cache.ir->IntPoint(i).x);
+            wBary(i) *= (cache.ir->IntPoint(i).x - cache.ir->IntPoint(j).x);
+          }
+      }
+    
+    wBary.Reciprocal();
+    D_T = 0.0;
+    for (int iL = 0; iL < Np_x; iL++)
+      {
+        for (int i = 0; i < Np_x; i++)
+          {
+            if (iL != i)
+              {
+                D_T(i, iL) = wBary(iL) / wBary(i) / (cache.ir->IntPoint(i).x - cache.ir->IntPoint(iL).x);
+                D_T(i, i) -= D_T(i, iL);
+              }
+          }
+      }
+    
+    Dhat_T = D_T;
+    Dhat_T(0, 0) += 1.0 / cache.ir->IntPoint(0).weight;
+    Dhat_T(Np - 1, Np - 1) -= 1.0 / cache.ir->IntPoint(Np - 1).weight;
+    Dhat_T.Transpose();
+    
+    Dhat2_T = D_T;
+    Dhat2_T *= 2.0;
+    Dhat2_T(0, 0) += 1.0 / cache.ir->IntPoint(0).weight;
+    Dhat2_T(Np - 1, Np - 1) -= 1.0 / cache.ir->IntPoint(Np - 1).weight;
+    Dhat2_T.Transpose();
+    D_T.Transpose();
+    
+    // Just copy D_T, Dhat_T, and Dhat2_T
+    cache.D.SetSize(Np_x*Np_x);
+    cache.Dhat.SetSize(Np_x*Np_x);
+    cache.Dhat2.SetSize(Np_x*Np_x);
+    std::memcpy(cache.D.GetData(),     D_T.Data(),     sizeof(real_t)*Np_x*Np_x);
+    std::memcpy(cache.Dhat.GetData(),  Dhat_T.Data(),  sizeof(real_t)*Np_x*Np_x);
+    std::memcpy(cache.Dhat2.GetData(), Dhat2_T.Data(), sizeof(real_t)*Np_x*Np_x);
+
+    // Set up data for faces
+    const int nfp = cache.ir_face->GetNPoints();
+    cache.num_face_points = nfp;
+    
+    const int nfaces_restr = cache.restr_f->Height() / (nfp * neq * 2);
+    cache.num_interior_faces = nfaces_restr;
+    MFEM_VERIFY(nfaces_restr > 0, "nfaces_restr is 0");
+    
+    cache.face_normals.SetSize(nfaces_restr * nfp * dim);
+    cache.face_wt_minus.SetSize(nfaces_restr * nfp);
+    cache.face_wt_plus.SetSize(nfaces_restr * nfp);
+    AssembleInteriorFaceGeomCache(); 
+  }
+
+  // Builds element-specific Jac/Metric and stuffs into cache.elJac, cache.elMetric
+  void DGSEMOperator::AssembleElementVolumeGeometricTerms(ElementTransformation &Tr)
+  {
+    
+    real_t *Jinv_h = cache.elJac.HostWrite();
+    real_t *Met_h  = cache.elMetric.HostWrite();
+    int dim = cache.dim;
+    mfem::Vector metric1(dim);
+    const int e = Tr.ElementNo;
+    const int nq = cache.Np_x * cache.Np_y * cache.Np_z;
+    
+    for (int q = 0; q < nq; ++q)
+      {
+        const IntegrationPoint &ip = cache.ir_vol->IntPoint(q);
+        Tr.SetIntPoint(&ip);
+        const real_t J = Tr.Weight();
+        Jinv_h[e*nq + q] = J;
+        
+        const mfem::DenseMatrix &adj = Tr.AdjugateJacobian();              
+        for (int dir = 0; dir < dim; ++dir)
+          {
+            adj.GetRow(dir, metric1);  // metric1.Size() == dim
+            
+            for (int d = 0; d < dim; ++d)
+              {
+                const int idxM = (((e*nq + q)*dim + dir)*dim + d);
+                Met_h[idxM] = metric1(d);
+              }
+          }
+      }
+  }
+
+  void DGSEMOperator::AssembleInteriorFaceGeomCache()
+  {
+    // auto *mesh = fes->GetMesh();
+    // auto *pmesh = dynamic_cast<mfem::ParMesh*>(mesh);
+    // auto *pfes = vfes;// dynamic_cast<mfem::ParFiniteElementSpace*>(fes);
+    cache.fqs_int = new mfem::FaceQuadratureSpace(*pmesh, *cache.ir_face, mfem::FaceType::Interior);
+    // MFEM_VERIFY(vfes, "need ParFiniteElementSpace");
+    
+    const int dim = cache.dim;
+    const int neq = cache.num_equations;
+    const int nfp = cache.num_face_points; // cache.ir_face->GetNPoints();
+
+    auto &int_faces = pmesh->GetFaceIndices(mfem::FaceType::Interior);
+    BuildFaceLists();
+
+    const int nfaces = int_faces.Size();
+
+    // inv_map_all[face_slot*nfp + fp_perm] = fp_restr
+    cache.inv_fp_map.SetSize(nfaces * nfp);    
+    for (int face_slot = 0; face_slot < nfaces; ++face_slot)
+      {
+        for (int fp_restr = 0; fp_restr < nfp; ++fp_restr)
+          {
+            int fp_perm = cache.fqs_int->GetPermutedIndex(face_slot, fp_restr);
+            cache.inv_fp_map[face_slot*nfp + fp_perm] = fp_restr;
+          }
+      }
+
+    double *nor_d  = cache.face_normals.HostWrite();
+    double *inv1_d = cache.face_wt_minus.HostWrite();
+    double *inv2_d = cache.face_wt_plus.HostWrite();
+    const real_t w0 = cache.ir->IntPoint(0).weight;
+    
+    auto store = [&](int fslot, int fp, const mfem::Vector &nor,
+                     double inv_wJ1, double inv_wJ2)
+    {
+      // if(fslot == 0){
+      //   std::cout << "Normal = " << nor(0) << "," << nor(1)
+      //             << std::endl;
+      // }
+      const int nbase = (fslot * nfp + fp) * dim;
+      for (int d = 0; d < dim; ++d) { nor_d[nbase + d] = nor(d); }
+      inv1_d[fslot * nfp + fp] = inv_wJ1;
+      inv2_d[fslot * nfp + fp] = inv_wJ2;
+    };
+    
+    mfem::Vector nor(dim);
+    const int num_elements_pmesh = pmesh->GetNE();
+    for (int fslot = 0; fslot < nfaces; ++fslot)
+      {
+        const int face_id = int_faces[fslot];
+        if(cache.mesh_face_is_shared[face_id]){ // Do shared face caching
+          std::cout << "Shared face (slot/face): (" << fslot << "/" << face_id << ")"
+                    << std::endl;
+          auto *tr = pmesh->GetSharedFaceTransformationsByLocalIndex(face_id, true);
+          MFEM_VERIFY(tr, "expected shared face");
+          bool face_is_flipped = false;
+          for (int fp_restr = 0; fp_restr < nfp; ++fp_restr)
+            {
+              const int fp_geom = MapFp(fslot, fp_restr);// <-- critical
+              if (fp_geom != fp_restr){
+                face_is_flipped = true;
+              }
+            }
+          for (int fp_restr = 0; fp_restr < nfp; ++fp_restr)
+            {
+              const int fp_geom = MapFp(fslot, fp_restr);// <-- critical
+              const mfem::IntegrationPoint &ip = cache.ir_face->IntPoint(fp_geom);
+              tr->SetAllIntPoints(&ip);
+              
+              const double J1 = tr->GetElement1Transformation().Weight();
+              const double J2 = tr->GetElement2Transformation().Weight();
+              
+              if (dim == 1) { nor(0) = (tr->GetElement1IntPoint().x - 0.5)*2.0; }
+              else          { mfem::CalcOrtho(tr->Jacobian(), nor); }
+              
+              //const real_t fac = face_is_flipped ? -1.0 : 1.0;
+              const real_t fac1 = 1.0;
+              const real_t fac2 = 0.0;
+              // std::cout << "J1/J2 = " << J1 << "/" << J2 << std::endl;
+              store(fslot, fp_restr, nor, fac1/(w0*J1), fac2/(w0*J2));
+            }
+        } else { // local internal face
+          std::cout << "Internal face (slot/face): (" << fslot << "/" << face_id << ")"
+                    << std::endl;
+          auto *tr = pmesh->GetInteriorFaceTransformations(face_id);
+          MFEM_VERIFY(tr, "expected interior face");
+          bool face_is_flipped = false;
+          for (int fp_restr = 0; fp_restr < nfp; ++fp_restr)
+            {
+              const int fp_geom = MapFp(fslot, fp_restr);// <-- critical
+              if (fp_geom != fp_restr){
+                face_is_flipped = true;
+              }
+            }
+          for (int fp_restr = 0; fp_restr < nfp; ++fp_restr)
+            {
+              const int fp_geom = MapFp(fslot, fp_restr);// <-- critical
+              const mfem::IntegrationPoint &ip = cache.ir_face->IntPoint(fp_geom);
+              tr->SetAllIntPoints(&ip);
+              
+              const double J1 = tr->GetElement1Transformation().Weight();
+              const double J2 = tr->GetElement2Transformation().Weight();
+              
+              if (dim == 1) { nor(0) = (tr->GetElement1IntPoint().x - 0.5)*2.0; }
+              else          { mfem::CalcOrtho(tr->Jacobian(), nor); }
+              
+              //const real_t fac = face_is_flipped ? -1.0 : 1.0;
+              const real_t fac = 1.0;
+              store(fslot, fp_restr, nor, fac/(w0*J1), fac/(w0*J2));
+            }
+        } // Internal face processing
+      }
+  }
+
+  void DGSEMOperator::OperatorCacheToDeviceCache()
+  {
+    device_cache.gas = gasModel;
+    device_cache.ndof_scalar_el = cache.ndof_scalar_el;
+    device_cache.num_attr = cache.num_attr;
+    device_cache.attr_marker_d = cache.attr_marker.Read();
+    device_cache.elem_attr_d = cache.elem_attr.Read();
+    device_cache.elWaveSpeed_d = cache.elWaveSpeed.ReadWrite();
+    device_cache.ifWaveSpeed_d = cache.ifWaveSpeed.ReadWrite();
+    device_cache.num_face_points = cache.num_face_points;
+    device_cache.p = cache.p;
+    device_cache.dim = cache.dim;
+    device_cache.Np = cache.Np;
+    device_cache.Np_x = cache.Np_x;
+    device_cache.Np_y = cache.Np_y;
+    device_cache.Np_z = cache.Np_z;
+    device_cache.num_elements = cache.num_elements;
+    device_cache.num_equations = cache.num_equations;
+    device_cache.elJac_d = cache.elJac.Read();
+    device_cache.elMetric_d = cache.elMetric.Read();
+    device_cache.D_d = cache.D.Read();
+    device_cache.Dhat_d = cache.Dhat.Read();
+    device_cache.Dhat2_d = cache.Dhat2.Read();
+  }
   
   // Call once after:
   //  - fes is finalized
   //  - dnfi/dnfi_marker are set
   //  - DGSEMIntegrator has built elJac/elMetric, and Dcol
   // and before entering the time loop.
-  void DGSEMOperator::AssembleDeviceCache()
-  {
-    // Copy the POD gasmodel outright 
-    dgsem_device_cache.gas = gasModel;
-    // Get the integrator's device-ready cache data
-    // Populates J, M, D, WS
-    nonlinearForm->GetDeviceCache(dgsem_device_cache);
-  }
+  // void DGSEMOperator::AssembleDeviceCache()
+  // {
+  //   // Copy the POD gasmodel outright 
+  //   device_cache.gas = gasModel;
+  //   // Get the integrator's device-ready cache data
+  //   // Populates J, M, D, WS
+  //   // GetDeviceCache();
+    
+  // }
 
 void DGSEMOperator::ComputeBlendingCoefficient(const Vector &x) const
 {
@@ -613,9 +1049,8 @@ void DGSEMOperator::Mult(const Vector &u, Vector &dudt) const
 
 }
 
-void DGSEMOperator::AddBdrFaceIntegrator(BdrFaceIntegrator *bfi, Array<int> &bdr_marker)
-{
-    nonlinearForm->AddBdrFaceIntegrator(bfi, bdr_marker);
-}
+// void DGSEMOperator::AddBdrFaceIntegrator(BdrFaceIntegrator *bfi, Array<int> &bdr_marker)
+// {
+// }
 
 }
