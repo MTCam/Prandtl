@@ -34,10 +34,13 @@ NSTEPS_OVERRIDE=0
 DT_OVERRIDE=0
 NMPIRANKS=2
 DEVICE="cpu"
+NHOSTS="1"
+
+HOST_SHORT="$(hostname -s)"
 
 usage() {
   cat <<EOF
-Usage: $0 [-n STEPS] [-b BUILDDIR] [-e EXECUTABLE] [-o RUNDIR] [-p NUMPROC] [-r DEVICE] (-c CONFIG.json | -l LIST.txt)
+Usage: $0 [-n STEPS] [-b BUILDDIR] [-e EXECUTABLE] [-h NUMHOSTS] [-o RUNDIR] [-p NUMPROC] [-r DEVICE] (-c CONFIG.json | -l LIST.txt)
 
   -n STEPS      Number of steps to run (default: None, use case default)
   -t TIMESTEP   Fixed timestep size (default: None, use case default)
@@ -46,6 +49,7 @@ Usage: $0 [-n STEPS] [-b BUILDDIR] [-e EXECUTABLE] [-o RUNDIR] [-p NUMPROC] [-r 
   -e EXECUTABLE Path to Prandtl executable (default: ${EXE})
   -o RUNDIR     Directory to run in (default: ${RUNDIR})
   -c CONFIG     Single example config.json to run
+  -h NHOSTS     Number of compute nodes to use (default: 1)
   -p NUMPROC    Number of MPI processes to run
   -r DEVICE     Compute device to run on (e.g. cpu or hip, default: cpu)
   -l LIST       List file with one config.json path per line (comments (#) allowed)
@@ -66,6 +70,7 @@ while getopts ":n:t:d:b:e:o:p:r:c:l:h" opt; do
       e) EXE="${OPTARG}";;
       o) RUNDIR="${OPTARG}";;
       p) NMPIRANKS="${OPTARG}";;
+      h) NHOSTS="${OPTARG}";;
       r) DEVICE="${OPTARG}";;
       c) ONECFG="${OPTARG}";;
       l) LISTFILE="${OPTARG}";;
@@ -170,10 +175,19 @@ else
       )
   ' "${cfg_abs}" > "${patched}"
 fi
+MPI_LAUNCHER="mpiexec -n \"${NMPIRANKS}\""
+# Override MPI_LAUNCHER if required for this platform:
+case "${HOST_SHORT}" in
+    tuo*)
+        # Tuolumne@LC
+        MPI_LAUNCHER="flux run --exclusive -N \"${NHOSTS}\" -n \"${NMPIRANKS}\""
+        ;;
+esac
   # Run from the per-example dir; keep your “two levels down” invariant
   # Run example (isolate failures; do NOT exit on first error)
+  # mpiexec -n "${NMPIRANKS}" 
   set +e
-  ( cd "${work}" && flux run --exclusive -N 1 -n "${NMPIRANKS}" ../Prandtl -d "${DEVICE}" -c "${patched}" )
+  ( cd "${work}" && eval ${MPI_LAUNCHER} ../Prandtl -d "${DEVICE}" -c "${patched}" )
   local run_rc=$?
   set -e
 
