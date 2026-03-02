@@ -33,10 +33,11 @@ DT=0.0001
 NSTEPS_OVERRIDE=0
 DT_OVERRIDE=0
 NMPIRANKS=2
+DEVICE="cpu"
 
 usage() {
   cat <<EOF
-Usage: $0 [-n STEPS] [-b BUILDDIR] [-e EXECUTABLE] [-o RUNDIR] (-c CONFIG.json | -l LIST.txt)
+Usage: $0 [-n STEPS] [-b BUILDDIR] [-e EXECUTABLE] [-o RUNDIR] [-p NUMPROC] [-r DEVICE] (-c CONFIG.json | -l LIST.txt)
 
   -n STEPS      Number of steps to run (default: None, use case default)
   -t TIMESTEP   Fixed timestep size (default: None, use case default)
@@ -46,6 +47,7 @@ Usage: $0 [-n STEPS] [-b BUILDDIR] [-e EXECUTABLE] [-o RUNDIR] (-c CONFIG.json |
   -o RUNDIR     Directory to run in (default: ${RUNDIR})
   -c CONFIG     Single example config.json to run
   -p NUMPROC    Number of MPI processes to run
+  -r DEVICE     Compute device to run on (e.g. cpu or hip, default: cpu)
   -l LIST       List file with one config.json path per line (comments (#) allowed)
 
 Examples:
@@ -55,7 +57,7 @@ EOF
 }
 
 # ---- Parse args
-while getopts ":n:t:d:b:e:o:p:c:l:h" opt; do
+while getopts ":n:t:d:b:e:o:p:r:c:l:h" opt; do
   case $opt in
       n) NSTEPS="${OPTARG}"; NSTEPS_OVERRIDE=1;;
       t) DT="${OPTARG}"; DT_OVERRIDE=1;;
@@ -64,6 +66,7 @@ while getopts ":n:t:d:b:e:o:p:c:l:h" opt; do
       e) EXE="${OPTARG}";;
       o) RUNDIR="${OPTARG}";;
       p) NMPIRANKS="${OPTARG}";;
+      r) DEVICE="${OPTARG}";;
       c) ONECFG="${OPTARG}";;
       l) LISTFILE="${OPTARG}";;
       h) usage; exit 0;;
@@ -115,6 +118,7 @@ run_one() {
 
   echo "==> Running example: ${cfg_rel} with ${NMPIRANKS} MPI procs."
   echo "    Working dir: ${RUNDIR}"
+  echo "    Compute device: ${DEVICE}"
 
   # Prepare per-example working area
   local exname
@@ -169,7 +173,7 @@ fi
   # Run from the per-example dir; keep your “two levels down” invariant
   # Run example (isolate failures; do NOT exit on first error)
   set +e
-  ( cd "${work}" && mpiexec -n "${NMPIRANKS}" ../Prandtl -c "${patched}" )
+  ( cd "${work}" && flux run --exclusive -N 1 -n "${NMPIRANKS}" ../Prandtl -d "${DEVICE}" -c "${patched}" )
   local run_rc=$?
   set -e
 

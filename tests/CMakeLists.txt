@@ -29,7 +29,7 @@ add_executable(gas_tests
    gas_model_tests.cpp
 )
 target_include_directories(gas_tests
-    PUBLIC ${PROJECT_SOURCE_DIR}/libs/mfem
+    PUBLIC ${PROJECT_SOURCE_DIR}/libs/mfem/build
     PUBLIC ${PROJECT_SOURCE_DIR}/libs/hypre/src/hypre/include
     PUBLIC ${PROJECT_SOURCE_DIR}/libs/metis-5.1.0/include
     ${PROJECT_SOURCE_DIR}/src/Physics
@@ -42,7 +42,7 @@ if(SUTHERLAND)
 endif()
 
 target_link_directories(gas_tests
-    PUBLIC ${PROJECT_SOURCE_DIR}/libs/mfem
+    PUBLIC ${PROJECT_SOURCE_DIR}/libs/mfem/build
     PUBLIC ${PROJECT_SOURCE_DIR}/libs/hypre/src/lib
     PUBLIC ${PROJECT_SOURCE_DIR}/libs/metis-5.1.0/lib
 )
@@ -59,7 +59,7 @@ add_executable(state_tests
 )
 
 target_include_directories(state_tests
-    PUBLIC ${PROJECT_SOURCE_DIR}/libs/mfem
+    PUBLIC ${PROJECT_SOURCE_DIR}/libs/mfem/build
     PUBLIC ${PROJECT_SOURCE_DIR}/libs/hypre/src/hypre/include
     PUBLIC ${PROJECT_SOURCE_DIR}/libs/metis-5.1.0/include
     ${PROJECT_SOURCE_DIR}/src/Physics
@@ -67,7 +67,7 @@ target_include_directories(state_tests
 )
 
 target_link_directories(state_tests
-    PUBLIC ${PROJECT_SOURCE_DIR}/libs/mfem
+    PUBLIC ${PROJECT_SOURCE_DIR}/libs/mfem/build
     PUBLIC ${PROJECT_SOURCE_DIR}/libs/hypre/src/lib
     PUBLIC ${PROJECT_SOURCE_DIR}/libs/metis-5.1.0/lib
 )

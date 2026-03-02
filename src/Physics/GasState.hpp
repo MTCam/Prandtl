@@ -122,7 +122,7 @@ namespace Prandtl
   {
     const real_t* U;           // packed state data -> [rho, rhoVx, rhoVy, ..., rhoE]
     
-    PointStateView(const real_t* U_)
+    MFEM_HOST_DEVICE explicit PointStateView(const real_t* U_)
       : U(U_)
     { }
 

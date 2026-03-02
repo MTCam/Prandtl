@@ -32,20 +32,31 @@
 namespace Prandtl
 {
 
-Simulation& Simulation::SimulationCreate()
+  Simulation& Simulation::SimulationCreate(std::string device_cfg)
 {
-    static Simulation sim;
-    return sim;
+  static Simulation sim(device_cfg);
+  return sim;
 }
 
-Simulation::Simulation()
+  void Simulation::InitDevice(std::string device_cfg)
+  {
+    if(device_cfg.empty()){
+      device_cfg = "cpu";
+    }
+    if(!device_){
+      device_ = std::make_unique<mfem::Device>(device_cfg);
+      device_->Print();
+    }
+  }
+
+  Simulation::Simulation(std::string device_cfg)
     : r_coef([](const Vector &X){ return X[1];}), z_coef([](const Vector &X){ return X[0];})
 {
     Mpi::Init();
     numProcs = Mpi::WorldSize();
     myRank = Mpi::WorldRank();
     Hypre::Init();
-
+    InitDevice(device_cfg);
 
     if (Mpi::Root())
     {
@@ -1001,7 +1012,7 @@ void Simulation::Run()
 
         
 #else
-        real_t *sol_state = sol->GetData();
+        const real_t *sol_state = sol->HostRead();
         for (int i = 0; i < num_dofs_scalar; i++)
           {
             Prandtl::DofStateView dofState{sol_state, i};
@@ -1084,7 +1095,7 @@ void Simulation::Run()
         NS->RecoverStateFromWeighted(*sol, U_cons);
         ConservativeToPrimitive(U_cons, *rho_axi, *u, *v, *p);
 #else
-        real_t *sol_state = sol->GetData();
+        const real_t *sol_state = sol->HostRead();
         for (int i = 0; i < num_dofs_scalar; i++)
         {       
           Prandtl::DofStateView dofState{sol_state, i};
