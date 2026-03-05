@@ -28,7 +28,6 @@ int main(int argc, char* argv[])
                 return 1;
               }
             device_name = argv[++i];  // consume next argument
-            std::cout << "Using device: " << device_name << std::endl;
           }
         else
           {

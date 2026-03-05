@@ -72,7 +72,6 @@ void OutputOperatorCache(const DGSEMNonlinearForm::OperatorCache &cache)
     BuildFaceLists();
     const int nfaces = int_faces.Size();
 
-    // inv_map_all[face_slot*nfp + fp_perm] = fp_restr
     cache.inv_fp_map.SetSize(nfaces * nfp);    
     for (int face_slot = 0; face_slot < nfaces; ++face_slot)
       {
@@ -91,10 +90,6 @@ void OutputOperatorCache(const DGSEMNonlinearForm::OperatorCache &cache)
     auto store = [&](int fslot, int fp, const mfem::Vector &nor,
                      double inv_wJ1, double inv_wJ2)
     {
-      // if(fslot == 0){
-      //   std::cout << "Normal = " << nor(0) << "," << nor(1)
-      //             << std::endl;
-      // }
       const int nbase = (fslot * nfp + fp) * dim;
       for (int d = 0; d < dim; ++d) { nor_d[nbase + d] = nor(d); }
       inv1_d[fslot * nfp + fp] = inv_wJ1;
@@ -107,8 +102,6 @@ void OutputOperatorCache(const DGSEMNonlinearForm::OperatorCache &cache)
       {
         const int face_id = int_faces[fslot];
         if(cache.mesh_face_is_shared[face_id]){ // Do shared face caching
-          // std::cout << "Shared face (slot/face): (" << fslot << "/" << face_id << ")"
-          //           << std::endl;
           auto *tr = pmesh->GetSharedFaceTransformationsByLocalIndex(face_id, true);
           MFEM_VERIFY(tr, "expected shared face");
           bool face_is_flipped = false;
@@ -134,12 +127,9 @@ void OutputOperatorCache(const DGSEMNonlinearForm::OperatorCache &cache)
               //const real_t fac = face_is_flipped ? -1.0 : 1.0;
               const real_t fac1 = 1.0;
               const real_t fac2 = 0.0;
-              // std::cout << "J1/J2 = " << J1 << "/" << J2 << std::endl;
               store(fslot, fp_restr, nor, fac1/(w0*J1), fac2/(w0*J2));
             }
         } else { // local internal face
-          // std::cout << "Internal face (slot/face): (" << fslot << "/" << face_id << ")"
-          //           << std::endl;
           auto *tr = mesh->GetInteriorFaceTransformations(face_id);
           MFEM_VERIFY(tr, "expected interior face");
           bool face_is_flipped = false;
@@ -1582,7 +1572,7 @@ real_t DGSEMNonlinearForm::MultInviscidVolumeHost(const Vector &pu, Vector &pdud
 //  - No subcell blending (broken in device version of MULT)
 real_t DGSEMNonlinearForm::MultVolumeInviscidDevice(const Vector &pu, Vector &pdudt) const
 {
-  ScopedTimer timer("MultVolumeInviscidDevice");
+  // ScopedTimer timer("MultVolumeInviscidDevice");
 
   // This block is executed by the host
   mfem::Vector Ue(cache.restr_v->Height());
@@ -1597,8 +1587,7 @@ real_t DGSEMNonlinearForm::MultVolumeInviscidDevice(const Vector &pu, Vector &pd
     real_t *d = dUe.Write();
     mfem::forall(dUe.Size(), [=] MFEM_HOST_DEVICE (int i) { d[i] = real_t(0); });
   }
-  //  dUe = 0.0;
-  
+
   const real_t *Ue_d = Ue.Read();
   real_t *dUe_d = dUe.Write();
 
@@ -1621,9 +1610,9 @@ real_t DGSEMNonlinearForm::MultVolumeInviscidDevice(const Vector &pu, Vector &pd
   const int *attr_marker_d = dc.attr_marker_d;
   const real_t *elJac_d = dc.elJac_d;
   const real_t *elMetric_d = dc.elMetric_d;
-  //  real_t *ws_d = dc.elWaveSpeed_d;
+  real_t *ws_d = dc.elWaveSpeed_d;
   // ChatGPT advised to grab a new write location every step
-  real_t *ws_d = cache.elWaveSpeed.Write();
+  // real_t *ws_d = cache.elWaveSpeed.Write();
 
   // Inside the FORALL below, executed on device
   mfem::forall(ne, [=] MFEM_HOST_DEVICE (int e)
@@ -1647,6 +1636,7 @@ real_t DGSEMNonlinearForm::MultVolumeInviscidDevice(const Vector &pu, Vector &pd
                                                    jac_el, metric_el, du_el);
     ws_d[e] = cs_el;
   });
+  //  mfem::Device::Synchronize();
 
   // Finish up on the host:
   //  - Reduce for rank-local max_char_speed
@@ -1657,40 +1647,8 @@ real_t DGSEMNonlinearForm::MultVolumeInviscidDevice(const Vector &pu, Vector &pd
     {
       max_char_speed = std::max(max_char_speed, ws[e]);
     }
-  // Scatter back to main storage
-  // const real_t *dUe_h = dUe.HostRead();
-  // real_t max_abs = 0.0;
-  // // ---- DEBUG: Check max|dUe| ----
-  // { 
-  //   const int ncheck = std::min(dUe.Size(), 2000);  // sample first 2000 entries
-  //   for (int i = 0; i < ncheck; ++i)
-  //     {
-  //       max_abs = std::max(max_abs, std::abs(dUe_h[i]));
-  //     }
-    
-  //   // if (myRank == 0)
-  //   //      {
-  //   std::cout << "[DEBUG] max|dUe| = " << max_abs << std::endl;
-  //       //      }
-  // }
-  // //  pdudt.HostWrite();
   cache.restr_v->AddMultTranspose(dUe, pdudt);
-  // // ---- DEBUG: Check max|pdudt| ----
-  // {
-  //   const real_t *pdudt_h = pdudt.HostRead();  // ensure host sees updated data
-  //   real_t max_abs = 0.0;
-    
-  //   const int ncheck = std::min(pdudt.Size(), 2000);
-  //   for (int i = 0; i < ncheck; ++i)
-  //     {
-  //       max_abs = std::max(max_abs, std::abs(pdudt_h[i]));
-  //     }
-    
-  //   //    if (myRank == 0)
-  //   //      {
-  //       std::cout << "[DEBUG] max|pdudt| = " << max_abs << std::endl;
-  //       //      }
-  // }
+  //  mfem::Device::Synchronize();
   return max_char_speed;
 }
 
@@ -1779,13 +1737,7 @@ void DGSEMNonlinearForm::MultInteriorFacesInviscidHost(const Vector &pu, Vector 
 real_t DGSEMNonlinearForm::MultInteriorFacesInviscidDevice(const Vector &pu, Vector &pdudt) const
 {
   // CheckFaceOrderings(pu);
-  // real_t test_speed = DeviceFacialAssemblyDebug(pu, pdudt);
-  ScopedTimer timer("MultInteriorFacesInviscidDevice");
-
-  // Mesh *mesh = fes->GetMesh();
-  // auto *pfes = dynamic_cast<mfem::ParFiniteElementSpace*>(fes);
-  // auto *pmesh = dynamic_cast<mfem::ParMesh*>(mesh);
-
+  //  ScopedTimer timer("MultInteriorFacesInviscidDevice");
   auto dc = device_cache;
   const int dim = dc.dim; // pfes->GetMesh()->Dimension();
   const int neq = dc.num_equations; // pfes->GetVDim();
@@ -1801,8 +1753,6 @@ real_t DGSEMNonlinearForm::MultInteriorFacesInviscidDevice(const Vector &pu, Vec
   // MFEM_VERIFY(cache.face_normals.Size() == nfaces*nfp*dim, "normals size mismatch");
   // MFEM_VERIFY(cache.face_wt_minus.Size() == nfaces*nfp, "w_minus size mismatch");
   // MFEM_VERIFY(cache.face_wt_plus.Size()  == nfaces*nfp, "w_plus size mismatch");
-  // pu.HostRead();
-  // pdudt.HostRead();
 
   mfem::Vector u_faces(cache.restr_f->Height());
   mfem::Vector rhs_faces(cache.restr_f->Height());
@@ -1811,23 +1761,14 @@ real_t DGSEMNonlinearForm::MultInteriorFacesInviscidDevice(const Vector &pu, Vec
   rhs_faces.UseDevice();
   u_faces.UseDevice();
 
-  // pu.HostRead();
-  // rhs_faces.HostWrite();
-  // u_faces.HostReadWrite();
-
   // If zeroed before accumulation, do it explicitly on device:
+  // Potentially, this is not needed at all since I think we overwrite everything
   {
     real_t *d = rhs_faces.Write();
     mfem::forall(rhs_faces.Size(), [=] MFEM_HOST_DEVICE (int i) { d[i] = real_t(0); });
   }
-  // rhs_faces = 0.0;
-
-  // scalar dofs per equation in the L-vector:
-  cache.restr_f->Mult(pu, u_faces); // I think this _creates_ a pgf and comm/exchange pu
-  // Copy in state+ here using legacy processing (MFEM failed to do it right)
-  u_faces.HostReadWrite();
-  pu.HostRead();
-  PopulateSharedStatePlusFromExchangeData(pu, u_faces);
+  //  mfem::Device::Synchronize();
+  cache.restr_f->Mult(pu, u_faces);
 
   const real_t *u_d = u_faces.Read();
   real_t *rhs_d = rhs_faces.Write();
@@ -1836,8 +1777,7 @@ real_t DGSEMNonlinearForm::MultInteriorFacesInviscidDevice(const Vector &pu, Vec
   const real_t *inv1_d  = dc.fw_minus_d; // .Read();  // size nfaces*nfp
   const real_t *inv2_d  = dc.fw_plus_d;  // .Read();   // size nfaces*nfp
 
-  // ChatGPT says to call Write every step here (shrug)
-  real_t *ws_d = cache.ifWaveSpeed.Write(); // dc.ifWaveSpeed_d;
+  real_t *ws_d = dc.ifWaveSpeed_d;
 
   mfem::forall(nfaces, [=] MFEM_HOST_DEVICE (int i)
   {
@@ -1856,38 +1796,26 @@ real_t DGSEMNonlinearForm::MultInteriorFacesInviscidDevice(const Vector &pu, Vec
     ws_d[i] = ws;
     
   });
+  //  mfem::Device::Synchronize();
+  cache.restr_f->MultTranspose(rhs_faces, faces_dudt);
+  pdudt += faces_dudt;
 
   // Finish up on the host:
   //  - Reduce for rank-local max_char_speed
-  //  - Scatter RHS back to storage
   const real_t *ws = cache.ifWaveSpeed.HostRead();
   real_t max_char_speed_facial = 0.0;
   for(int f = 0;f < cache.num_interior_faces;f++)
     {
       max_char_speed_facial = std::max(max_char_speed_facial, ws[f]);
     }
-  //  rhs_faces.HostRead();
-  //faces_dudt.HostReadWrite();
-  //faces_dudt = 0.0;
-  cache.restr_f->MultTranspose(rhs_faces, faces_dudt);
-  faces_dudt.HostRead();
-  pdudt.HostReadWrite();
-  pdudt += faces_dudt;
 
-  // real_t *pd_d = pdudt.ReadWrite();
-  // const real_t *fd_d = faces_dudt.Read();
-  
-  // mfem::forall(pdudt.Size(), [=] MFEM_HOST_DEVICE (int i)
-  //                 {
-  //                              pd_d[i] += fd_d[i];
-  //                            });
   return max_char_speed_facial;
 }
 
 // Top level MULT for inviscid cases, called from DGSEMOperator
 real_t DGSEMNonlinearForm::MultInviscid(const Vector &u, Vector &dudt) const
 {
-    ScopedTimer timer("MultInviscid");
+  // ScopedTimer timer("MultInviscid");
     const Vector &pu = Prolongate(u);
     if (P)
     {
@@ -1901,12 +1829,12 @@ real_t DGSEMNonlinearForm::MultInviscid(const Vector &u, Vector &dudt) const
     // This step overwrites contents of pdudt
     // max_char_speed = MultInviscidVolumeHost2(pu, pdudt);
     max_char_speed = MultVolumeInviscidDevice(pu, pdudt);
-    std::cout << "Volume wavespeed: " << max_char_speed << std::endl;
+    // std::cout << "Volume wavespeed: " << max_char_speed << std::endl;
 
     // Testing this during development:
     real_t max_char_speed_facial = 0.0;
     max_char_speed_facial = MultInteriorFacesInviscidDevice(pu, pdudt);
-    std::cout << "Facial wavespeed: " << max_char_speed_facial << std::endl;
+    // std::cout << "Facial wavespeed: " << max_char_speed_facial << std::endl;
     // MultInteriorFacesInviscidHost(pu, pdudt);
     max_char_speed = std::max(max_char_speed, max_char_speed_facial);
 
@@ -1969,22 +1897,6 @@ real_t DGSEMNonlinearForm::MultInviscid(const Vector &u, Vector &dudt) const
         }
     }
 
-  // ---- DEBUG: Check max|pdudt| ----
-    {
-      const real_t *pdudt_h = pdudt.HostRead();  // ensure host sees updated data
-      real_t max_abs = 0.0;
-      
-      const int ncheck = std::min(pdudt.Size(), 2000);
-      for (int i = 0; i < ncheck; ++i)
-        {
-          max_abs = std::max(max_abs, std::abs(pdudt_h[i]));
-        }
-    
-      //    if (myRank == 0)
-      //      {
-      std::cout << "[DEBUG] max|pdudt| = " << max_abs << std::endl;
-      //      }
-    }
     if (Serial())
     {
         if (cP)
@@ -2006,33 +1918,6 @@ real_t DGSEMNonlinearForm::MultInviscid(const Vector &u, Vector &dudt) const
         auto DU_RW = dudt.ReadWrite();
         mfem::forall(N, [=] MFEM_HOST_DEVICE (int i) { DU_RW[idx[i]] = 0.0; });
     }
-    const real_t *du_h = dudt.HostRead();
-    {
-      real_t max_abs = 0.0;
-      
-      const int ncheck = std::min(dudt.Size(), 2000);
-      for (int i = 0; i < ncheck; ++i)
-        {
-          max_abs = std::max(max_abs, std::abs(du_h[i]));
-        }
-    
-      //    if (myRank == 0)
-      //      {
-      std::cout << "[DEBUG] max|du| = " << max_abs << std::endl;
-      //      }
-    }
-    {
-      if(!(entry_counter%100)){
-        std::ostringstream Ostr;
-        Ostr << "rhs_data_" << entry_counter << ".txt";
-        std::ofstream Ouf(Ostr.str().c_str());
-        for(int i = 0;i < dudt.Size();i++){
-          Ouf << "rhs[" << i<< "] = " << du_h[i] << std::endl;
-        }
-        Ouf.close();
-      }
-    }
-    entry_counter++;
     return max_char_speed;
 }
 

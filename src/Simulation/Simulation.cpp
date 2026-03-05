@@ -28,7 +28,6 @@
 #include "json.hpp"
 #include <filesystem>
 #include <mpi.h>
-
 namespace Prandtl
 {
 
@@ -45,7 +44,7 @@ namespace Prandtl
     }
     if(!device_){
       device_ = std::make_unique<mfem::Device>(device_cfg);
-      device_->Print();
+      if(myRank == 0){ device_->Print(); }
     }
   }
 
