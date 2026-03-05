@@ -1268,12 +1268,11 @@ real_t DGSEMNonlinearForm::MultInteriorFacesInviscidDevice(const Vector &pu, Vec
   rhs_faces.UseDevice();
   u_faces.UseDevice();
 
-  //  ScopedTimer timer("MultInteriorFacesInviscidDevice");
   auto dc = device_cache;
-  const int dim = dc.dim; // pfes->GetMesh()->Dimension();
-  const int neq = dc.num_equations; // pfes->GetVDim();
-  const int nfp = dc.num_face_points; // cache.num_face_points; // ir_face->GetNPoints();
-  const int nfaces = cache.restr_f->Height() / (nfp * neq * 2); // (+/-)
+  const int dim = dc.dim;
+  const int neq = dc.num_equations;
+  const int nfp = dc.num_face_points;
+  const int nfaces_restr = cache->restr_f->Height() / (nfp * neq * 2); // (+/-)
   const int face_stride = 2 * nfp * neq;
   const int side_stride = nfp * neq;
   const int face_size = 2*nfp*neq;
@@ -1300,8 +1299,6 @@ real_t DGSEMNonlinearForm::MultInteriorFacesInviscidDevice(const Vector &pu, Vec
   const real_t *u_d = u_faces.Read();
   real_t *rhs_d = rhs_faces.Write();
 
-  auto dc = device_cache;
-
   const real_t *nor_d   = dc.nor_d;      // size nfaces*nfp*dim
   const real_t *inv1_d  = dc.fw_minus_d; // size nfaces*nfp
   const real_t *inv2_d  = dc.fw_plus_d;  // size nfaces*nfp
@@ -1309,7 +1306,7 @@ real_t DGSEMNonlinearForm::MultInteriorFacesInviscidDevice(const Vector &pu, Vec
   // ChatGPT says to call Write every step here (shrug)
   real_t *ws_d = dc.ifWaveSpeed_d;
 
-  mfem::forall(nfaces, [=] MFEM_HOST_DEVICE (int i)
+  mfem::forall(nfaces_restr, [=] MFEM_HOST_DEVICE (int i)
   {
     const int face_offset = i*face_size;
     const int n_offset = i*norm_size;

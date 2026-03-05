@@ -118,6 +118,9 @@ namespace Prandtl::DGSEM
     const real_t *D_d = nullptr;
     const real_t *Dhat_d = nullptr;
     const real_t *Dhat2_d = nullptr;
+    const real_t *nor_d = nullptr;
+    const real_t *fw_minus_d = nullptr;
+    const real_t *fw_plus_d = nullptr;
     real_t *elWaveSpeed_d = nullptr;
     real_t *ifWaveSpeed_d = nullptr;
     real_t *bndWaveSpeed_d = nullptr;
