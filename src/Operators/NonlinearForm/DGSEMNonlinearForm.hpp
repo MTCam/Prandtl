@@ -30,6 +30,7 @@ namespace Prandtl
     int MapFpInv(int face_slot, int fp_perm) const {
       return cache->inv_fp_map[face_slot*cache->num_face_points + fp_perm];
     }
+
     // This function populates cache.face_is_shared
     // Also does some facial exploration to validate
     // Prandtl's assumptions about various face types.
@@ -148,7 +149,6 @@ namespace Prandtl
                 MFEM_VERIFY(0 <= idx && idx < H, "iface_idx out of range");
               }
     }
-
     void CreateOperatorCache();
     void GetOperatorCache(Prandtl::DGSEM::OperatorCache &dgsem_operator_cache);
     void GetDeviceCache(Prandtl::DGSEM::DeviceCache &dgsem_device_cache);
