@@ -61,7 +61,7 @@ EOF
 }
 
 # ---- Parse args
-while getopts ":n:t:d:b:e:o:p:r:c:l:h" opt; do
+while getopts ":n:t:d:b:e:o:p:r:c:l:h:" opt; do
   case $opt in
       n) NSTEPS="${OPTARG}"; NSTEPS_OVERRIDE=1;;
       t) DT="${OPTARG}"; DT_OVERRIDE=1;;
