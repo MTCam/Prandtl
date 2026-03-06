@@ -40,7 +40,7 @@ HOST_SHORT="$(hostname -s)"
 
 usage() {
   cat <<EOF
-Usage: $0 [-n STEPS] [-b BUILDDIR] [-e EXECUTABLE] [-h NUMHOSTS] [-o RUNDIR] [-p NUMPROC] [-r DEVICE] (-c CONFIG.json | -l LIST.txt)
+Usage: $0 [-n STEPS] [-b BUILDDIR] [-e EXECUTABLE] [-H NUMHOSTS] [-o RUNDIR] [-p NUMPROC] [-r DEVICE] (-c CONFIG.json | -l LIST.txt)
 
   -n STEPS      Number of steps to run (default: None, use case default)
   -t TIMESTEP   Fixed timestep size (default: None, use case default)
@@ -49,7 +49,8 @@ Usage: $0 [-n STEPS] [-b BUILDDIR] [-e EXECUTABLE] [-h NUMHOSTS] [-o RUNDIR] [-p
   -e EXECUTABLE Path to Prandtl executable (default: ${EXE})
   -o RUNDIR     Directory to run in (default: ${RUNDIR})
   -c CONFIG     Single example config.json to run
-  -h NHOSTS     Number of compute nodes to use (default: 1)
+  -H NHOSTS     Number of compute nodes to use (default: 1)
+  -h            Show this help message
   -p NUMPROC    Number of MPI processes to run
   -r DEVICE     Compute device to run on (e.g. cpu or hip, default: cpu)
   -l LIST       List file with one config.json path per line (comments (#) allowed)
@@ -61,7 +62,7 @@ EOF
 }
 
 # ---- Parse args
-while getopts ":n:t:d:b:e:o:p:r:c:l:h:" opt; do
+while getopts ":n:t:d:b:e:o:p:r:c:l:H:h" opt; do
   case $opt in
       n) NSTEPS="${OPTARG}"; NSTEPS_OVERRIDE=1;;
       t) DT="${OPTARG}"; DT_OVERRIDE=1;;
@@ -70,7 +71,7 @@ while getopts ":n:t:d:b:e:o:p:r:c:l:h:" opt; do
       e) EXE="${OPTARG}";;
       o) RUNDIR="${OPTARG}";;
       p) NMPIRANKS="${OPTARG}";;
-      h) NHOSTS="${OPTARG}";;
+      H) NHOSTS="${OPTARG}";;
       r) DEVICE="${OPTARG}";;
       c) ONECFG="${OPTARG}";;
       l) LISTFILE="${OPTARG}";;
