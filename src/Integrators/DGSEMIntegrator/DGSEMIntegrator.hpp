@@ -4,8 +4,7 @@
 #include "NumericalFlux.hpp"
 #include "LiftingScheme.hpp"
 #include "ChandrashekarFlux.hpp"
-#include "prandtl_device.hpp"
-#include "dgsem_device_cache.hpp"
+#include "dgsem_cache.hpp"
 
 namespace Prandtl
 {

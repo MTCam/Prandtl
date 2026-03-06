@@ -2,7 +2,6 @@
 
 #include "mfem.hpp"
 #include "NumericalFlux.hpp"
-#include "prandtl_device.hpp"
 
 namespace Prandtl
 {
