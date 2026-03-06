@@ -4,10 +4,6 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-# set(CMAKE_CXX_COMPILER ${MPICXX})
-# set(MPI_CXX_INCLUDE_PATH "")
-# set(MPI_CXX_LIBRARIES "")
-
 project(Prandtl)
 
 option(BUILD_TESTING "Build unit tests" ON)
@@ -16,17 +12,16 @@ option(SUBCELL_FV_BLENDING "Enable subcell blending" ON)
 option(AXISYMMETRIC "Enable Axisymmetric domain solver" OFF)
 option(SUTHERLAND "Enable Sutherland transport model" OFF)
 
-find_package(MFEM REQUIRED)
-# target_link_libraries(${PROJECT_NAME} PRIVATE mfem)
-# target_compile_features(${PROJECT_NAME} PRIVATE cxx_std_17)
+find_package(MFEM REQUIRED CONFIG) 
+if (TARGET MFEM::mfem)
+  set(PRANDTL_MFEM_TARGET MFEM::mfem)
+elseif (TARGET mfem)
+  set(PRANDTL_MFEM_TARGET mfem)
+else()
+  message(FATAL_ERROR "MFEM package found, but no MFEM target (MFEM::mfem or mfem) was provided.")
+endif()
 
 find_package(MPI REQUIRED)
-include_directories(${MPI_CXX_INCLUDE_PATH})
-set(MPI_CXX_LIBRARIES ${MPI_CXX_LIBRARIES})
-
-message(STATUS "MPI CXX COMPILER: ${MPI_CXX_COMPILER}")
-message(STATUS "MPI INCLUDE PATH: ${MPI_INCLUDE_PATH}")
-message(STATUS "MPI LIBRARIES: ${MPI_CXX_LIBRARIES}")
 
 add_executable(${PROJECT_NAME} main.cpp)
 
@@ -168,9 +163,6 @@ target_sources(${PROJECT_NAME}
     )
 
 target_include_directories(${PROJECT_NAME}
-    PUBLIC ${CMAKE_SOURCE_DIR}/libs/mfem/build
-    PUBLIC ${CMAKE_SOURCE_DIR}/libs/hypre/src/hypre/include
-    PUBLIC ${CMAKE_SOURCE_DIR}/libs/metis-5.1.0/include
     PUBLIC ${CMAKE_SOURCE_DIR}/src/Device
     PUBLIC ${CMAKE_SOURCE_DIR}/src/Operators/NonlinearForm
     PUBLIC ${CMAKE_SOURCE_DIR}/src/Operators
@@ -211,13 +203,11 @@ target_include_directories(${PROJECT_NAME}
     PUBLIC ${CMAKE_SOURCE_DIR}/TestCases/Euler/2D/Nagashima_Ramjet
     )
 
-target_link_directories(${PROJECT_NAME}
-    PUBLIC ${CMAKE_SOURCE_DIR}/libs/mfem/build
-    PUBLIC ${CMAKE_SOURCE_DIR}/libs/hypre/src/lib
-    PUBLIC ${CMAKE_SOURCE_DIR}/libs/metis-5.1.0/lib
-    )
-
-target_link_libraries(${PROJECT_NAME} mfem HYPRE metis MPI::MPI_CXX)
+target_link_libraries(${PROJECT_NAME}
+    PRIVATE
+    ${PRANDTL_MFEM_TARGET}
+    MPI::MPI_CXX
+)
 
 if (BUILD_TESTING)
   include(CTest)
