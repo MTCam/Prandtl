@@ -28,24 +28,34 @@
 #include "json.hpp"
 #include <filesystem>
 #include <mpi.h>
-
 namespace Prandtl
 {
 
-Simulation& Simulation::SimulationCreate()
+  Simulation& Simulation::SimulationCreate(std::string device_cfg)
 {
-    static Simulation sim;
-    return sim;
+  static Simulation sim(device_cfg);
+  return sim;
 }
 
-Simulation::Simulation()
+  void Simulation::InitDevice(std::string device_cfg)
+  {
+    if(device_cfg.empty()){
+      device_cfg = "cpu";
+    }
+    if(!device_){
+      device_ = std::make_unique<mfem::Device>(device_cfg);
+      if(myRank == 0){ device_->Print(); }
+    }
+  }
+
+  Simulation::Simulation(std::string device_cfg)
     : r_coef([](const Vector &X){ return X[1];}), z_coef([](const Vector &X){ return X[0];})
 {
     Mpi::Init();
     numProcs = Mpi::WorldSize();
     myRank = Mpi::WorldRank();
     Hypre::Init();
-
+    InitDevice(device_cfg);
 
     if (Mpi::Root())
     {
@@ -274,15 +284,18 @@ void Simulation::LoadConfig(const std::string &config_file_path)
         mesh->bdr_attribute_sets.SetAttributeSet("left", left);
         mesh->bdr_attribute_sets.SetAttributeSet("right", right);
     }
-
+    if (!periodic && mesh->GetNBE() == 0){
+      mesh->GenerateBoundaryElements();
+    }
     if (runtime.contains("ser_ref_levels"))
-    {
+      {
         ref_levels = runtime.value("ser_ref_levels", 0);
         for (int lev = 0; lev < ref_levels; lev++)
         {
             mesh->UniformRefinement();
         }
     }
+    mesh->FinalizeTopology();
 
     if (mesh->GetNE() < Mpi::WorldSize())
     {
@@ -303,11 +316,14 @@ void Simulation::LoadConfig(const std::string &config_file_path)
         mesh->ReorderElements(mesh_ordering);
     }
 
-    if (dim > 1)
-    {
+    // TODO: Let's gate this for now
+    if (dim > 1 && runtime.value("use_nc_mesh", true))
+      {
         mesh->EnsureNCMesh();
-    }
+      }
 
+    // Completely finalize the mesh
+    mesh->FinalizeMesh(0, true);
     pmesh = std::make_shared<ParMesh>(MPI_COMM_WORLD, *mesh);
     mesh->Clear();
 
@@ -320,12 +336,20 @@ void Simulation::LoadConfig(const std::string &config_file_path)
         }
     }
 
-    fec = std::make_shared<DG_FECollection>(order, dim, btype);
+    pmesh->ExchangeFaceNbrData();
     fec0 = std::make_shared<DG_FECollection>(0, dim);
-    vfes = std::make_shared<ParFiniteElementSpace>(pmesh.get(), fec.get(), num_equations, ordering);
     fes0 = std::make_shared<ParFiniteElementSpace>(pmesh.get(), fec0.get());
+
+    fec = std::make_shared<DG_FECollection>(order, dim, btype);
+    vfes = std::make_shared<ParFiniteElementSpace>(pmesh.get(), fec.get(), num_equations, ordering);
     dfes = std::make_unique<ParFiniteElementSpace>(pmesh.get(), fec.get(), dim, ordering);
     fes = std::make_unique<ParFiniteElementSpace>(pmesh.get(), fec.get());
+
+    // Let's do an initial exchange to get the data structures populated
+    vfes->ExchangeFaceNbrData();
+    fes0->ExchangeFaceNbrData();
+    dfes->ExchangeFaceNbrData();
+    fes->ExchangeFaceNbrData();
 
     num_dofs_scalar = fes->GetNDofs();
     num_dofs_system = vfes->GetVSize();
@@ -477,6 +501,7 @@ void Simulation::LoadConfig(const std::string &config_file_path)
     {
         alpha_max = 0.5;
     }
+    //    bool use_partial_assembly = true;
     auto integrator =
       std::make_unique<Prandtl::DGSEMIntegrator>(pmesh, fes0, alpha, liftingScheme, *numericalFlux, order+1);
 
@@ -857,7 +882,9 @@ void Simulation::LoadConfig(const std::string &config_file_path)
                 }
             }
             pd->RegisterField("Pressure", p.get());
+#ifdef SUBCELL_FV_BLENDING
             pd->RegisterField("Blending Coeff", alpha.get());
+#endif
             pd->SetLevelsOfDetail(order);
             pd->SetDataFormat(VTKFormat::BINARY);
             pd->SetHighOrderOutput(true);
@@ -884,7 +911,9 @@ void Simulation::LoadConfig(const std::string &config_file_path)
                 }
             }
             vd->RegisterField("Pressure", p.get());
+#ifdef SUBCELL_FV_BLENDING
             vd->RegisterField("Blending Coeff", alpha.get());
+#endif
         }
     }
 }
@@ -982,7 +1011,7 @@ void Simulation::Run()
 
         
 #else
-        real_t *sol_state = sol->GetData();
+        const real_t *sol_state = sol->HostRead();
         for (int i = 0; i < num_dofs_scalar; i++)
           {
             Prandtl::DofStateView dofState{sol_state, i};
@@ -1065,7 +1094,7 @@ void Simulation::Run()
         NS->RecoverStateFromWeighted(*sol, U_cons);
         ConservativeToPrimitive(U_cons, *rho_axi, *u, *v, *p);
 #else
-        real_t *sol_state = sol->GetData();
+        const real_t *sol_state = sol->HostRead();
         for (int i = 0; i < num_dofs_scalar; i++)
         {       
           Prandtl::DofStateView dofState{sol_state, i};
