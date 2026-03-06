@@ -418,7 +418,7 @@ namespace Prandtl
   // -----------------------------------------------------------------------------
   struct PointPrimitiveView
   {
-    const real_t* U;           // packed state data -> [rho, rhoVx, rhoVy, ..., rhoE]
+    const real_t* U;           // packed primitive data -> [rho, Vx, Vy, Vz, P]
     const StateLayout* L;      // layout metadata
     
     MFEM_HOST_DEVICE
@@ -464,7 +464,7 @@ namespace Prandtl
     {
       return L->eq_mom[0];
     }
-    // Momentum components: d = 0(x),1(y),2(z)
+    // Velocity components: d = 0(x),1(y),2(z)
     MFEM_HOST_DEVICE inline real_t velocity(int d) const
     {
       assert(d < L->dim);
@@ -505,7 +505,7 @@ namespace Prandtl
   //
   // Usage pattern:
   //
-  //   Vector state = [rho, rhoVx, rhoVy, rhoVz, rhoE]
+  //   Vector state = [rho, Vx, Vy, Vz, p]
   //   PointStateView S{state.GetData(), &layout};
   //   double r =  S.mass();
   //   double U = S.velocity(0);
@@ -517,7 +517,7 @@ namespace Prandtl
   // -----------------------------------------------------------------------------
   struct PointPrimitiveViewRW
   {
-    real_t* U;                 // packed state data -> [rho, rhoVx, rhoVy, ..., rhoE]
+    real_t* U;                 // packed state data -> [rho, Vx, Vy, Vz, p]
     const StateLayout* L;      // layout metadata
     
     MFEM_HOST_DEVICE
@@ -570,14 +570,14 @@ namespace Prandtl
       return L->eq_mom[0];
     }
 
-    // Momentum components: d = 0(x),1(y),2(z)
+    // Velocity components: d = 0(x),1(y),2(z)
     MFEM_HOST_DEVICE inline real_t velocity(int d) const
     {
       assert(d < L->dim);
       return U[ L->eq_mom[d] ];
     }
     
-    // Set Momentum components: d = 0(x),1(y),2(z)
+    // Set Velocity components: d = 0(x),1(y),2(z)
     MFEM_HOST_DEVICE inline void set_velocity(int d, real_t val)
     {
       assert(d < L->dim);

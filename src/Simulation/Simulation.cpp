@@ -501,7 +501,7 @@ void Simulation::LoadConfig(const std::string &config_file_path)
     {
         alpha_max = 0.5;
     }
-    //    bool use_partial_assembly = true;
+
     auto integrator =
       std::make_unique<Prandtl::DGSEMIntegrator>(pmesh, fes0, alpha, liftingScheme, *numericalFlux, order+1);
 
