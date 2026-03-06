@@ -86,18 +86,16 @@ jobs:
           CXX: ${{ env.CXX }}
           FC: ${{ env.FC }}
           # These paths match your script’s build outputs
-          MFEM_DIR: ${{ github.workspace }}/libs/mfem
-          HYPRE_DIR: ${{ github.workspace }}/libs/hypre/src/hypre
-          METIS_DIR: ${{ github.workspace }}/libs/metis-5.1.0
+          MFEM_DIR: ${{ github.workspace }}/libs/mfem/build
+          # HYPRE_DIR: ${{ github.workspace }}/libs/hypre/src/hypre
+          # METIS_DIR: ${{ github.workspace }}/libs/metis-5.1.0
         run: |
           mkdir -p build-euler
           #  -DCONFIG_FILE=${CONFIG_FILE}
           cmake -S . -B build-euler -G Ninja \
             -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE} \
             -DBUILD_TESTING=ON \
-            -DMFEM_DIR="${MFEM_DIR}" \
-            -DHYPRE_DIR="${HYPRE_DIR}" \
-            -DMETIS_DIR="${METIS_DIR}" \
+            -DCMAKE_PREFIX_PATH=${MFEM_DIR} \
             -DSUBCELL_FV_BLENDING=ON
 
       - name: Build Prandtl (Euler)
@@ -117,18 +115,16 @@ jobs:
           CXX: ${{ env.CXX }}
           FC: ${{ env.FC }}
           # These paths match your script’s build outputs
-          MFEM_DIR: ${{ github.workspace }}/libs/mfem
-          HYPRE_DIR: ${{ github.workspace }}/libs/hypre/src/hypre
-          METIS_DIR: ${{ github.workspace }}/libs/metis-5.1.0
+          MFEM_DIR: ${{ github.workspace }}/libs/mfem/build
+          # HYPRE_DIR: ${{ github.workspace }}/libs/hypre/src/hypre
+          # METIS_DIR: ${{ github.workspace }}/libs/metis-5.1.0
         run: |
           mkdir -p build-cns
           #  -DCONFIG_FILE=${CONFIG_FILE}
           cmake -S . -B build-cns -G Ninja \
             -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE} \
             -DBUILD_TESTING=ON \
-            -DMFEM_DIR="${MFEM_DIR}" \
-            -DHYPRE_DIR="${HYPRE_DIR}" \
-            -DMETIS_DIR="${METIS_DIR}" \
+            -DCMAKE_PREFIX_PATH=${MFEM_DIR} \
             -DPARABOLIC=ON -DSUBCELL_FV_BLENDING=ON
 
       - name: Build Prandtl (CNS)
