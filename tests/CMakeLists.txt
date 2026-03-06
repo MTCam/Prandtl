@@ -54,6 +54,6 @@ target_include_directories(state_tests
     PRIVATE ${PROJECT_SOURCE_DIR}/src/Device
 )
 
-target_link_libraries(state_tests ${PRANDTL_MFEM_TARGET})
+target_link_libraries(state_tests PRIVATE ${PRANDTL_MFEM_TARGET})
 
 add_test(NAME StateTestingSuite COMMAND state_tests)
