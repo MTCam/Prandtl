@@ -20,7 +20,7 @@
 //
 // Each block has length = num_dofs_scalar (wrt mesh or element)
 //
-#include "Kernels.hpp"
+#include "prandtl_kernels.hpp"
 
 namespace Prandtl
 {
@@ -43,6 +43,7 @@ namespace Prandtl
     int eq_scalar0;       // index of first scalar component (or -1 if none)
     int num_scalars;      // number of scalar components
     
+    MFEM_HOST_DEVICE StateLayout() = default;
     /**
      * Set up after creation.
      *
@@ -121,7 +122,7 @@ namespace Prandtl
   {
     const real_t* U;           // packed state data -> [rho, rhoVx, rhoVy, ..., rhoE]
     
-    PointStateView(const real_t* U_)
+    MFEM_HOST_DEVICE explicit PointStateView(const real_t* U_)
       : U(U_)
     { }
 
