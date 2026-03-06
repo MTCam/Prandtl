@@ -152,7 +152,6 @@ target_sources(${PROJECT_NAME}
     PRIVATE src/Integrators/BoundaryConditions/SupersonicInflowBdrFaceIntegrator.cpp
     PRIVATE src/Integrators/BoundaryConditions/SupersonicOutflowBdrFaceIntegrator.cpp
     PRIVATE src/Integrators/BoundaryConditions/SymmetryBdrFaceIntegrator.cpp
-    PRIVATE src/Fluxes/EulerFlux.cpp
     PRIVATE src/Fluxes/NavierStokesFlux.cpp
     PRIVATE src/ModalBasis/ModalBasis.cpp
     PRIVATE src/Limiters/MinmodLimiter.cpp
