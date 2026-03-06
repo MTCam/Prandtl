@@ -107,7 +107,9 @@ private:
   std::vector<Array<int>> bdr_marker_vector;
   Array<int> set_marker;
   int max_bdr_attr;
-  
+  void InitDevice(std::string);
+  std::unique_ptr<mfem::Device> device_;
+
 #ifdef AXISYMMETRIC
   void ConservativeToPrimitive(const Vector &U_cons,
                                ParGridFunction &rho_out,
@@ -116,12 +118,12 @@ private:
                                ParGridFunction &p_out) const;  
 #endif
   
-  Simulation();
+  Simulation(std::string);
   
   // change some shared_ptrs to unique_ptrs
   
 public:    
-  static Simulation& SimulationCreate();
+  static Simulation& SimulationCreate(std::string);
   void LoadConfig(const std::string &config_file_path);
   
   ~Simulation();
