@@ -4,7 +4,7 @@
 #include "DGSEMIntegrator.hpp"
 #include "BdrFaceIntegrator.hpp"
 #include "general/forall.hpp"
-#include "dgsem_cache.hpp"
+#include "dgsem_cache_utilities.hpp"
 #include <list>
 #include <mpi.h>
 
@@ -21,25 +21,14 @@ namespace Prandtl
     Prandtl::DGSEMDeviceCache device_cache;
  
     void CreateOperatorCache();
-    void GetOperatorCache(DGSEMOperatorCache &dgsem_operator_cache);
+    // void GetOperatorCache(DGSEMOperatorCache &dgsem_operator_cache);
     void GetDeviceCache(DGSEMDeviceCache &dgsem_device_cache);
-    void AssembleGeometricTerms();
-    void AssembleElementVolumeGeometricTerms(mfem::ElementTransformation &);
-    void AssembleFaceGeomCacheInterior();
+    // void AssembleGeometricTerms();
+    // void AssembleElementVolumeGeometricTerms(mfem::ElementTransformation &);
+    // void AssembleFaceGeomCacheInterior();
     void SetDeviceCache(const DGSEMDeviceCache &dgsem_device_cache)
     {
       device_cache = dgsem_device_cache;
-    }
-    // Grab the face dof from the restriction (face,point) index
-    // This answers: what is the facial dof that corresponds to
-    // the facial point index for a given face in the restriction?
-    int MapFp(int face_slot, int fp_restr) const
-    {
-      return cache.fqs_int->GetPermutedIndex(face_slot, fp_restr);
-    }
-    // And the inverse mapping
-    int MapFpInv(int face_slot, int fp_perm) const {
-      return cache.inv_fp_map[face_slot*cache.num_face_points + fp_perm];
     }
     DGSEMNonlinearForm(ParFiniteElementSpace *pfes);
 

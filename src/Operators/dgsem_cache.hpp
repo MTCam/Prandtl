@@ -31,8 +31,8 @@ namespace Prandtl
 
       // Data arrays for use on device
       mfem::Array<int> elem_attr;    // size ne, values are 1-based attributes
-      mfem::Array<int> attr_marker;  // size nattr, 0/1
-      mfem::Array<int> dnfi_marker;  // size nattr, 0/1
+      mfem::Array<int> vol_attr_marker;  // size nattr, 0/1
+      mfem::Array<int> domain_attr_marker;  // size nattr, 0/1
       mutable mfem::Vector elWaveSpeed; // size nelements
       mutable mfem::Vector ifWaveSpeed; // size ninterior faces
       mutable mfem::Vector bndWaveSpeed; // size nbnd faces
@@ -44,6 +44,18 @@ namespace Prandtl
       mfem::Vector face_normals;
       mfem::Vector face_wt_minus;
       mfem::Vector face_wt_plus;
+
+      // Grab the face dof from the restriction (face,point) index
+      // This answers: what is the facial dof that corresponds to
+      // the facial point index for a given face in the restriction?
+      int MapFp(int face_slot, int fp_restr) const
+      {
+        return fqs_int->GetPermutedIndex(face_slot, fp_restr);
+      }
+      // And the inverse mapping
+      int MapFpInv(int face_slot, int fp_perm) const {
+        return inv_fp_map[face_slot*num_face_points + fp_perm];
+      }
     };
 
   struct DGSEMDeviceCache {

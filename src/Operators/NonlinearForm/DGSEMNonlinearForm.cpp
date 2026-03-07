@@ -12,111 +12,11 @@ namespace Prandtl
     GRAD_Z.MakeRef(pf, NULL);
   }
 
-  void DGSEMNonlinearForm::AssembleFaceGeomCacheInterior()
-  {
-    auto *mesh = fes->GetMesh();
-    auto *pmesh = dynamic_cast<mfem::ParMesh*>(mesh);
-    auto *pfes = dynamic_cast<mfem::ParFiniteElementSpace*>(fes);
-    cache.fqs_int = new mfem::FaceQuadratureSpace(*mesh, *cache.ir_face, mfem::FaceType::Interior);
-    MFEM_VERIFY(pfes, "need ParFiniteElementSpace");
-    
-    const int dim = mesh->Dimension();
-    const int neq = pfes->GetVDim();
-    const int nfp = cache.ir_face->GetNPoints();
-
-    auto &int_faces = pmesh->GetFaceIndices(mfem::FaceType::Interior);
-    const int ninterior_faces = int_faces.Size();
-
-    cache.inv_fp_map.SetSize(ninterior_faces * nfp);    
-    for (int face_slot = 0; face_slot < ninterior_faces; ++face_slot)
-      {
-        for (int fp_restr = 0; fp_restr < nfp; ++fp_restr)
-          {
-            int fp_perm = cache.fqs_int->GetPermutedIndex(face_slot, fp_restr);
-            cache.inv_fp_map[face_slot*nfp + fp_perm] = fp_restr;
-          }
-      }
-
-    double *nor_d  = cache.face_normals.HostWrite();
-    double *inv1_d = cache.face_wt_minus.HostWrite();
-    double *inv2_d = cache.face_wt_plus.HostWrite();
-    const real_t w0 = cache.ir->IntPoint(0).weight;
-    
-    auto store = [&](int fslot, int fp, const mfem::Vector &nor,
-                     double inv_wJ1, double inv_wJ2)
-    {
-      const int nbase = (fslot * nfp + fp) * dim;
-      for (int d = 0; d < dim; ++d) { nor_d[nbase + d] = nor(d); }
-      inv1_d[fslot * nfp + fp] = inv_wJ1;
-      inv2_d[fslot * nfp + fp] = inv_wJ2;
-    };
-    
-    mfem::Vector nor(dim);
-    const int num_elements_pmesh = pmesh->GetNE();
-    // The order of faces in GetFaceIndices(FaceType::Interior) *must*
-    // match the order of the faces in the interior face restriction
-    // operator face slots.
-    for (int fslot = 0; fslot < ninterior_faces; ++fslot)
-      {
-        const int face_id = int_faces[fslot];  
-        bool face_is_flipped = false;
-        for (int fp_restr = 0; fp_restr < nfp; ++fp_restr)
-          {
-            const int fp_geom = MapFp(fslot, fp_restr);// <-- critical
-            if (fp_geom != fp_restr){
-              face_is_flipped = true;
-            }
-          }
-        auto *tr = mesh->GetInteriorFaceTransformations(face_id);
-        if (tr){ // Do interior face caching
-          //          MFEM_VERIFY(tr, "expected interior face");
-          for (int fp_restr = 0; fp_restr < nfp; ++fp_restr)
-            {
-              const int fp_geom = MapFp(fslot, fp_restr);// <-- critical
-              const mfem::IntegrationPoint &ip = cache.ir_face->IntPoint(fp_geom);
-              tr->SetAllIntPoints(&ip);
-              
-              const double J1 = tr->GetElement1Transformation().Weight();
-              const double J2 = tr->GetElement2Transformation().Weight();
-              
-              if (dim == 1) { nor(0) = (tr->GetElement1IntPoint().x - 0.5)*2.0; }
-              else          { mfem::CalcOrtho(tr->Jacobian(), nor); }
-              
-              //const real_t fac = face_is_flipped ? -1.0 : 1.0;
-              const real_t fac = 1.0;
-              store(fslot, fp_restr, nor, fac/(w0*J1), fac/(w0*J2));
-            }
-          continue;
-        } // Internal face processing
-        {
-          auto *sh_tr = pmesh->GetSharedFaceTransformationsByLocalIndex(face_id, true);
-          MFEM_VERIFY(sh_tr, "expected shared face");
-          for (int fp_restr = 0; fp_restr < nfp; ++fp_restr)
-            {
-              const int fp_geom = MapFp(fslot, fp_restr);// <-- critical
-              const mfem::IntegrationPoint &ip = cache.ir_face->IntPoint(fp_geom);
-              sh_tr->SetAllIntPoints(&ip);
-              
-              const double J1 = sh_tr->GetElement1Transformation().Weight();
-              const double J2 = sh_tr->GetElement2Transformation().Weight();
-              
-              if (dim == 1) { nor(0) = (sh_tr->GetElement1IntPoint().x - 0.5)*2.0; }
-              else          { mfem::CalcOrtho(sh_tr->Jacobian(), nor); }
-              
-              //const real_t fac = face_is_flipped ? -1.0 : 1.0;
-              const real_t fac1 = 1.0;
-              const real_t fac2 = 0.0;
-              store(fslot, fp_restr, nor, fac1/(w0*J1), fac2/(w0*J2));
-            }
-        } // Shared face processing
-      }
-  }
-
   void DGSEMNonlinearForm::GetDeviceCache(Prandtl::DGSEMDeviceCache &dgsem_device_cache)
   {
     dgsem_device_cache.ndof_scalar_el = cache.ndof_scalar_el;
     dgsem_device_cache.num_attr = cache.num_attr;
-    dgsem_device_cache.attr_marker_d = cache.attr_marker.Read();
+    dgsem_device_cache.attr_marker_d = cache.vol_attr_marker.Read();
     dgsem_device_cache.elem_attr_d = cache.elem_attr.Read();
     dgsem_device_cache.num_face_points = cache.num_face_points;
     dgsem_device_cache.p = cache.p;
@@ -551,306 +451,16 @@ void DGSEMNonlinearForm::MultLifting(const Vector &u, Vector &dudx, Vector &dudy
     }
 }
 
-// Set up and populate elJac, elMetric, D, Dhat, Dhat2
-// Face normals, and weights
-void DGSEMNonlinearForm::AssembleGeometricTerms()
-{
-  int nelem = cache.num_elements;
-  int p = cache.p;
-  int Np = cache.Np;
-  int dim = cache.dim;
-  int Np_x = Np;
-  int Np_y = dim > 1 ? Np : 1;
-  int Np_z = dim > 2 ? Np : 1;
-  int neq = cache.num_equations;
-  Mesh *mesh = fes->GetMesh();
-
-  // Build integration rules
-  int IntegrationOrder = 2 * Np_x - 3;
-  cache.ir = &cache.GLIntRules.Get(mfem::Geometry::SEGMENT, IntegrationOrder);
-  if (dim == 1)
-    {
-      cache.ir_face = &cache.GLIntRules.Get(mfem::Geometry::POINT, IntegrationOrder);
-      cache.ir_vol = &cache.GLIntRules.Get(mfem::Geometry::SEGMENT, IntegrationOrder);
-    }
-  else if (dim == 2)
-    {
-      cache.ir_face = &cache.GLIntRules.Get(mfem::Geometry::SEGMENT, IntegrationOrder);
-      cache.ir_vol = &cache.GLIntRules.Get(mfem::Geometry::SQUARE, IntegrationOrder);
-    }
-  else
-    {
-      cache.ir_face = &cache.GLIntRules.Get(mfem::Geometry::SQUARE, IntegrationOrder);
-      cache.ir_vol = &cache.GLIntRules.Get(mfem::Geometry::CUBE, IntegrationOrder);
-    }
-  
-  MFEM_ASSERT(cache.ir->GetNPoints() == Np_x, "");
-  MFEM_ASSERT(cache.ir_vol->GetNPoints() == Np_x*Np_y*Np_z, "");
-
-  // Populate element Jacobian determinant and metric terms
-  cache.elJac.SetSize(Np_x*Np_y*Np_z*nelem);
-  cache.elMetric.SetSize(dim*dim*Np_x*Np_y*Np_z*nelem);
-  for (int i = 0; i < nelem; i++)
-    {
-      ElementTransformation *T = fes->GetElementTransformation(i);
-      assert(T->ElementNo == i);
-      AssembleElementVolumeGeometricTerms(*T);
-    }
-
-  // Set up derivative operators
-  mfem::DenseMatrix D_T, Dhat_T, Dhat2_T;
-  D_T.SetSize(Np_x);
-  Dhat_T.SetSize(Np_x);
-  Dhat2_T.SetSize(Np_x);
- 
-  Vector wBary(Np_x);
-  wBary = 1.0;
-  
-  for (int i = 1; i < Np_x; i++)
-    {
-      for (int j = 0; j < i; j++)
-        {
-          wBary(j) *= (cache.ir->IntPoint(j).x - cache.ir->IntPoint(i).x);
-          wBary(i) *= (cache.ir->IntPoint(i).x - cache.ir->IntPoint(j).x);
-        }
-    }
-  
-  wBary.Reciprocal();
-  D_T = 0.0;
-  for (int iL = 0; iL < Np_x; iL++)
-    {
-      for (int i = 0; i < Np_x; i++)
-        {
-          if (iL != i)
-            {
-              D_T(i, iL) = wBary(iL) / wBary(i) / (cache.ir->IntPoint(i).x - cache.ir->IntPoint(iL).x);
-              D_T(i, i) -= D_T(i, iL);
-            }
-        }
-    }
-  
-  Dhat_T = D_T;
-  Dhat_T(0, 0) += 1.0 / cache.ir->IntPoint(0).weight;
-  Dhat_T(Np - 1, Np - 1) -= 1.0 / cache.ir->IntPoint(Np - 1).weight;
-  Dhat_T.Transpose();
-  
-  Dhat2_T = D_T;
-  Dhat2_T *= 2.0;
-  Dhat2_T(0, 0) += 1.0 / cache.ir->IntPoint(0).weight;
-  Dhat2_T(Np - 1, Np - 1) -= 1.0 / cache.ir->IntPoint(Np - 1).weight;
-  Dhat2_T.Transpose();
-  D_T.Transpose();
-
-  // Just copy D_T, Dhat_T, and Dhat2_T
-  cache.D.SetSize(Np_x*Np_x);
-  cache.Dhat.SetSize(Np_x*Np_x);
-  cache.Dhat2.SetSize(Np_x*Np_x);
-  std::memcpy(cache.D.GetData(),     D_T.Data(),     sizeof(real_t)*Np_x*Np_x);
-  std::memcpy(cache.Dhat.GetData(),  Dhat_T.Data(),  sizeof(real_t)*Np_x*Np_x);
-  std::memcpy(cache.Dhat2.GetData(), Dhat2_T.Data(), sizeof(real_t)*Np_x*Np_x);
-
-  // Set up data for faces
-  const int nfp = cache.ir_face->GetNPoints();
-  cache.num_face_points = nfp;
-
-  const int nfaces_restr = cache.restr_f->Height() / (nfp * neq * 2);
-  cache.num_interior_faces = nfaces_restr;
-  MFEM_VERIFY(nfaces_restr > 0, "nfaces_restr is 0");
-
-  cache.face_normals.SetSize(nfaces_restr * nfp * dim);
-  cache.face_wt_minus.SetSize(nfaces_restr * nfp);
-  cache.face_wt_plus.SetSize(nfaces_restr * nfp);
-  AssembleFaceGeomCacheInterior();
-
-}
-
-// Builds element-specific Jac/Metric and stuffs into cache.elJac, cache.elMetric
-void DGSEMNonlinearForm::AssembleElementVolumeGeometricTerms(ElementTransformation &Tr)
-{
-
-  real_t *Jinv_h = cache.elJac.HostWrite();
-  real_t *Met_h  = cache.elMetric.HostWrite();
-  int dim = cache.dim;
-  mfem::Vector metric1(dim);
-  const int e = Tr.ElementNo;
-  const int nq = cache.Np_x * cache.Np_y * cache.Np_z;
-
-  for (int q = 0; q < nq; ++q)
-    {
-      const IntegrationPoint &ip = cache.ir_vol->IntPoint(q);
-      Tr.SetIntPoint(&ip);
-      const real_t J = Tr.Weight();
-      Jinv_h[e*nq + q] = J;
-      
-      const mfem::DenseMatrix &adj = Tr.AdjugateJacobian();              
-      for (int dir = 0; dir < dim; ++dir)
-        {
-          adj.GetRow(dir, metric1);  // metric1.Size() == dim
-          
-          for (int d = 0; d < dim; ++d)
-            {
-              const int idxM = (((e*nq + q)*dim + dir)*dim + d);
-              Met_h[idxM] = metric1(d);
-            }
-        }
-    }
-}
-
 // This is called from OUTSIDE by DGSEMOperator.cpp
 // Because this call requires some setup to be done
 // *after* instantiation : can't be called from
 // constructor.
   void DGSEMNonlinearForm::CreateOperatorCache()
   {
-    MFEM_VERIFY(fes, "fes must be set");
-    Mesh *mesh = fes->GetMesh();
-    int p = fes->GetFE(0)->GetOrder();
-    int dim = mesh->SpaceDimension();
-    int Np = p + 1;
-    int Np_x = Np;
-    int Np_y = dim > 1 ? Np : 1;
-    int Np_z = dim > 2 ? Np : 1;
-  
-    cache.p = p;
-    cache.Np = Np;
-    cache.dim = dim;
-    cache.Np_x = Np_x;
-    cache.Np_y = Np_y;
-    cache.Np_z = Np_z;
-
-    MFEM_VERIFY(mesh, "mesh must be set");
-    MFEM_VERIFY(dnfi[0] != nullptr, "Domain integrator must be set.");
-
-    // ---- sizes / metadata ----------------------------------------------------
-    const int ne = fes->GetNE();
-    cache.num_elements = ne;
-    // Attribute count = max attribute id (1-based in MFEM)
-    cache.num_attr = mesh->attributes.Size() ? mesh->attributes.Max() : 0;
-    cache.ndof_scalar_el = fes->GetFE(0)->GetDof();
-    cache.num_equations = fes->GetVDim();
-    cache.dim = mesh->SpaceDimension();
-
-    // ---- 1) Build combined attribute marker exactly like Mult() --------------
-    cache.attr_marker.SetSize(cache.num_attr);
-    cache.attr_marker = 0;
-    
-    if (dnfi.Size() == 0 || cache.num_attr == 0)
-      {
-        // If no domain integrators, nothing to do; marker stays 0.
-        // If "process all" is desired instead, set marker=1 here.
-        cache.attr_marker = 1;
-      }
-    else
-      {
-        for (int k = 0; k < dnfi.Size(); k++)
-          {
-            if (dnfi_marker[k] == nullptr)
-              {
-                cache.attr_marker = 1; // process all attrs
-                break;
-              }
-
-            const Array<int> &marker = *dnfi_marker[k];
-            MFEM_ASSERT(marker.Size() == cache.attr_marker.Size(),
-                        "invalid marker for domain integrator #" << k);
-            
-            for (int i = 0; i < cache.attr_marker.Size(); i++)
-              {
-                cache.attr_marker[i] |= marker[i];
-              }
-          }
-      }
-
-    // ---- 1b) Cache per-integrator marker (single dnfi assumption) -------------
-    cache.dnfi_marker.SetSize(cache.num_attr);
-    cache.dnfi_marker = 0;
-    
-    if (dnfi.Size() == 0 || cache.num_attr == 0)
-      {
-        cache.dnfi_marker = 1;
-      }
-    else
-      {
-        MFEM_VERIFY(dnfi.Size() == 1, "expected exactly one dnfi integrator");
-        
-        if (dnfi_marker[0] == nullptr)
-          {
-            cache.dnfi_marker = 1; // applies to all attrs
-          }
-        else
-          {
-            const mfem::Array<int> &m0 = *dnfi_marker[0];
-            MFEM_ASSERT(m0.Size() == cache.num_attr, "invalid dnfi_marker[0] size");
-            
-            for (int a = 0; a < cache.num_attr; ++a)
-              {
-                cache.dnfi_marker[a] = m0[a];
-              }
-          }
-      }
-    
-    // ---- 2) Per-element attribute id array -----------------------------------
-    cache.elem_attr.SetSize(ne);
-    for (int e = 0; e < ne; ++e)
-      {
-        const int attr = mesh->GetAttribute(e); // 1-based
-        cache.elem_attr[e] = attr;
-      }
-
-    // Optional host-side sanity check (cheap, catches bad markers early):
-    if (cache.num_attr > 0)
-      {
-        for (int e = 0; e < ne; ++e)
-          {
-            const int a = cache.elem_attr[e];
-            MFEM_VERIFY(a >= 1 && a <= cache.num_attr,
-                        "element attribute out of range: attr=" << a
-                        << " num_attr=" << cache.num_attr);
-          }
-      }
-
-    cache.elem_attr.UseDevice();
-    cache.attr_marker.UseDevice();
-    cache.dnfi_marker.UseDevice();
-    cache.elem_attr.Read();
-    cache.attr_marker.Read();
-    cache.dnfi_marker.Read();
-
-    auto *pfes = dynamic_cast<mfem::ParFiniteElementSpace*>(fes);
-    cache.restr_v = fes->GetElementRestriction(mfem::ElementDofOrdering::LEXICOGRAPHIC);
-    cache.restr_f = pfes->GetFaceRestriction(mfem::ElementDofOrdering::LEXICOGRAPHIC,
-                                             mfem::FaceType::Interior,
-                                             mfem::L2FaceValues::DoubleValued);
-    cache.elWaveSpeed.SetSize(ne);
-    cache.elWaveSpeed = 0.0;
-    cache.elWaveSpeed.UseDevice();
-    cache.elWaveSpeed.Read();
-
-    AssembleGeometricTerms();
-
-    cache.elJac.UseDevice();
-    cache.elMetric.UseDevice();
-    cache.D.UseDevice();
-    cache.Dhat.UseDevice();
-    cache.Dhat2.UseDevice();
-    cache.elJac.Read();
-    cache.elMetric.Read();
-    cache.D.Read();
-    cache.Dhat.Read();
-    cache.Dhat2.Read();
-
-    cache.face_normals.UseDevice();
-    cache.face_wt_minus.UseDevice();
-    cache.face_wt_plus.UseDevice();
-    cache.face_normals.Read();
-    cache.face_wt_minus.Read();
-    cache.face_wt_plus.Read();
-
-    cache.ifWaveSpeed.SetSize(cache.num_interior_faces);
-    cache.ifWaveSpeed = 0.0;
-    cache.ifWaveSpeed.UseDevice();
-    cache.ifWaveSpeed.Read();
-
+    GetDiscretizationInfo(fes, &cache);
+    SetupRestrictions(fes, &cache);
+    SetupVolumeMarkers(fes, &cache);
+    SetupGeometricTerms(fes, &cache);
   }
 
 
@@ -1300,9 +910,9 @@ void DGSEMNonlinearForm::Mult(const Vector &u, Vector &dudt) const
     ElementTransformation *T;
     Mesh *mesh = fes->GetMesh();
 
-    const int *attr_marker = cache.attr_marker.Read();
+    const int *attr_marker = cache.vol_attr_marker.Read();
     const int *elem_attr = cache.elem_attr.Read();
-    const int *dnfi_marker = cache.dnfi_marker.Read();
+    const int *dnfi_marker = cache.domain_attr_marker.Read();
 
     if (dnfi.Size())
       {
@@ -1477,9 +1087,9 @@ real_t DGSEMNonlinearForm::MultInviscidVolumeHost(const Vector &pu, Vector &pdud
     ElementTransformation *T;
     Mesh *mesh = fes->GetMesh();
 
-    const int *attr_marker = cache.attr_marker.Read();
+    const int *attr_marker = cache.vol_attr_marker.Read();
     const int *elem_attr = cache.elem_attr.Read();
-    const int *dnfi_marker = cache.dnfi_marker.Read();
+    const int *dnfi_marker = cache.domain_attr_marker.Read();
     real_t *ws_d = cache.elWaveSpeed.ReadWrite();
     real_t max_char_speed = 0.0;
 
