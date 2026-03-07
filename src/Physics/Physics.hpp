@@ -1,26 +1,28 @@
 #pragma once
 
-#include "Kernels.hpp"
+#include "prandtl_kernels.hpp"
 
 namespace Prandtl
 {
 
   struct PhysicsConstants
   {
-    const real_t gamma;
-    const real_t gammaInverse;
-    const real_t gammaP1;
-    const real_t gammaM1;
-    const real_t gammaP1Inverse;
-    const real_t gammaM1Inverse;
-    const real_t gamma_gammaM1Inverse; // gamma * gammaM1Inverse;
-    const real_t gammaM1_gammaInverse; // gammaM1 * gammaInverse;
+    real_t gamma;
+    real_t gammaInverse;
+    real_t gammaP1;
+    real_t gammaM1;
+    real_t gammaP1Inverse;
+    real_t gammaM1Inverse;
+    real_t gamma_gammaM1Inverse; // gamma * gammaM1Inverse;
+    real_t gammaM1_gammaInverse; // gammaM1 * gammaInverse;
 
-    const real_t Pr;
-    const real_t PrInverse;
-    const real_t R_gas;
-    const real_t cp;
-    const real_t mu;
+    real_t Pr;
+    real_t PrInverse;
+    real_t R_gas;
+    real_t cp;
+    real_t mu;
+
+    MFEM_HOST_DEVICE PhysicsConstants() = default;
 
     PhysicsConstants(real_t gamma, real_t Pr, real_t R_gas, real_t mu)
       : gamma(gamma), Pr(Pr), R_gas(R_gas), mu(mu),
@@ -29,10 +31,10 @@ namespace Prandtl
         gammaM1_gammaInverse(gammaM1 * gammaInverse), gamma_gammaM1Inverse(gamma * gammaM1Inverse),
         PrInverse(1.0 / Pr), cp(gamma_gammaM1Inverse * R_gas) {}
 
-    const real_t mu_bulk = 2.0 / 3.0;
-    const real_t mu0 = 1.716e-5;
-    const real_t T0 = 273.15;
-    const real_t Ts = 110.4;
+    real_t mu_bulk = 2.0 / 3.0;
+    real_t mu0 = 1.716e-5;
+    real_t T0 = 273.15;
+    real_t Ts = 110.4;
 };
 
 // extern const real_t gamma;
