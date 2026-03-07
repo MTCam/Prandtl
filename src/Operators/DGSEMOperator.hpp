@@ -7,7 +7,7 @@
 #include "Indicator.hpp"
 #include "BasicOperations.hpp"
 #include "GasModel.hpp"
-#include "dgsem_cache.hpp"
+#include "dgsem_cache_utilities.hpp"
 
 namespace Prandtl
 {
@@ -64,9 +64,10 @@ private:
     mutable real_t alpha_dof;
     const mfem::ElementRestrictionOperator *restr_v = nullptr; // for vfes (vector space)
     const mfem::ElementRestrictionOperator *restr_s = nullptr; // for fes (scalar space)
-  Prandtl::DGSEMOperatorCache operator_cache;
-    Prandtl::DGSEMDeviceCache dgsem_device_cache;
+    DGSEMOperatorCache operator_cache;
+    DGSEMDeviceCache device_cache;
 
+    void CreateOperatorCache();
     void ComputeGlobalEntropyVector(const Vector &u, Vector &global_entropy) const;
     void ComputeGlobalPrimitiveGradVector(const Vector &u, Vector &dudx) const;
     void ComputeGlobalPrimitiveGradVector(const Vector &u, Vector &dudx, Vector &dudy) const;

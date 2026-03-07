@@ -17,21 +17,18 @@ namespace Prandtl
   {
   public:
 
-    Prandtl::DGSEMOperatorCache cache;
+    Prandtl::DGSEMOperatorCache *cache;
     Prandtl::DGSEMDeviceCache device_cache;
- 
-    void CreateOperatorCache();
-    // void GetOperatorCache(DGSEMOperatorCache &dgsem_operator_cache);
-    void GetDeviceCache(DGSEMDeviceCache &dgsem_device_cache);
-    // void AssembleGeometricTerms();
-    // void AssembleElementVolumeGeometricTerms(mfem::ElementTransformation &);
-    // void AssembleFaceGeomCacheInterior();
+
+    void SetOperatorCache(DGSEMOperatorCache *cache_){
+      cache = cache_;
+    }
     void SetDeviceCache(const DGSEMDeviceCache &dgsem_device_cache)
     {
       device_cache = dgsem_device_cache;
     }
-    DGSEMNonlinearForm(ParFiniteElementSpace *pfes);
 
+    DGSEMNonlinearForm(ParFiniteElementSpace *pfes);
     void MultLifting(const Vector &u, Vector &dudx, Vector &dudy, Vector &dudz) const;
     void MultLifting(const Vector &u, Vector &dudx, Vector &dudy) const;
     void MultLifting(const Vector &u, Vector &dudx) const;

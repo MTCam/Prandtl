@@ -12,35 +12,6 @@ namespace Prandtl
     GRAD_Z.MakeRef(pf, NULL);
   }
 
-  void DGSEMNonlinearForm::GetDeviceCache(Prandtl::DGSEMDeviceCache &dgsem_device_cache)
-  {
-    dgsem_device_cache.ndof_scalar_el = cache.ndof_scalar_el;
-    dgsem_device_cache.num_attr = cache.num_attr;
-    dgsem_device_cache.attr_marker_d = cache.vol_attr_marker.Read();
-    dgsem_device_cache.elem_attr_d = cache.elem_attr.Read();
-    dgsem_device_cache.num_face_points = cache.num_face_points;
-    dgsem_device_cache.p = cache.p;
-    dgsem_device_cache.dim = cache.dim;
-    dgsem_device_cache.Np = cache.Np;
-    dgsem_device_cache.Np_x = cache.Np_x;
-    dgsem_device_cache.Np_y = cache.Np_y;
-    dgsem_device_cache.Np_z = cache.Np_z;
-    dgsem_device_cache.num_elements = cache.num_elements;
-    dgsem_device_cache.num_equations = cache.num_equations;
-    dgsem_device_cache.elJac_d = cache.elJac.Read();
-    dgsem_device_cache.elMetric_d = cache.elMetric.Read();
-    dgsem_device_cache.D_d = cache.D.Read();
-    dgsem_device_cache.Dhat_d = cache.Dhat.Read();
-    dgsem_device_cache.Dhat2_d = cache.Dhat2.Read();
-    dgsem_device_cache.nor_d = cache.face_normals.Read();
-    dgsem_device_cache.fw_minus_d = cache.face_wt_minus.Read();
-    dgsem_device_cache.fw_plus_d = cache.face_wt_plus.Read();
-
-    // Updated every step by the compute device
-    dgsem_device_cache.elWaveSpeed_d = cache.elWaveSpeed.Write();
-    dgsem_device_cache.ifWaveSpeed_d = cache.ifWaveSpeed.Write();
-  }
-
   void DGSEMNonlinearForm::MultLifting(const Vector &u, Vector &dudx) const
   {
     const Vector &pu = Prolongate(u);
@@ -451,17 +422,6 @@ void DGSEMNonlinearForm::MultLifting(const Vector &u, Vector &dudx, Vector &dudy
     }
 }
 
-// This is called from OUTSIDE by DGSEMOperator.cpp
-// Because this call requires some setup to be done
-// *after* instantiation : can't be called from
-// constructor.
-  void DGSEMNonlinearForm::CreateOperatorCache()
-  {
-    GetDiscretizationInfo(fes, &cache);
-    SetupRestrictions(fes, &cache);
-    SetupVolumeMarkers(fes, &cache);
-    SetupGeometricTerms(fes, &cache);
-  }
 
 
 void DGSEMNonlinearForm::MultLifting(const Vector &u, Vector &dudx, Vector &dudy, Vector &dudz) const
@@ -910,9 +870,9 @@ void DGSEMNonlinearForm::Mult(const Vector &u, Vector &dudt) const
     ElementTransformation *T;
     Mesh *mesh = fes->GetMesh();
 
-    const int *attr_marker = cache.vol_attr_marker.Read();
-    const int *elem_attr = cache.elem_attr.Read();
-    const int *dnfi_marker = cache.domain_attr_marker.Read();
+    const int *attr_marker = cache->vol_attr_marker.Read();
+    const int *elem_attr = cache->elem_attr.Read();
+    const int *dnfi_marker = cache->domain_attr_marker.Read();
 
     if (dnfi.Size())
       {
@@ -1087,10 +1047,10 @@ real_t DGSEMNonlinearForm::MultInviscidVolumeHost(const Vector &pu, Vector &pdud
     ElementTransformation *T;
     Mesh *mesh = fes->GetMesh();
 
-    const int *attr_marker = cache.vol_attr_marker.Read();
-    const int *elem_attr = cache.elem_attr.Read();
-    const int *dnfi_marker = cache.domain_attr_marker.Read();
-    real_t *ws_d = cache.elWaveSpeed.ReadWrite();
+    const int *attr_marker = cache->vol_attr_marker.Read();
+    const int *elem_attr = cache->elem_attr.Read();
+    const int *dnfi_marker = cache->domain_attr_marker.Read();
+    real_t *ws_d = cache->elWaveSpeed.ReadWrite();
     real_t max_char_speed = 0.0;
 
     if (dnfi.Size())
@@ -1115,8 +1075,8 @@ real_t DGSEMNonlinearForm::MultInviscidVolumeHost(const Vector &pu, Vector &pdud
             // }
         }
 
-        const real_t *ws = cache.elWaveSpeed.Read();
-        for(int e = 0;e < cache.num_elements;e++)
+        const real_t *ws = cache->elWaveSpeed.Read();
+        for(int e = 0;e < cache->num_elements;e++)
           {
             max_char_speed = std::max(max_char_speed, ws[e]);
           }
@@ -1137,12 +1097,12 @@ real_t DGSEMNonlinearForm::MultVolumeInviscidDevice(const Vector &pu, Vector &pd
   // ScopedTimer timer("MultVolumeInviscidDevice");
 
   // This block is executed by the host
-  mfem::Vector Ue(cache.restr_v->Height());
-  mfem::Vector dUe(cache.restr_v->Height());
+  mfem::Vector Ue(cache->restr_v->Height());
+  mfem::Vector dUe(cache->restr_v->Height());
   Ue.UseDevice();
   dUe.UseDevice();
 
-  cache.restr_v->Mult(pu, Ue);
+  cache->restr_v->Mult(pu, Ue);
   
   // If you want dUe zeroed before accumulation, do it explicitly on device:
   {
@@ -1203,13 +1163,13 @@ real_t DGSEMNonlinearForm::MultVolumeInviscidDevice(const Vector &pu, Vector &pd
   // Finish up on the host:
   //  - Reduce for rank-local max_char_speed
   //  - Scatter RHS back to storage
-  const real_t *ws = cache.elWaveSpeed.HostRead();
+  const real_t *ws = cache->elWaveSpeed.HostRead();
   real_t max_char_speed = 0.0;
-  for(int e = 0;e < cache.num_elements;e++)
+  for(int e = 0;e < cache->num_elements;e++)
     {
       max_char_speed = std::max(max_char_speed, ws[e]);
     }
-  cache.restr_v->AddMultTranspose(dUe, pdudt);
+  cache->restr_v->AddMultTranspose(dUe, pdudt);
   //  mfem::Device::Synchronize();
   return max_char_speed;
 }
@@ -1223,7 +1183,7 @@ void DGSEMNonlinearForm::MultInteriorFacesInviscidHost(const Vector &pu, Vector 
   ElementTransformation *T;
   Mesh *mesh = fes->GetMesh();
   //  std::ostringstream Ostr;
-  const int Np = cache.Np;
+  const int Np = cache->Np;
 
   if (fnfi.Size())
     {
@@ -1304,20 +1264,14 @@ real_t DGSEMNonlinearForm::MultInteriorFacesInviscidDevice(const Vector &pu, Vec
   const int dim = dc.dim; // pfes->GetMesh()->Dimension();
   const int neq = dc.num_equations; // pfes->GetVDim();
   const int nfp = dc.num_face_points; // cache.num_face_points; // ir_face->GetNPoints();
-  const int nfaces = cache.restr_f->Height() / (nfp * neq * 2); // (+/-)
+  const int nfaces = cache->restr_f->Height() / (nfp * neq * 2); // (+/-)
   const int face_stride = 2 * nfp * neq;
   const int side_stride = nfp * neq;
   const int face_size = 2*nfp*neq;
   const int norm_size = nfp*dim;
   
-  // TODO: Move these to where the caches are created and validated
-  // MFEM_VERIFY(nfaces == cache.num_interior_faces, "restriction faces != cached interior faces");
-  // MFEM_VERIFY(cache.face_normals.Size() == nfaces*nfp*dim, "normals size mismatch");
-  // MFEM_VERIFY(cache.face_wt_minus.Size() == nfaces*nfp, "w_minus size mismatch");
-  // MFEM_VERIFY(cache.face_wt_plus.Size()  == nfaces*nfp, "w_plus size mismatch");
-
-  mfem::Vector u_faces(cache.restr_f->Height());
-  mfem::Vector rhs_faces(cache.restr_f->Height());
+  mfem::Vector u_faces(cache->restr_f->Height());
+  mfem::Vector rhs_faces(cache->restr_f->Height());
   mfem::Vector faces_dudt(pdudt);
   faces_dudt.UseDevice();
   rhs_faces.UseDevice();
@@ -1329,15 +1283,15 @@ real_t DGSEMNonlinearForm::MultInteriorFacesInviscidDevice(const Vector &pu, Vec
     real_t *d = rhs_faces.Write();
     mfem::forall(rhs_faces.Size(), [=] MFEM_HOST_DEVICE (int i) { d[i] = real_t(0); });
   }
-  //  mfem::Device::Synchronize();
-  cache.restr_f->Mult(pu, u_faces);
+
+  cache->restr_f->Mult(pu, u_faces);
 
   const real_t *u_d = u_faces.Read();
   real_t *rhs_d = rhs_faces.Write();
 
-  const real_t *nor_d   = dc.nor_d;      // cache.face_normals.Read();   // size nfaces*nfp*dim
-  const real_t *inv1_d  = dc.fw_minus_d; // .Read();  // size nfaces*nfp
-  const real_t *inv2_d  = dc.fw_plus_d;  // .Read();   // size nfaces*nfp
+  const real_t *nor_d   = dc.nor_d;      // size nfaces*nfp*dim
+  const real_t *inv1_d  = dc.fw_minus_d; // size nfaces*nfp
+  const real_t *inv2_d  = dc.fw_plus_d;  // size nfaces*nfp
 
   real_t *ws_d = dc.ifWaveSpeed_d;
 
@@ -1358,15 +1312,15 @@ real_t DGSEMNonlinearForm::MultInteriorFacesInviscidDevice(const Vector &pu, Vec
     ws_d[i] = ws;
     
   });
-  //  mfem::Device::Synchronize();
-  cache.restr_f->MultTranspose(rhs_faces, faces_dudt);
+
+  cache->restr_f->MultTranspose(rhs_faces, faces_dudt);
   pdudt += faces_dudt;
 
   // Finish up on the host:
   //  - Reduce for rank-local max_char_speed
-  const real_t *ws = cache.ifWaveSpeed.HostRead();
+  const real_t *ws = cache->ifWaveSpeed.HostRead();
   real_t max_char_speed_facial = 0.0;
-  for(int f = 0;f < cache.num_interior_faces;f++)
+  for(int f = 0;f < cache->num_interior_faces;f++)
     {
       max_char_speed_facial = std::max(max_char_speed_facial, ws[f]);
     }

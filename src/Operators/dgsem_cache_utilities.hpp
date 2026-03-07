@@ -1,3 +1,4 @@
+#pragma once
 #include "dgsem_cache.hpp"
 #include "mfem.hpp"
 
