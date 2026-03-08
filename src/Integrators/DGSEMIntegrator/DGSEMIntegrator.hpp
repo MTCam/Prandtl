@@ -13,27 +13,6 @@ namespace Prandtl
 
   class DGSEMIntegrator : public NonlinearFormIntegrator
   {
-  public:
-    struct OperatorCache {
-      int Np_x;
-      int Np_y;
-      int Np_z;
-      int num_equations;
-      int dim;
-      int num_elements;
-      int num_face_points;
-      int num_interior_faces;
-      mfem::Vector elJac;
-      mfem::Vector elMetric;
-      mfem::Vector Dhat2;
-      mfem::Vector Dhat;
-      mfem::Vector D;
-      mfem::Vector face_normals;
-      mfem::Vector face_wt_minus;
-      mfem::Vector face_wt_plus;
-      const mfem::FaceRestriction *restr_f = nullptr; // for face vfes (vector space)
-    };
-    OperatorCache cache;
   private:
     std::shared_ptr<ParMesh> pmesh;
     std::shared_ptr<ParFiniteElementSpace> fes0;
@@ -45,7 +24,8 @@ namespace Prandtl
     const int num_equations, dim, num_elements;
     IntegrationRules GLIntRules;
     const IntegrationRule *ir, *ir_face, *ir_vol;
-    
+
+    DGSEMOperatorCache *operator_cache;
     real_t max_char_speed;
     real_t J, J1, J2;
     int dof, dof1, dof2;
@@ -81,7 +61,7 @@ namespace Prandtl
     Vector el_dudxi, el_dudeta, el_dudzeta;
     
     std::shared_ptr<LiftingScheme> liftingScheme;
-    
+
     void ComputeSubcellMetrics();
     void ComputeFVFluxes(const DenseMatrix &el_u_mat, real_t alpha_value, ElementTransformation &Tr, DenseMatrix &el_dudt_mat);
 #ifdef AXISYMMETRIC
@@ -90,6 +70,9 @@ namespace Prandtl
     
   public:
     
+    void SetOperatorCache(DGSEMOperatorCache *cache_)
+    { operator_cache = cache_; };
+
     inline real_t GetMaxCharSpeed()
     {
       return max_char_speed;
@@ -101,9 +84,6 @@ namespace Prandtl
                     std::shared_ptr<LiftingScheme> liftingScheme,
                     NumericalFlux &rsolver, int Np);
 
-    void CreateOperatorCache();
-    void AssembleGeometricTerms();
-    void AssembleElementGeometricTerms(ElementTransformation &Tr);
     void AssembleElementVectorOG(const FiniteElement &el, ElementTransformation &Tr, const Vector &el_u, Vector &el_dudt);
     void AssembleFaceVector(const FiniteElement &el1, const FiniteElement &el2, FaceElementTransformations &Tr, const Vector &el_u, Vector &el_dudt) override;
     void AssembleFaceVectorInviscid(const FiniteElement &el1, const FiniteElement &el2,

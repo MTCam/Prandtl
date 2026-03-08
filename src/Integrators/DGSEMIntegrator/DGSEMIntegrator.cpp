@@ -150,91 +150,9 @@ if (debug_integrator)
     SubcellMetricZeta.SetSize(dim, (Np_z + 1) * Np_y * Np_x, pmesh->GetNE());
     ComputeSubcellMetrics();
 #endif
-
-     CreateOperatorCache();
     
   }
 
-  void DGSEMIntegrator::CreateOperatorCache() {
-    cache.Np_x = Np_x;
-    cache.Np_y = Np_y;
-    cache.Np_z = Np_z;
-    cache.dim = dim;
-    cache.num_elements = fes0->GetNE();
-    cache.num_equations = num_equations;
-    AssembleGeometricTerms();
-    cache.D.UseDevice();
-    cache.Dhat.UseDevice();
-    cache.Dhat2.UseDevice();
-    cache.elJac.UseDevice();
-    cache.elMetric.UseDevice();
-    cache.D.Read();
-    cache.Dhat.Read();
-    cache.Dhat2.Read();
-    cache.elJac.Read();
-    cache.elMetric.Read();
-  }
-
-// Set up and populate elJac, elMetric, D, Dhat, Dhat2
-void DGSEMIntegrator::AssembleGeometricTerms()
-  {
-    int nelem = fes0->GetNE();
-    assert(nelem == num_elements);
-    cache.elJac.SetSize(Np_x*Np_y*Np_z*num_elements);
-    cache.elMetric.SetSize(dim*dim*Np_x*Np_y*Np_z*num_elements);
-
-    cache.D.SetSize(Np_x*Np_x);
-    cache.Dhat.SetSize(Np_x*Np_x);
-    cache.Dhat2.SetSize(Np_x*Np_x);
-
-    // Currently just copy the ole D_T, Dhat_T, and Dhat2_T
-    std::memcpy(cache.D.GetData(),     D_T.Data(),     sizeof(real_t)*Np_x*Np_x);
-    std::memcpy(cache.Dhat.GetData(),  Dhat_T.Data(),  sizeof(real_t)*Np_x*Np_x);
-    std::memcpy(cache.Dhat2.GetData(), Dhat2_T.Data(), sizeof(real_t)*Np_x*Np_x);
-
-    for (int i = 0; i < nelem; i++)
-      {
-        ElementTransformation *T = fes0->GetElementTransformation(i);
-        assert(T->ElementNo == i);
-        AssembleElementGeometricTerms(*T);
-      }
-  }
-
-// Builds element-specific Jac/Metric and stuffs into cache.elJac, cache.elMetric
-void DGSEMIntegrator::AssembleElementGeometricTerms(ElementTransformation &Tr)
-{
-
-  if (debug_integrator)
-    {
-      std::cout << "===== Entering DGSEMIntegrator::AssembleElementGeometricalTerms =====" << std::endl;
-    }
-  
-  real_t *Jinv_h = cache.elJac.HostWrite();
-  real_t *Met_h  = cache.elMetric.HostWrite();
-
-  const int e = Tr.ElementNo;
-  const int nq = Np_x * Np_y * Np_z;
-  
-  for (int q = 0; q < nq; ++q)
-    {
-      const IntegrationPoint &ip = ir_vol->IntPoint(q);
-      Tr.SetIntPoint(&ip);
-      const real_t J = Tr.Weight();
-      Jinv_h[e*nq + q] = J;
-      
-      const mfem::DenseMatrix &adj = Tr.AdjugateJacobian();              
-      for (int dir = 0; dir < dim; ++dir)
-        {
-          adj.GetRow(dir, metric1);  // metric1.Size() == dim
-          
-          for (int d = 0; d < dim; ++d)
-            {
-              const int idxM = (((e*nq + q)*dim + dir)*dim + d);
-              Met_h[idxM] = metric1(d);
-            }
-        }
-    }
-}
 
   // Orginal: For INVISCID cases
 void DGSEMIntegrator::AssembleFaceVector(const FiniteElement &el1, const FiniteElement &el2,
@@ -591,10 +509,10 @@ void DGSEMIntegrator::AssembleElementVector(const FiniteElement &el,
     int e = Tr.ElementNo;
     int el_offset_jac = e*Np_x*Np_y*Np_z;
     int el_offset_metric = el_offset_jac*dim*dim;
-    const real_t *elJac_d = cache.elJac.Read() + el_offset_jac;
-    const real_t *elMetric_d = cache.elMetric.Read() + el_offset_metric;
+    const real_t *elJac_d = operator_cache->elJac.Read() + el_offset_jac;
+    const real_t *elMetric_d = operator_cache->elMetric.Read() + el_offset_metric;
     const int N = Np_x;
-    const real_t *Dhat2_d = cache.Dhat2.Read();
+    const real_t *Dhat2_d = operator_cache->Dhat2.Read();
 
     fes0->GetElementDofs(Tr.ElementNo, alpha_indx);
     alpha->GetSubVector(alpha_indx, el_alpha);
@@ -769,10 +687,10 @@ real_t DGSEMIntegrator::AssembleElementVectorHost(const FiniteElement &el,
     int e = Tr.ElementNo;
     int el_offset_jac = e*Np_x*Np_y*Np_z;
     int el_offset_metric = el_offset_jac*dim*dim;
-    const real_t *elJac_d = cache.elJac.Read() + el_offset_jac;
-    const real_t *elMetric_d = cache.elMetric.Read() + el_offset_metric;
+    const real_t *elJac_d = operator_cache->elJac.Read() + el_offset_jac;
+    const real_t *elMetric_d = operator_cache->elMetric.Read() + el_offset_metric;
     const int N = Np_x;
-    const real_t *Dhat2_d = cache.Dhat2.Read();
+    const real_t *Dhat2_d = operator_cache->Dhat2.Read();
 
     fes0->GetElementDofs(Tr.ElementNo, alpha_indx);
     alpha->GetSubVector(alpha_indx, el_alpha);
@@ -955,18 +873,18 @@ real_t DGSEMIntegrator::AssembleElementVolumeHost(const int e,ElementTransformat
     }
 
     // int e = Tr.ElementNo;
-    const int Np_x = cache.Np_x;
-    const int Np_y = cache.Np_y;
-    const int Np_z = cache.Np_z;
-    const int dim = cache.dim;
+    const int Np_x = operator_cache->Np_x;
+    const int Np_y = operator_cache->Np_y;
+    const int Np_z = operator_cache->Np_z;
+    const int dim = operator_cache->dim;
     const int dof = Np_x * Np_y * Np_z;
-    const int num_equations = cache.num_equations;
+    const int num_equations = operator_cache->num_equations;
     int el_offset_jac = e*Np_x*Np_y*Np_z;
     int el_offset_metric = el_offset_jac*dim*dim;
-    const real_t *elJac_d = cache.elJac.Read() + el_offset_jac;
-    const real_t *elMetric_d = cache.elMetric.Read() + el_offset_metric;
+    const real_t *elJac_d = operator_cache->elJac.Read() + el_offset_jac;
+    const real_t *elMetric_d = operator_cache->elMetric.Read() + el_offset_metric;
     const int N = Np_x;
-    const real_t *Dhat2_d = cache.Dhat2.Read();
+    const real_t *Dhat2_d = operator_cache->Dhat2.Read();
     for (int q = 0;q < dof * num_equations;q++){
       el_dudt[q] = 0.0;
     }

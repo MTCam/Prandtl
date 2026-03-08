@@ -49,6 +49,7 @@ namespace Prandtl
     CreateOperatorCache();
     AssembleDeviceCache();
     nonlinearForm->SetOperatorCache(&operator_cache);
+    integrator->SetOperatorCache(&operator_cache);
     nonlinearForm->SetDeviceCache(device_cache);
   }
   
