@@ -250,8 +250,8 @@ namespace Prandtl
             qPlus[j] = u_face[ctx.iface_idx(1,i,j)];
           }
           max_char_speed = std::max(max_char_speed,
-                                    ctx.iflux.ComputeFacialFlux(ctx.gas, qMinus, qPlus,
-                                                                nor_d, point_flux));
+                                    ctx.iflux.ComputeFaceFlux(ctx.gas, qMinus, qPlus,
+                                                              nor_d, point_flux));
           for(int j = 0;j < neq;j++){
             rhs_face[ctx.iface_idx(0, i, j)] = wminus * point_flux[j];
             rhs_face[ctx.iface_idx(1, i, j)] = wplus * point_flux[j];
