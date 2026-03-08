@@ -115,7 +115,8 @@ namespace Prandtl
     flux(1, 0) = mu * (2.0 * dudx - mu_bulk_loc * div);
     flux(2, 0) = vx * flux(1, 0) + kappa * grad_t[0];
   }
-  
+
+  // Inviscid / Euler Flux
   real_t NavierStokesFlux::ComputeFlux(const Vector &U,
                                        ElementTransformation &Tr,
                                        DenseMatrix &FU) const
@@ -165,6 +166,7 @@ namespace Prandtl
   }
   
   
+  // Inviscid / Euler Flux .dot. normal
   real_t NavierStokesFlux::ComputeFluxDotN(const Vector &x,
                                            const Vector &normal,
                                            FaceElementTransformations &Tr,
