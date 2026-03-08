@@ -5,8 +5,6 @@
 #include "BdrFaceIntegrator.hpp"
 #include "general/forall.hpp"
 #include "dgsem_cache_utilities.hpp"
-#include <list>
-#include <mpi.h>
 
 namespace Prandtl
 {
@@ -24,11 +22,6 @@ namespace Prandtl
       cache = cache_;
       GetDeviceCache(*cache, device_cache); 
     }
-
-    // void SetDeviceCache(const DGSEMDeviceCache &dgsem_device_cache)
-    // {
-    //   device_cache = dgsem_device_cache;
-    // }
 
     DGSEMNonlinearForm(ParFiniteElementSpace *pfes);
     void MultLifting(const Vector &u, Vector &dudx, Vector &dudy, Vector &dudz) const;

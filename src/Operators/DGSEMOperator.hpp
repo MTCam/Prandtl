@@ -62,10 +62,8 @@ private:
     mutable Array<int> ind_indx;
     mutable Vector ind_dof;
     mutable real_t alpha_dof;
-    const mfem::ElementRestrictionOperator *restr_v = nullptr; // for vfes (vector space)
-    const mfem::ElementRestrictionOperator *restr_s = nullptr; // for fes (scalar space)
+
     DGSEMOperatorCache operator_cache;
-    DGSEMDeviceCache device_cache;
 
     void CreateOperatorCache();
     void ComputeGlobalEntropyVector(const Vector &u, Vector &global_entropy) const;

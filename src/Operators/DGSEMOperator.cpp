@@ -47,10 +47,8 @@ namespace Prandtl
 #endif
     
     CreateOperatorCache();
-    AssembleDeviceCache();
     nonlinearForm->SetOperatorCache(&operator_cache);
     integrator->SetOperatorCache(&operator_cache); 
-    //    nonlinearForm->SetDeviceCache(device_cache);
   }
   
   void DGSEMOperator::CreateOperatorCache()
@@ -59,17 +57,10 @@ namespace Prandtl
     SetupRestrictions(vfes.get(), &operator_cache);
     SetupVolumeMarkers(vfes.get(), &operator_cache);
     SetupGeometricTerms(vfes.get(), &operator_cache);
-    // Important that gasModel is POD here for host<->device
+    // Important that gasModel is POD for host<->device
     operator_cache.gas = gasModel;
   }
 
-  void DGSEMOperator::AssembleDeviceCache()
-  {
-    // Copy the POD gasmodel outright 
-    device_cache.gas = gasModel;
-    GetDeviceCache(operator_cache, device_cache);
-  }
-  
   DGSEMOperator::~DGSEMOperator()
   {
     for (auto ptr : bfnfi)
@@ -523,7 +514,7 @@ void DGSEMOperator::ComputeGlobalPrimitiveGradVector(const Vector &u, Vector &du
                 const IntegrationPoint &ip = nodes.IntPoint(ld);
                 Vector X(dim);
                 Tr.Transform(ip, X);
-                const double r = (dim > 1) ? X(1) : 0.0;
+                const real_t r = (dim > 1) ? X(1) : 0.0;
 
                 if (std::abs(r) <= 1e-14)
                 {
