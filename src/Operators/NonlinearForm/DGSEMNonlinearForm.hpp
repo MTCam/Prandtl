@@ -6,7 +6,6 @@
 #include "timer.hpp"
 #include "general/forall.hpp"
 #include "dgsem_cache_utilities.hpp"
-#include <mpi.h>
 
 namespace Prandtl
 {
@@ -20,8 +19,7 @@ private:
     Array<DGSEMIntegrator*> dnfi, fnfi;
     Array<BdrFaceIntegrator*> bfnfi;
     mutable ParGridFunction GRAD_X, GRAD_Y, GRAD_Z;
-    Prandtl::DGSEMOperatorCache *cache;
-    Prandtl::DGSEMDeviceCache device_cache;
+    Prandtl::DGSEMOperatorCache *cache = nullptr;
 
 public:
     DGSEMNonlinearForm(ParFiniteElementSpace *pfes);

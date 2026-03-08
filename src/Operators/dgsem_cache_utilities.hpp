@@ -1,6 +1,6 @@
 #pragma once
-#include "dgsem_cache.hpp"
 #include "mfem.hpp"
+#include "dgsem_cache.hpp"
 
 namespace Prandtl {
 
@@ -27,15 +27,10 @@ namespace Prandtl {
 
   template<typename CacheT>
   void GetDiscretizationInfo(mfem::FiniteElementSpace *fes, CacheT *cache)
-  // This is called from OUTSIDE by DGSEMOperator.cpp
-  // Because this call requires some setup to be done
-  // *after* instantiation : can't be called from
-  // constructor.
-  //  void DGSEMNonlinearForm::CreateOperatorCache()
   {
 
     MFEM_VERIFY(fes, "fes must be set");
-    Mesh *mesh = fes->GetMesh();
+    mfem::Mesh *mesh = fes->GetMesh();
     MFEM_VERIFY(mesh, "mesh must be set");
     const int p = fes->GetFE(0)->GetOrder();
     const int dim = mesh->SpaceDimension();
@@ -62,6 +57,7 @@ namespace Prandtl {
   void SetupRestrictions(mfem::FiniteElementSpace *fes, CacheT *cache)
   {
     auto *pfes = dynamic_cast<mfem::ParFiniteElementSpace*>(fes);
+    MFEM_VERIFY(pfes, "Restriction setup requires ParFiniteElementSpace");
     cache->restr_v = fes->GetElementRestriction(mfem::ElementDofOrdering::LEXICOGRAPHIC);
     cache->restr_f = pfes->GetFaceRestriction(mfem::ElementDofOrdering::LEXICOGRAPHIC,
                                               mfem::FaceType::Interior,
@@ -70,7 +66,6 @@ namespace Prandtl {
 
   // Set up and populate elJac, elMetric, D, Dhat, Dhat2
   // Face normals, and weights
-  //void DGSEMNonlinearForm::AssembleGeometricTerms()
   template<typename CacheT>
   void SetupGeometricTerms(mfem::FiniteElementSpace *fes, CacheT *cache)
   {
@@ -103,7 +98,7 @@ namespace Prandtl {
     cache->elMetric.SetSize(dim*dim*Np_x*Np_y*Np_z*nelem);
     for (int i = 0; i < nelem; i++)
       {
-        ElementTransformation *T = fes->GetElementTransformation(i);
+        mfem::ElementTransformation *T = fes->GetElementTransformation(i);
         assert(T->ElementNo == i);
         AssembleElementVolumeGeometricTerms(*T, cache);
       }
@@ -247,7 +242,7 @@ namespace Prandtl {
   
   // Builds element-specific Jac/Metric and stuffs into cache.elJac, cache.elMetric
   template<typename CacheT>
-  void AssembleElementVolumeGeometricTerms(ElementTransformation &Tr, CacheT *cache)
+  void AssembleElementVolumeGeometricTerms(mfem::ElementTransformation &Tr, CacheT *cache)
   {
     
     real_t *Jinv_h = cache->elJac.HostWrite();
@@ -259,7 +254,7 @@ namespace Prandtl {
     
     for (int q = 0; q < nq; ++q)
       {
-        const IntegrationPoint &ip = cache->ir_vol->IntPoint(q);
+        const mfem::IntegrationPoint &ip = cache->ir_vol->IntPoint(q);
         Tr.SetIntPoint(&ip);
         const real_t J = Tr.Weight();
         Jinv_h[e*nq + q] = J;
@@ -409,6 +404,11 @@ namespace Prandtl {
     // Updated every step by the compute device
     device_cache.elWaveSpeed_d = cache.elWaveSpeed.Write();
     device_cache.ifWaveSpeed_d = cache.ifWaveSpeed.Write();
+
+    // POD gas model
+    device_cache.gas = cache.gas;
+    device_cache.iflux = cache.iflux;
+ 
   }
 
   template<typename CacheT>

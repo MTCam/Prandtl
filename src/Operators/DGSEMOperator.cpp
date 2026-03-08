@@ -58,12 +58,12 @@ namespace Prandtl
     SetupRestrictions(vfes.get(), &operator_cache);
     SetupVolumeMarkers(vfes.get(), &operator_cache);
     SetupGeometricTerms(vfes.get(), &operator_cache);
+    // Important that gasModel is POD for host<->device
+    operator_cache.gas = gasModel;
   }
 
   void DGSEMOperator::AssembleDeviceCache()
   {
-    // Copy the POD gasmodel outright 
-    device_cache.gas = gasModel;
     GetDeviceCache(operator_cache, device_cache);
   }
   
@@ -72,6 +72,11 @@ namespace Prandtl
     for (auto ptr : bfnfi)
       {
         delete ptr;
+      }
+    if (operator_cache.fqs_int != nullptr)
+      {
+        delete operator_cache.fqs_int;
+        operator_cache.fqs_int = nullptr;
       }
   }
   
