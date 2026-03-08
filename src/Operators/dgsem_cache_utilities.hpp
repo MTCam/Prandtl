@@ -280,7 +280,7 @@ namespace Prandtl {
     auto *mesh = fes->GetMesh();
     auto *pmesh = dynamic_cast<mfem::ParMesh*>(mesh);
     auto *pfes = dynamic_cast<mfem::ParFiniteElementSpace*>(fes);
-    cache->fqs_int = new mfem::FaceQuadratureSpace(*mesh, *cache->ir_face, mfem::FaceType::Interior);
+    cache->fqs_int.reset(new mfem::FaceQuadratureSpace(*mesh, *cache->ir_face, mfem::FaceType::Interior));
     MFEM_VERIFY(pfes, "need ParFiniteElementSpace");
     
     const int dim = mesh->Dimension();
@@ -300,13 +300,13 @@ namespace Prandtl {
           }
       }
 
-    double *nor_d  = cache->face_normals.HostWrite();
-    double *inv1_d = cache->face_wt_minus.HostWrite();
-    double *inv2_d = cache->face_wt_plus.HostWrite();
+    mfem::real_t *nor_d  = cache->face_normals.HostWrite();
+    mfem::real_t *inv1_d = cache->face_wt_minus.HostWrite();
+    mfem::real_t *inv2_d = cache->face_wt_plus.HostWrite();
     const real_t w0 = cache->ir->IntPoint(0).weight;
     
     auto store = [&](int fslot, int fp, const mfem::Vector &nor,
-                     double inv_wJ1, double inv_wJ2)
+                     mfem::real_t inv_wJ1, mfem::real_t inv_wJ2)
     {
       const int nbase = (fslot * nfp + fp) * dim;
       for (int d = 0; d < dim; ++d) { nor_d[nbase + d] = nor(d); }

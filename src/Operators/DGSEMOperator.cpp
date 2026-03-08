@@ -73,11 +73,6 @@ namespace Prandtl
       {
         delete ptr;
       }
-    if (operator_cache.fqs_int != nullptr)
-      {
-        delete operator_cache.fqs_int;
-        operator_cache.fqs_int = nullptr;
-      }
   }
   
   void DGSEMOperator::ComputeBlendingCoefficient(const Vector &x) const
