@@ -525,7 +525,7 @@ void DGSEMOperator::ComputeGlobalPrimitiveGradVector(const Vector &u, Vector &du
                 const IntegrationPoint &ip = nodes.IntPoint(ld);
                 Vector X(dim);
                 Tr.Transform(ip, X);
-                const double r = (dim > 1) ? X(1) : 0.0;
+                const real_t r = (dim > 1) ? X(1) : 0.0;
 
                 if (std::abs(r) <= 1e-14)
                 {

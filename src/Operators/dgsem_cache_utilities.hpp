@@ -300,13 +300,13 @@ namespace Prandtl {
           }
       }
 
-    double *nor_d  = cache->face_normals.HostWrite();
-    double *inv1_d = cache->face_wt_minus.HostWrite();
-    double *inv2_d = cache->face_wt_plus.HostWrite();
+    real_t *nor_d  = cache->face_normals.HostWrite();
+    real_t *inv1_d = cache->face_wt_minus.HostWrite();
+    real_t *inv2_d = cache->face_wt_plus.HostWrite();
     const real_t w0 = cache->ir->IntPoint(0).weight;
     
     auto store = [&](int fslot, int fp, const mfem::Vector &nor,
-                     double inv_wJ1, double inv_wJ2)
+                     real_t inv_wJ1, real_t inv_wJ2)
     {
       const int nbase = (fslot * nfp + fp) * dim;
       for (int d = 0; d < dim; ++d) { nor_d[nbase + d] = nor(d); }
@@ -339,8 +339,8 @@ namespace Prandtl {
               const mfem::IntegrationPoint &ip = cache->ir_face->IntPoint(fp_geom);
               tr->SetAllIntPoints(&ip);
               
-              const double J1 = tr->GetElement1Transformation().Weight();
-              const double J2 = tr->GetElement2Transformation().Weight();
+              const real_t J1 = tr->GetElement1Transformation().Weight();
+              const real_t J2 = tr->GetElement2Transformation().Weight();
               
               if (dim == 1) { nor(0) = (tr->GetElement1IntPoint().x - 0.5)*2.0; }
               else          { mfem::CalcOrtho(tr->Jacobian(), nor); }
@@ -360,8 +360,8 @@ namespace Prandtl {
               const mfem::IntegrationPoint &ip = cache->ir_face->IntPoint(fp_geom);
               sh_tr->SetAllIntPoints(&ip);
               
-              const double J1 = sh_tr->GetElement1Transformation().Weight();
-              const double J2 = sh_tr->GetElement2Transformation().Weight();
+              const real_t J1 = sh_tr->GetElement1Transformation().Weight();
+              const real_t J2 = sh_tr->GetElement2Transformation().Weight();
               
               if (dim == 1) { nor(0) = (sh_tr->GetElement1IntPoint().x - 0.5)*2.0; }
               else          { mfem::CalcOrtho(sh_tr->Jacobian(), nor); }
