@@ -77,7 +77,7 @@ namespace Prandtl {
     const int Np_y = dim > 1 ? Np : 1;
     const int Np_z = dim > 2 ? Np : 1;
     const int neq = cache->num_equations;
-    Mesh *mesh = fes->GetMesh();
+    mfem::Mesh *mesh = fes->GetMesh();
 
     // Build integration rules
     const int IntegrationOrder = 2 * Np_x - 3;
@@ -109,7 +109,7 @@ namespace Prandtl {
     Dhat_T.SetSize(Np_x);
     Dhat2_T.SetSize(Np_x);
 
-    Vector wBary(Np_x);
+    mfem::Vector wBary(Np_x);
     wBary = 1.0;
 
     for (int i = 1; i < Np_x; i++)
@@ -434,10 +434,7 @@ namespace Prandtl {
                 "Element dof count not equal to num quadrature points.");
     int ds_size = cache.elem_attr.Size();
     MFEM_VERIFY(ds_size > 0, "Elem attr not set");
-    ds_size = cache.attr_marker.Size();
-    MFEM_VERIFY(ds_size > 0, "Attr markers not set");
-    ds_size = cache.dnfi_marker.Size();
-    MFEM_VERIFY(ds_size > 0, "dnfi markers not set");
+
     ds_size = cache.elWaveSpeed.Size();
     MFEM_VERIFY(ds_size == cache.num_elements, "Element wavespeeds missized.");
     ds_size = cache.bndWaveSpeed.Size();

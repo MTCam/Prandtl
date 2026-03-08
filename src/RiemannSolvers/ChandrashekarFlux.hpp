@@ -160,7 +160,7 @@ namespace Prandtl
       const real_t c1 = gasModel.sound_speed(S1);
       const real_t c2 = gasModel.sound_speed(S2);
 
-      const real_t lambda_max = std::max(vmag1+c1, vmag2+c2);
+      const real_t lambda_max = Kernels::rmax(vmag1 + c1, vmag2 + c2);
 
       const real_t beta1 = 0.5 * rho1 / p1;
       const real_t beta2 = 0.5 * rho2 / p2;
