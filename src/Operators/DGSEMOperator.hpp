@@ -71,7 +71,6 @@ private:
     void ComputeGlobalPrimitiveGradVector(const Vector &u, Vector &dudx, Vector &dudy) const;
     void ComputeGlobalPrimitiveGradVector(const Vector &u, Vector &dudx, Vector &dudy, Vector &dudz) const;
     void ComputeBlendingCoefficient(const Vector &u) const;
-    void AssembleDeviceCache();
 
 #ifdef AXISYMMETRIC
     void BuildAxisIndexFromMarker();

@@ -10,9 +10,7 @@
 namespace Prandtl
 {
   
-  // using namespace mfem;
-  
-  class DGSEMNonlinearForm : public ParNonlinearForm
+  class DGSEMNonlinearForm : public mfem::ParNonlinearForm
   {
   private:
     mutable mfem::Vector aux2_x, aux2_y, aux2_z;
