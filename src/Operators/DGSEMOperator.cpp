@@ -49,8 +49,8 @@ namespace Prandtl
     CreateOperatorCache();
     AssembleDeviceCache();
     nonlinearForm->SetOperatorCache(&operator_cache);
-    integrator->SetOperatorCache(&operator_cache);
-    nonlinearForm->SetDeviceCache(device_cache);
+    integrator->SetOperatorCache(&operator_cache); 
+    //    nonlinearForm->SetDeviceCache(device_cache);
   }
   
   void DGSEMOperator::CreateOperatorCache()
@@ -59,6 +59,8 @@ namespace Prandtl
     SetupRestrictions(vfes.get(), &operator_cache);
     SetupVolumeMarkers(vfes.get(), &operator_cache);
     SetupGeometricTerms(vfes.get(), &operator_cache);
+    // Important that gasModel is POD here for host<->device
+    operator_cache.gas = gasModel;
   }
 
   void DGSEMOperator::AssembleDeviceCache()

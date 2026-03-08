@@ -1,6 +1,6 @@
 #pragma once
-#include "dgsem_cache.hpp"
 #include "mfem.hpp"
+#include "dgsem_cache.hpp"
 
 namespace Prandtl {
 
@@ -27,15 +27,10 @@ namespace Prandtl {
 
   template<typename CacheT>
   void GetDiscretizationInfo(mfem::FiniteElementSpace *fes, CacheT *cache)
-  // This is called from OUTSIDE by DGSEMOperator.cpp
-  // Because this call requires some setup to be done
-  // *after* instantiation : can't be called from
-  // constructor.
-  //  void DGSEMNonlinearForm::CreateOperatorCache()
   {
 
     MFEM_VERIFY(fes, "fes must be set");
-    Mesh *mesh = fes->GetMesh();
+    mfem::Mesh *mesh = fes->GetMesh();
     MFEM_VERIFY(mesh, "mesh must be set");
     const int p = fes->GetFE(0)->GetOrder();
     const int dim = mesh->SpaceDimension();
@@ -62,6 +57,7 @@ namespace Prandtl {
   void SetupRestrictions(mfem::FiniteElementSpace *fes, CacheT *cache)
   {
     auto *pfes = dynamic_cast<mfem::ParFiniteElementSpace*>(fes);
+    MFEM_VERIFY(pfes, "Restriction setup requires ParFiniteElementSpace");
     cache->restr_v = fes->GetElementRestriction(mfem::ElementDofOrdering::LEXICOGRAPHIC);
     cache->restr_f = pfes->GetFaceRestriction(mfem::ElementDofOrdering::LEXICOGRAPHIC,
                                               mfem::FaceType::Interior,
@@ -70,7 +66,6 @@ namespace Prandtl {
 
   // Set up and populate elJac, elMetric, D, Dhat, Dhat2
   // Face normals, and weights
-  //void DGSEMNonlinearForm::AssembleGeometricTerms()
   template<typename CacheT>
   void SetupGeometricTerms(mfem::FiniteElementSpace *fes, CacheT *cache)
   {
@@ -103,7 +98,7 @@ namespace Prandtl {
     cache->elMetric.SetSize(dim*dim*Np_x*Np_y*Np_z*nelem);
     for (int i = 0; i < nelem; i++)
       {
-        ElementTransformation *T = fes->GetElementTransformation(i);
+        mfem::ElementTransformation *T = fes->GetElementTransformation(i);
         assert(T->ElementNo == i);
         AssembleElementVolumeGeometricTerms(*T, cache);
       }
@@ -247,7 +242,7 @@ namespace Prandtl {
   
   // Builds element-specific Jac/Metric and stuffs into cache.elJac, cache.elMetric
   template<typename CacheT>
-  void AssembleElementVolumeGeometricTerms(ElementTransformation &Tr, CacheT *cache)
+  void AssembleElementVolumeGeometricTerms(mfem::ElementTransformation &Tr, CacheT *cache)
   {
     
     real_t *Jinv_h = cache->elJac.HostWrite();
@@ -259,7 +254,7 @@ namespace Prandtl {
     
     for (int q = 0; q < nq; ++q)
       {
-        const IntegrationPoint &ip = cache->ir_vol->IntPoint(q);
+        const mfem::IntegrationPoint &ip = cache->ir_vol->IntPoint(q);
         Tr.SetIntPoint(&ip);
         const real_t J = Tr.Weight();
         Jinv_h[e*nq + q] = J;
@@ -285,7 +280,8 @@ namespace Prandtl {
     auto *mesh = fes->GetMesh();
     auto *pmesh = dynamic_cast<mfem::ParMesh*>(mesh);
     auto *pfes = dynamic_cast<mfem::ParFiniteElementSpace*>(fes);
-    cache->fqs_int = new mfem::FaceQuadratureSpace(*mesh, *cache->ir_face, mfem::FaceType::Interior);
+    cache->fqs_int.reset(new mfem::FaceQuadratureSpace(*mesh, *cache->ir_face,
+                                                       mfem::FaceType::Interior));
     MFEM_VERIFY(pfes, "need ParFiniteElementSpace");
     
     const int dim = mesh->Dimension();
@@ -305,13 +301,13 @@ namespace Prandtl {
           }
       }
 
-    double *nor_d  = cache->face_normals.HostWrite();
-    double *inv1_d = cache->face_wt_minus.HostWrite();
-    double *inv2_d = cache->face_wt_plus.HostWrite();
+    real_t *nor_d  = cache->face_normals.HostWrite();
+    real_t *inv1_d = cache->face_wt_minus.HostWrite();
+    real_t *inv2_d = cache->face_wt_plus.HostWrite();
     const real_t w0 = cache->ir->IntPoint(0).weight;
     
     auto store = [&](int fslot, int fp, const mfem::Vector &nor,
-                     double inv_wJ1, double inv_wJ2)
+                     real_t inv_wJ1, real_t inv_wJ2)
     {
       const int nbase = (fslot * nfp + fp) * dim;
       for (int d = 0; d < dim; ++d) { nor_d[nbase + d] = nor(d); }
@@ -344,8 +340,8 @@ namespace Prandtl {
               const mfem::IntegrationPoint &ip = cache->ir_face->IntPoint(fp_geom);
               tr->SetAllIntPoints(&ip);
               
-              const double J1 = tr->GetElement1Transformation().Weight();
-              const double J2 = tr->GetElement2Transformation().Weight();
+              const real_t J1 = tr->GetElement1Transformation().Weight();
+              const real_t J2 = tr->GetElement2Transformation().Weight();
               
               if (dim == 1) { nor(0) = (tr->GetElement1IntPoint().x - 0.5)*2.0; }
               else          { mfem::CalcOrtho(tr->Jacobian(), nor); }
@@ -365,8 +361,8 @@ namespace Prandtl {
               const mfem::IntegrationPoint &ip = cache->ir_face->IntPoint(fp_geom);
               sh_tr->SetAllIntPoints(&ip);
               
-              const double J1 = sh_tr->GetElement1Transformation().Weight();
-              const double J2 = sh_tr->GetElement2Transformation().Weight();
+              const real_t J1 = sh_tr->GetElement1Transformation().Weight();
+              const real_t J2 = sh_tr->GetElement2Transformation().Weight();
               
               if (dim == 1) { nor(0) = (sh_tr->GetElement1IntPoint().x - 0.5)*2.0; }
               else          { mfem::CalcOrtho(sh_tr->Jacobian(), nor); }
@@ -409,6 +405,11 @@ namespace Prandtl {
     // Updated every step by the compute device
     device_cache.elWaveSpeed_d = cache.elWaveSpeed.Write();
     device_cache.ifWaveSpeed_d = cache.ifWaveSpeed.Write();
+
+    // POD gas model
+    device_cache.gas = cache.gas;
+    device_cache.iflux = cache.iflux;
+ 
   }
 
   template<typename CacheT>

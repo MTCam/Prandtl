@@ -1,5 +1,9 @@
 #pragma once
 
+#include "mfem.hpp"
+#include "GasModel.hpp"
+#include "ChandrashekarFlux.hpp"
+
 namespace Prandtl
 {
     struct DGSEMOperatorCache {
@@ -19,12 +23,12 @@ namespace Prandtl
 
       // Host Only: Integration rules, operators, restrictions 
       mfem::IntegrationRules GLIntRules{0, mfem::Quadrature1D::GaussLobatto};
-      const IntegrationRule *ir = nullptr;
-      const IntegrationRule *ir_face = nullptr;
-      const IntegrationRule *ir_vol = nullptr;
+      const mfem::IntegrationRule *ir = nullptr;
+      const mfem::IntegrationRule *ir_face = nullptr;
+      const mfem::IntegrationRule *ir_vol = nullptr;
       const mfem::ElementRestrictionOperator *restr_v = nullptr; // for volume vfes
       const mfem::FaceRestriction *restr_f = nullptr; // for face vfes (vector space)
-      const mfem::FaceQuadratureSpace *fqs_int = nullptr; // interior faces perm
+      std::unique_ptr<mfem::FaceQuadratureSpace> fqs_int; // interior faces perm
 
       // Aux data for preprocessing
       mfem::Array<int> inv_fp_map;
@@ -33,9 +37,6 @@ namespace Prandtl
       mfem::Array<int> elem_attr;    // size ne, values are 1-based attributes
       mfem::Array<int> vol_attr_marker;  // size nattr, 0/1
       mfem::Array<int> domain_attr_marker;  // size nattr, 0/1
-      mutable mfem::Vector elWaveSpeed; // size nelements
-      mutable mfem::Vector ifWaveSpeed; // size ninterior faces
-      mutable mfem::Vector bndWaveSpeed; // size nbnd faces
       mfem::Vector elJac;
       mfem::Vector elMetric;
       mfem::Vector D;
@@ -44,6 +45,13 @@ namespace Prandtl
       mfem::Vector face_normals;
       mfem::Vector face_wt_minus;
       mfem::Vector face_wt_plus;
+
+      // Physics parts - used directly on device
+      mutable mfem::Vector elWaveSpeed; // size nelements
+      mutable mfem::Vector ifWaveSpeed; // size ninterior faces
+      mutable mfem::Vector bndWaveSpeed; // size nbnd faces
+      Prandtl::IdealGasModel gas;
+      Prandtl::ChandrashekarFlux::InviscidFlux iflux;
 
       // Grab the face dof from the restriction (face,point) index
       // This answers: what is the facial dof that corresponds to
@@ -81,6 +89,8 @@ namespace Prandtl
     const real_t *nor_d = nullptr;
     const real_t *fw_minus_d = nullptr;
     const real_t *fw_plus_d = nullptr;
+
+    // Physics parts
     real_t *elWaveSpeed_d = nullptr;
     real_t *ifWaveSpeed_d = nullptr;
     real_t *bndWaveSpeed_d = nullptr;
