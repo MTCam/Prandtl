@@ -59,7 +59,7 @@ private:
     Vector el_dudxi, el_dudeta, el_dudzeta;
 
     std::shared_ptr<LiftingScheme> liftingScheme;
-  DGSEMOperatorCache *operator_cache;
+  DGSEMOperatorCache *operator_cache = nullptr;
 
     void ComputeSubcellMetrics();
     void ComputeFVFluxes(const DenseMatrix &el_u_mat, real_t alpha_value, ElementTransformation &Tr, DenseMatrix &el_dudt_mat);

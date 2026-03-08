@@ -280,7 +280,8 @@ namespace Prandtl {
     auto *mesh = fes->GetMesh();
     auto *pmesh = dynamic_cast<mfem::ParMesh*>(mesh);
     auto *pfes = dynamic_cast<mfem::ParFiniteElementSpace*>(fes);
-    cache->fqs_int = new mfem::FaceQuadratureSpace(*mesh, *cache->ir_face, mfem::FaceType::Interior);
+    cache->fqs_int.reset(new mfem::FaceQuadratureSpace(*mesh, *cache->ir_face,
+                                                       mfem::FaceType::Interior));
     MFEM_VERIFY(pfes, "need ParFiniteElementSpace");
     
     const int dim = mesh->Dimension();

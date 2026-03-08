@@ -28,7 +28,7 @@ namespace Prandtl
       const mfem::IntegrationRule *ir_vol = nullptr;
       const mfem::ElementRestrictionOperator *restr_v = nullptr; // for volume vfes
       const mfem::FaceRestriction *restr_f = nullptr; // for face vfes (vector space)
-      const mfem::FaceQuadratureSpace *fqs_int = nullptr; // interior faces perm
+      std::unique_ptr<mfem::FaceQuadratureSpace> fqs_int; // interior faces perm
 
       // Aux data for preprocessing
       mfem::Array<int> inv_fp_map;
