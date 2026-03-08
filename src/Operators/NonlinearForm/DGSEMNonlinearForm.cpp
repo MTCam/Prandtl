@@ -848,6 +848,271 @@ void DGSEMNonlinearForm::Mult(const Vector &u, Vector &dudt) const
     }
 }
 
+// Assemble volume part of RHS for all elements
+// This routine will eventually just replace the original code
+// once the disabled/broken features can be reimplemented
+// This is the version that is device-ready and currently used by Prandtl.
+// NOTE:
+//  - No axisymmetry (broken in device version of MULT)
+//  - No subcell blending (broken in device version of MULT)
+real_t DGSEMNonlinearForm::MultVolumeInviscidDevice(const Vector &pu, Vector &pdudt) const
+{
+  // ScopedTimer timer("MultVolumeInviscidDevice");
+
+  // This block is executed by the host
+  mfem::Vector Ue(cache->restr_v->Height());
+  mfem::Vector dUe(cache->restr_v->Height());
+  Ue.UseDevice();
+  dUe.UseDevice();
+
+  cache->restr_v->Mult(pu, Ue);
+  
+  // If you want dUe zeroed before accumulation, do it explicitly on device:
+  {
+    real_t *d = dUe.Write();
+    mfem::forall(dUe.Size(), [=] MFEM_HOST_DEVICE (int i) { d[i] = real_t(0); });
+  }
+
+  const real_t *Ue_d = Ue.Read();
+  real_t *dUe_d = dUe.Write();
+
+  // Copy the device cache so that it is not member data
+  auto dc = device_cache;
+
+  // Device cache parameters
+  const int dim = dc.dim;
+  const int ne = dc.num_elements;
+  const int ndof = dc.ndof_scalar_el;
+  const int neq = dc.num_equations;
+
+  // Derived parameters
+  const int metric_stride = ndof * dim * dim;
+  const int jac_stride    = ndof;
+  const int estride = ndof*neq;
+  
+  // Device cache data/arrays
+  const int *elem_attr_d = dc.elem_attr_d;
+  const int *attr_marker_d = dc.attr_marker_d;
+  const real_t *elJac_d = dc.elJac_d;
+  const real_t *elMetric_d = dc.elMetric_d;
+  real_t *ws_d = dc.elWaveSpeed_d;
+
+  // Inside the FORALL below, executed on device
+  mfem::forall(ne, [=] MFEM_HOST_DEVICE (int e)
+  {
+    
+    const real_t *jac_el    = elJac_d    + e * jac_stride;
+    const real_t *metric_el = elMetric_d + e * metric_stride;
+
+    const int attr = elem_attr_d[e];
+    if (attr_marker_d[attr-1] == 0) {
+       ws_d[e] = 0.0;
+       return;
+    }
+    
+    const int eoff = e * estride;
+    const real_t *u_el = Ue_d + eoff;
+    real_t *du_el = dUe_d + eoff;
+
+    const real_t cs_el = \
+      DGSEMIntegrator::AssembleElementVolumeKernel(dc, u_el,
+                                                   jac_el, metric_el, du_el);
+    ws_d[e] = cs_el;
+  });
+
+  // Scatter RHS back to storage
+  cache->restr_v->AddMultTranspose(dUe, pdudt);
+
+  // Finish up on the host:
+  //  - Reduce for rank-local max_char_speed
+  const real_t *ws = cache->elWaveSpeed.HostRead();
+  real_t max_char_speed = 0.0;
+  for(int e = 0;e < cache->num_elements;e++)
+    {
+      max_char_speed = std::max(max_char_speed, ws[e]);
+    }
+
+  return max_char_speed;
+}
+
+real_t DGSEMNonlinearForm::MultInteriorFacesInviscidDevice(const Vector &pu, Vector &pdudt) const
+{
+  //  ScopedTimer timer("MultInteriorFacesInviscidDevice");
+  auto dc = device_cache;
+  const int dim = dc.dim;
+  const int neq = dc.num_equations;
+  const int nfp = dc.num_face_points;
+  const int nfaces = cache->restr_f->Height() / (nfp * neq * 2); // (+/-)
+  const int face_stride = 2 * nfp * neq;
+  const int side_stride = nfp * neq;
+  const int face_size = 2*nfp*neq;
+  const int norm_size = nfp*dim;
+  
+  mfem::Vector u_faces(cache->restr_f->Height());
+  mfem::Vector rhs_faces(cache->restr_f->Height());
+  mfem::Vector faces_dudt(pdudt);
+  faces_dudt.UseDevice();
+  rhs_faces.UseDevice();
+  u_faces.UseDevice();
+
+  // If zeroed before accumulation, do it explicitly on device:
+  // Potentially, this is not needed at all since I think we overwrite everything
+  {
+    real_t *d = rhs_faces.Write();
+    mfem::forall(rhs_faces.Size(), [=] MFEM_HOST_DEVICE (int i) { d[i] = real_t(0); });
+  }
+
+  cache->restr_f->Mult(pu, u_faces);
+
+  const real_t *u_d = u_faces.Read();
+  real_t *rhs_d = rhs_faces.Write();
+
+  const real_t *nor_d   = dc.nor_d;      // size nfaces*nfp*dim
+  const real_t *inv1_d  = dc.fw_minus_d; // size nfaces*nfp
+  const real_t *inv2_d  = dc.fw_plus_d;  // size nfaces*nfp
+
+  real_t *ws_d = dc.ifWaveSpeed_d;
+
+  mfem::forall(nfaces, [=] MFEM_HOST_DEVICE (int i)
+  {
+    const int face_offset = i*face_size;
+    const int n_offset = i*norm_size;
+    const int w_offset = i*nfp;
+
+    const real_t *u_face_d = u_d + face_offset;
+    real_t *rhs_face_d = rhs_d + face_offset;
+    const real_t *nor_face_d = nor_d + n_offset;
+    const real_t *w_minus_d = inv1_d + w_offset;
+    const real_t *w_plus_d = inv2_d + w_offset;
+    
+    real_t ws = DGSEMIntegrator::AssembleElementFaceKernel(dc, u_face_d, nor_face_d,
+                                                           w_minus_d, w_plus_d, rhs_face_d);
+    ws_d[i] = ws;
+    
+  });
+
+  cache->restr_f->MultTranspose(rhs_faces, faces_dudt);
+  pdudt += faces_dudt; // on device? 
+
+  // Finish up on the host:
+  //  - Reduce for rank-local max_char_speed
+  const real_t *ws = cache->ifWaveSpeed.HostRead();
+  real_t max_char_speed_facial = 0.0;
+  for(int f = 0;f < cache->num_interior_faces;f++)
+    {
+      max_char_speed_facial = std::max(max_char_speed_facial, ws[f]);
+    }
+
+  return max_char_speed_facial;
+}
+
+// Top level MULT for inviscid cases, called from DGSEMOperator
+real_t DGSEMNonlinearForm::MultInviscid(const Vector &u, Vector &dudt) const
+{
+  // ScopedTimer timer("MultInviscid");
+    const Vector &pu = Prolongate(u);
+    if (P)
+    {
+        aux2.SetSize(P->Height());
+    }
+
+    Vector &pdudt = P ? aux2 : dudt;
+    pdudt = 0.0;
+
+    real_t max_char_speed = 0.0;
+    // This step overwrites contents of pdudt
+    max_char_speed = MultVolumeInviscidDevice(pu, pdudt);
+    // std::cout << "Volume wavespeed: " << max_char_speed << std::endl;
+
+    real_t max_char_speed_facial = 0.0;
+    max_char_speed_facial = MultInteriorFacesInviscidDevice(pu, pdudt);
+    // std::cout << "Facial wavespeed: " << max_char_speed_facial << std::endl;
+    max_char_speed = std::max(max_char_speed, max_char_speed_facial);
+
+    Array<int> vdofs;
+    Vector el_u, el_dudt;
+    const FiniteElement *fe;
+    ElementTransformation *T;
+    Mesh *mesh = fes->GetMesh();
+
+
+    if (bfnfi.Size())
+    {
+        FaceElementTransformations *tr;
+        const FiniteElement *fe1, *fe2;
+
+        // Which boundary attributes need to be processed?
+        Array<int> bdr_attr_marker(mesh->bdr_attributes.Size() ?
+                                    mesh->bdr_attributes.Max() : 0);
+        bdr_attr_marker = 0;
+        for (int k = 0; k < bfnfi.Size(); k++)
+        {
+            if (bfnfi_marker[k] == NULL)
+            {
+                bdr_attr_marker = 1;
+                break;
+            }
+            Array<int> &bdr_marker = *bfnfi_marker[k];
+            MFEM_ASSERT(bdr_marker.Size() == bdr_attr_marker.Size(),
+                        "invalid boundary marker for boundary face integrator #"
+                        << k << ", counting from zero");
+            for (int i = 0; i < bdr_attr_marker.Size(); i++)
+            {
+                bdr_attr_marker[i] |= bdr_marker[i];
+            }
+        }
+
+        for (int i = 0; i < fes->GetNBE(); i++)
+        {
+            const int bdr_attr = mesh->GetBdrAttribute(i);
+            if (bdr_attr_marker[bdr_attr-1] == 0) { continue; }
+
+            tr = mesh->GetBdrFaceTransformations(i);
+            if (tr != NULL)
+            {
+                fes->GetElementVDofs(tr->Elem1No, vdofs);
+
+                pu.GetSubVector(vdofs, el_u);
+
+                fe1 = fes->GetFE(tr->Elem1No);
+                fe2 = fe1;
+                for (int k = 0; k < bfnfi.Size(); k++)
+                {
+                    if (bfnfi_marker[k] &&
+                        (*bfnfi_marker[k])[bdr_attr-1] == 0) { continue; }
+
+                    bfnfi[k]->AssembleFaceVector(*fe1, *fe2, *tr, el_u, el_dudt);
+                    pdudt.AddElementVector(vdofs, el_dudt);
+                }
+            }
+        }
+    }
+
+    if (Serial())
+    {
+        if (cP)
+        {
+            cP->MultTranspose(pdudt, dudt);
+        }
+
+        for (int i = 0; i < ess_tdof_list.Size(); i++)
+        {
+            dudt(ess_tdof_list[i]) = 0.0;
+        }
+    }
+    else
+    {
+        P->MultTranspose(aux2, dudt);
+
+        const int N = ess_tdof_list.Size();
+        const auto idx = ess_tdof_list.Read();
+        auto DU_RW = dudt.ReadWrite();
+        mfem::forall(N, [=] MFEM_HOST_DEVICE (int i) { DU_RW[idx[i]] = 0.0; });
+    }
+    return max_char_speed;
+}
+
+
 void DGSEMNonlinearForm::Mult(const Vector &u, const Vector &dudx, Vector &dudt) const
 {
     const Vector &pu = Prolongate(u);

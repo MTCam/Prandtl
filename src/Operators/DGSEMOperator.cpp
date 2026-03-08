@@ -47,9 +47,8 @@ namespace Prandtl
 #endif
     
     CreateOperatorCache();
-    AssembleDeviceCache();
     nonlinearForm->SetOperatorCache(&operator_cache);
-    integrator->SetOperatorCache(&operator_cache);
+    integrator->SetOperatorCache(&operator_cache); 
   }
   
   void DGSEMOperator::CreateOperatorCache()
@@ -62,11 +61,6 @@ namespace Prandtl
     operator_cache.gas = gasModel;
   }
 
-  void DGSEMOperator::AssembleDeviceCache()
-  {
-    GetDeviceCache(operator_cache, device_cache);
-  }
-  
   DGSEMOperator::~DGSEMOperator()
   {
     for (auto ptr : bfnfi)
@@ -554,58 +548,58 @@ void DGSEMOperator::ComputeGlobalPrimitiveGradVector(const Vector &u, Vector &du
 void DGSEMOperator::Mult(const Vector &u, Vector &dudt) const
 {
 #ifdef AXISYMMETRIC
-    RecoverStateFromWeighted(u, U);
-
-    const Vector &Ustate = U;
+  RecoverStateFromWeighted(u, U);
+  
+  const Vector &Ustate = U;
 #else
-    const Vector &Ustate = u;
+  const Vector &Ustate = u;
 #endif
-
+  
 #ifdef SUBCELL_FV_BLENDING
-    ComputeBlendingCoefficient(Ustate);
+  ComputeBlendingCoefficient(Ustate);
 #endif
-      
+  
 #ifdef PARABOLIC
-    ComputeGlobalEntropyVector(Ustate, global_entropy);
-
-    if (dim == 1)
+  ComputeGlobalEntropyVector(Ustate, global_entropy);
+  
+  if (dim == 1)
     {
-        nonlinearForm->MultLifting(global_entropy, *grad_u[0]);
-        ComputeGlobalPrimitiveGradVector(Ustate, *grad_u[0]);
-        nonlinearForm->Mult(Ustate, *grad_u[0], dudt);
+      nonlinearForm->MultLifting(global_entropy, *grad_u[0]);
+      ComputeGlobalPrimitiveGradVector(Ustate, *grad_u[0]);
+      nonlinearForm->Mult(Ustate, *grad_u[0], dudt);
     }
-    else if (dim == 2)
+  else if (dim == 2)
     {
       nonlinearForm->MultLifting(global_entropy, *grad_u[0], *grad_u[1]);
       ComputeGlobalPrimitiveGradVector(Ustate, *grad_u[0], *grad_u[1]);
       nonlinearForm->Mult(Ustate, *grad_u[0], *grad_u[1], dudt);    
     }
-    else
+  else
     {
-        nonlinearForm->MultLifting(global_entropy, *grad_u[0], *grad_u[1], *grad_u[2]);
-        ComputeGlobalPrimitiveGradVector(Ustate, *grad_u[0], *grad_u[1], *grad_u[2]);
-        nonlinearForm->Mult(Ustate, *grad_u[0], *grad_u[1], *grad_u[2], dudt);
+      nonlinearForm->MultLifting(global_entropy, *grad_u[0], *grad_u[1], *grad_u[2]);
+      ComputeGlobalPrimitiveGradVector(Ustate, *grad_u[0], *grad_u[1], *grad_u[2]);
+      nonlinearForm->Mult(Ustate, *grad_u[0], *grad_u[1], *grad_u[2], dudt);
     }
-
-    #ifdef AXISYMMETRIC
-        ZeroAxisRadialMom(dudt);
-    #endif
-
+  
 #else
-
+  bool use_device_path = true;
+  if(use_device_path){
+    max_char_speed = nonlinearForm->MultInviscid(Ustate, dudt);
+  } else {
     nonlinearForm->Mult(Ustate, dudt);
-
-    #ifdef AXISYMMETRIC
-        ZeroAxisRadialMom(dudt);
-    #endif
-
     max_char_speed = integrator->GetMaxCharSpeed();
-    for (int b = 0; b < bfnfi.size(); b++)
+  }
+  for (int b = 0; b < bfnfi.size(); b++)
     {
-        max_char_speed = std::max(bfnfi[b]->GetMaxCharSpeed(), max_char_speed);
+      max_char_speed = std::max(bfnfi[b]->GetMaxCharSpeed(), max_char_speed);
     }
-#endif
 
+#endif
+  
+#ifdef AXISYMMETRIC
+  ZeroAxisRadialMom(dudt);
+#endif
+  
 }
 
 void DGSEMOperator::AddBdrFaceIntegrator(BdrFaceIntegrator *bfi, Array<int> &bdr_marker)
