@@ -11,79 +11,31 @@ namespace Prandtl
     metric.SetSize(dim);
   }
   
-real_t ChandrashekarFlux::ComputeVolumeFlux(const Vector &state1, const Vector &state2,
-                                            const Vector &metric1, const Vector &metric2,
-                                            Vector &F_tilde)
-{
-    ComputeMean(metric1, metric2, metric);
-    PointStateView S1{state1.GetData()};
-    PointStateView S2{state2.GetData()};
-    
-    const real_t rho1 = gasModel.density(S1);
-    const real_t rho2 = gasModel.density(S2);
-    const real_t rho_ln = ComputeLogMean(rho1, rho2);
-    const real_t drho = rho2 - rho1;
-    real_t mom[3] = {0.0, 0.0, 0.0};
-    real_t h_hat = 0.0;
-    real_t vn = 0.0;
-    real_t v_21 = 0.0;
-    real_t v_22 = 0.0;
-    for(int idim = 0; idim < dim; idim++){
-      real_t v1 = gasModel.velocity(S1, idim);
-      real_t v2 = gasModel.velocity(S2, idim);
-      real_t v_bar = 0.5*(v1 + v2);
-      v_21 += v1*v1;
-      v_22 += v2*v2;
-      vn += v_bar * metric(idim);
-      mom[idim] = rho_ln * v_bar;
-      h_hat += -0.25*(v1*v1 + v2*v2) + v_bar * v_bar;
-    }
-    
-    const real_t p1 = gasModel.pressure(S1);
-    const real_t p2 = gasModel.pressure(S2);
+  real_t ChandrashekarFlux::ComputeVolumeFlux(const Vector &state1, const Vector &state2,
+                                              const Vector &metric1, const Vector &metric2,
+                                              Vector &F_tilde)
+  {
+    return ComputeVolumeFluxKernel(gasModel, state1.GetData(), state2.GetData(),
+                                   metric1.GetData(), metric2.GetData(),
+                                   F_tilde.GetData());
+  }
 
-    const real_t speed1 = std::sqrt(v_21);
-    const real_t speed2 = std::sqrt(v_22);
 
-    const real_t c1 = gasModel.sound_speed(S1);
-    const real_t c2 = gasModel.sound_speed(S2);
+  real_t ChandrashekarFlux::ComputeFaceFlux(const Vector &state1, const Vector &state2,
+                                            const Vector &nor, Vector &flux) const
+  {
+    return ComputeFaceFluxKernel(gasModel, state1.GetData(), state2.GetData(),
+                                 nor.GetData(), flux.GetData());
+  }
 
-    const real_t lambda_1 = speed1 + c1;
-    const real_t lambda_max = std::max(lambda_1, speed2 + c2);
-
-    // These next bits are specific to single component ideal gas 
-    const real_t beta1 = 0.5 * rho1 / p1;
-    const real_t beta2 = 0.5 * rho2 / p2;
-    const real_t beta_ln = ComputeLogMean(beta1, beta2);
-
-    const real_t p_hat = 0.5 * (rho1 + rho2) / (beta1 + beta2);
-
-    // Use the average gamma for now
-    // TODO: Craft KEPEC fluxes for LTE/NLTE
-    const real_t gm11 = gasModel.gamma(S1);
-    const real_t gm12 = gasModel.gamma(S2);
-    const real_t gm1_av_inv = 2.0/(gm11 + gm12 - 2.0);
-
-    h_hat += 0.5 / beta_ln * gm1_av_inv + p_hat / rho_ln;
-
-    F_tilde(0) = rho_ln * vn;
-    for (int d = 0; d < dim; d++)
-    {
-        F_tilde(1 + d) = vn * mom[d] + p_hat * metric(d);
-    }
-    F_tilde(1 + dim) = rho_ln * vn * h_hat;
-
-    return lambda_max;
-}
-
-real_t ChandrashekarFlux::ComputeFaceFlux(const Vector &state1, const Vector &state2,
-                                          const Vector &nor, Vector &flux) const
-{
+  real_t ChandrashekarFlux::ComputeFaceFluxOG(const Vector &state1, const Vector &state2,
+                                              const Vector &nor, Vector &flux)
+  {
     PointStateView S1{state1.GetData()};
     PointStateView S2{state2.GetData()};
     
     const real_t nor_mag = nor.Norml2();
-
+    
     const real_t rho1 = gasModel.density(S1);
     const real_t rho2 = gasModel.density(S2);
     const real_t rho_mean = 0.5 * (rho1 + rho2);

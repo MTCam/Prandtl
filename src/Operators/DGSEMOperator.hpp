@@ -7,12 +7,13 @@
 #include "Indicator.hpp"
 #include "BasicOperations.hpp"
 #include "GasModel.hpp"
+#include "dgsem_cache_utilities.hpp"
 
 namespace Prandtl
 {
 
 using namespace mfem;
-
+  
 class DGSEMOperator : public TimeDependentOperator
 {
 private:
@@ -61,12 +62,16 @@ private:
     mutable Array<int> ind_indx;
     mutable Vector ind_dof;
     mutable real_t alpha_dof;
+    DGSEMOperatorCache operator_cache;
+    DGSEMDeviceCache device_cache;
 
+    void CreateOperatorCache();
     void ComputeGlobalEntropyVector(const Vector &u, Vector &global_entropy) const;
     void ComputeGlobalPrimitiveGradVector(const Vector &u, Vector &dudx) const;
     void ComputeGlobalPrimitiveGradVector(const Vector &u, Vector &dudx, Vector &dudy) const;
     void ComputeGlobalPrimitiveGradVector(const Vector &u, Vector &dudx, Vector &dudy, Vector &dudz) const;
     void ComputeBlendingCoefficient(const Vector &u) const;
+    void AssembleDeviceCache();
 
 #ifdef AXISYMMETRIC
     void BuildAxisIndexFromMarker();
@@ -133,7 +138,6 @@ public:
         p_floor_abs = std::max(p_floor_abs, p_fac * p_inf);
     }
 #endif
-
 };
 
 }

@@ -3,7 +3,10 @@
 #include "mfem.hpp"
 #include "DGSEMIntegrator.hpp"
 #include "BdrFaceIntegrator.hpp"
-#include "../../../libs/mfem/general/forall.hpp"
+#include "timer.hpp"
+#include "general/forall.hpp"
+#include "dgsem_cache_utilities.hpp"
+#include <mpi.h>
 
 namespace Prandtl
 {
@@ -17,8 +20,14 @@ private:
     Array<DGSEMIntegrator*> dnfi, fnfi;
     Array<BdrFaceIntegrator*> bfnfi;
     mutable ParGridFunction GRAD_X, GRAD_Y, GRAD_Z;
+    Prandtl::DGSEMOperatorCache *cache;
+    Prandtl::DGSEMDeviceCache device_cache;
+
 public:
     DGSEMNonlinearForm(ParFiniteElementSpace *pfes);
+    void SetOperatorCache(DGSEMOperatorCache *cache_){
+      cache = cache_;
+    }
     void MultLifting(const Vector &u, Vector &dudx, Vector &dudy, Vector &dudz) const;
     void MultLifting(const Vector &u, Vector &dudx, Vector &dudy) const;
     void MultLifting(const Vector &u, Vector &dudx) const;
