@@ -9,21 +9,19 @@
 namespace Prandtl
 {
 
-  using namespace mfem;
-
-  class DGSEMIntegrator : public NonlinearFormIntegrator
+  class DGSEMIntegrator : public mfem::NonlinearFormIntegrator
   {
   private:
-    std::shared_ptr<ParMesh> pmesh;
-    std::shared_ptr<ParFiniteElementSpace> fes0;
-    std::shared_ptr<ParGridFunction> alpha;
+    std::shared_ptr<mfem::ParMesh> pmesh;
+    std::shared_ptr<mfem::ParFiniteElementSpace> fes0;
+    std::shared_ptr<mfem::ParGridFunction> alpha;
     NumericalFlux &rsolver;
     const NavierStokesFlux &fluxFunction;
-    DenseMatrix D_T, Dhat_T, Dhat2_T;
+    mfem::DenseMatrix D_T, Dhat_T, Dhat2_T;
     const int Np_x, Np_y, Np_z;
     const int num_equations, dim, num_elements;
-    IntegrationRules GLIntRules;
-    const IntegrationRule *ir, *ir_face, *ir_vol;
+    mfem::IntegrationRules GLIntRules;
+    const mfem::IntegrationRule *ir, *ir_face, *ir_vol;
 
     real_t max_char_speed;
     real_t J, J1, J2;
@@ -31,40 +29,41 @@ namespace Prandtl
     int id1, id2;
     int IntegrationOrder;
 
-    Vector shape1, shape2;
-    Vector state1, state2;
-    Vector f, g, h;
+    mfem::Vector shape1, shape2;
+    mfem::Vector state1, state2;
+    mfem::Vector f, g, h;
 
-    Vector flux_num;
-    DenseMatrix flux_mat1, flux_mat2, flux_mat;
+    mfem::Vector flux_num;
+    mfem::DenseMatrix flux_mat1, flux_mat2, flux_mat;
 
-    DenseMatrix adj1, adj2;
-    Vector metric1, metric2;
-    Vector nor;
+    mfem::DenseMatrix adj1, adj2;
+    mfem::Vector metric1, metric2;
+    mfem::Vector nor;
 
-    DenseTensor F_inviscid, G_inviscid, H_inviscid;
-    DenseMatrix F_viscous, G_viscous, H_viscous;
+    mfem::DenseTensor F_inviscid, G_inviscid, H_inviscid;
+    mfem::DenseMatrix F_viscous, G_viscous, H_viscous;
 
-    Vector D_row;
+    mfem::Vector D_row;
 
-    Vector dU_inviscid, dU_viscous, dU_volume, dU_face1, dU_face2, dU, dU_subcell;
+    mfem::Vector dU_inviscid, dU_viscous, dU_volume, dU_face1, dU_face2, dU, dU_subcell;
 
-    DenseTensor SubcellMetricXi, SubcellMetricEta, SubcellMetricZeta;
+    mfem::DenseTensor SubcellMetricXi, SubcellMetricEta, SubcellMetricZeta;
 
-    Array<int> alpha_indx;
-    Vector el_alpha;
+    mfem::Array<int> alpha_indx;
+    mfem::Vector el_alpha;
 
-    Vector dqdx, dqdy, dqdz;
+    mfem::Vector dqdx, dqdy, dqdz;
 
-    Vector el_dudxi, el_dudeta, el_dudzeta;
+    mfem::Vector el_dudxi, el_dudeta, el_dudzeta;
 
     std::shared_ptr<LiftingScheme> liftingScheme;
     DGSEMOperatorCache *operator_cache = nullptr;
 
     void ComputeSubcellMetrics();
-    void ComputeFVFluxes(const DenseMatrix &el_u_mat, real_t alpha_value, ElementTransformation &Tr, DenseMatrix &el_dudt_mat);
+    void ComputeFVFluxes(const mfem::DenseMatrix &el_u_mat, real_t alpha_value, mfem::ElementTransformation &Tr,
+                         mfem::DenseMatrix &el_dudt_mat);
 #ifdef AXISYMMETRIC
-    inline real_t PressureFromConservative(const Vector& U) const;
+    inline real_t PressureFromConservative(const mfem::Vector& U) const;
 #endif
 
   public:
@@ -75,30 +74,48 @@ namespace Prandtl
       return max_char_speed;
     }
 
-    DGSEMIntegrator(std::shared_ptr<ParMesh> pmesh,
-                    std::shared_ptr<ParFiniteElementSpace> fes0,
-                    std::shared_ptr<ParGridFunction> alpha,
+    DGSEMIntegrator(std::shared_ptr<mfem::ParMesh> pmesh,
+                    std::shared_ptr<mfem::ParFiniteElementSpace> fes0,
+                    std::shared_ptr<mfem::ParGridFunction> alpha,
                     std::shared_ptr<LiftingScheme> liftingScheme,
                     NumericalFlux &rsolver, int Np);
 
-    void AssembleFaceVector(const FiniteElement &el1, const FiniteElement &el2, FaceElementTransformations &Tr, const Vector &el_u, Vector &el_dudt) override;
-    void AssembleElementVector(const FiniteElement &el, ElementTransformation &Tr, const Vector &el_u, Vector &el_dutdt) override;
+    void AssembleFaceVector(const mfem::FiniteElement &el1, const mfem::FiniteElement &el2,
+                            mfem::FaceElementTransformations &Tr, const mfem::Vector &el_u,
+                            mfem::Vector &el_dudt) override;
+    void AssembleElementVector(const mfem::FiniteElement &el, mfem::ElementTransformation &Tr,
+                               const mfem::Vector &el_u, mfem::Vector &el_dutdt) override;
     
-    void AssembleFaceVector(const FiniteElement &el, const FiniteElement &el2, FaceElementTransformations &Tr, const Vector &el_u, const Vector &el_dudx, const Vector &el_dudy, const Vector &el_dudz, Vector &el_dudt);
-    void AssembleFaceVector(const FiniteElement &el, const FiniteElement &el2, FaceElementTransformations &Tr, const Vector &el_u, const Vector &el_dudx, const Vector &el_dudy, Vector &el_dudt);
-    void AssembleFaceVector(const FiniteElement &el, const FiniteElement &el2, FaceElementTransformations &Tr, const Vector &el_u, const Vector &el_dudx, Vector &el_dudt);
+    void AssembleFaceVector(const mfem::FiniteElement &el, const mfem::FiniteElement &el2,
+                            mfem::FaceElementTransformations &Tr, const mfem::Vector &el_u,
+                            const mfem::Vector &el_dudx, const mfem::Vector &el_dudy,
+                            const mfem::Vector &el_dudz, mfem::Vector &el_dudt);
+    void AssembleFaceVector(const mfem::FiniteElement &el, const mfem::FiniteElement &el2,
+                            mfem::FaceElementTransformations &Tr, const mfem::Vector &el_u,
+                            const mfem::Vector &el_dudx, const mfem::Vector &el_dudy, mfem::Vector &el_dudt);
+    void AssembleFaceVector(const mfem::FiniteElement &el, const mfem::FiniteElement &el2, mfem::FaceElementTransformations &Tr, const mfem::Vector &el_u, const mfem::Vector &el_dudx, mfem::Vector &el_dudt);
 
-    void AssembleElementVector(const FiniteElement &el, ElementTransformation &Tr, const Vector &el_u, const Vector &el_dudx, const Vector &el_dudy, const Vector &el_dudz, Vector &el_dudt);
-    void AssembleElementVector(const FiniteElement &el, ElementTransformation &Tr, const Vector &el_u, const Vector &el_dudx, const Vector &el_dudy, Vector &el_dudt);
-    void AssembleElementVector(const FiniteElement &el, ElementTransformation &Tr, const Vector &el_u, const Vector &el_dudx, Vector &el_dudt);
+    void AssembleElementVector(const mfem::FiniteElement &el, mfem::ElementTransformation &Tr, const mfem::Vector &el_u, const mfem::Vector &el_dudx, const mfem::Vector &el_dudy, const mfem::Vector &el_dudz, mfem::Vector &el_dudt);
+    void AssembleElementVector(const mfem::FiniteElement &el, mfem::ElementTransformation &Tr, const mfem::Vector &el_u, const mfem::Vector &el_dudx, const mfem::Vector &el_dudy, mfem::Vector &el_dudt);
+    void AssembleElementVector(const mfem::FiniteElement &el, mfem::ElementTransformation &Tr, const mfem::Vector &el_u, const mfem::Vector &el_dudx, mfem::Vector &el_dudt);
 
-    void AssembleLiftingFaceVector(const FiniteElement &el1, const FiniteElement &el2, FaceElementTransformations &Tr, const Vector &el_u, Vector &el_dudx, Vector &el_dudy, Vector &el_dudz);
-    void AssembleLiftingFaceVector(const FiniteElement &el1, const FiniteElement &el2, FaceElementTransformations &Tr, const Vector &el_u, Vector &el_dudx, Vector &el_dudy);
-    void AssembleLiftingFaceVector(const FiniteElement &el1, const FiniteElement &el2, FaceElementTransformations &Tr, const Vector &el_u, Vector &el_dudx);
+    void AssembleLiftingFaceVector(const mfem::FiniteElement &el1, const mfem::FiniteElement &el2,
+                                   mfem::FaceElementTransformations &Tr, const mfem::Vector &el_u,
+                                   mfem::Vector &el_dudx, mfem::Vector &el_dudy, mfem::Vector &el_dudz);
+    void AssembleLiftingFaceVector(const mfem::FiniteElement &el1, const mfem::FiniteElement &el2,
+                                   mfem::FaceElementTransformations &Tr, const mfem::Vector &el_u,
+                                   mfem::Vector &el_dudx, mfem::Vector &el_dudy);
+    void AssembleLiftingFaceVector(const mfem::FiniteElement &el1, const mfem::FiniteElement &el2,
+                                   mfem::FaceElementTransformations &Tr, const mfem::Vector &el_u,
+                                   mfem::Vector &el_dudx);
     
-    void AssembleLiftingElementVector(const FiniteElement &el, ElementTransformation &Tr, const Vector &el_u, Vector &el_dudx, Vector &el_dudy, Vector &el_dudz);
-    void AssembleLiftingElementVector(const FiniteElement &el, ElementTransformation &Tr, const Vector &el_u, Vector &el_dudx, Vector &el_dudy);
-    void AssembleLiftingElementVector(const FiniteElement &el, ElementTransformation &Tr, const Vector &el_u, Vector &el_dudx);
+    void AssembleLiftingElementVector(const mfem::FiniteElement &el, mfem::ElementTransformation &Tr,
+                                      const mfem::Vector &el_u, mfem::Vector &el_dudx, mfem::Vector &el_dudy,
+                                      mfem::Vector &el_dudz);
+    void AssembleLiftingElementVector(const mfem::FiniteElement &el, mfem::ElementTransformation &Tr,
+                                      const mfem::Vector &el_u, mfem::Vector &el_dudx, mfem::Vector &el_dudy);
+    void AssembleLiftingElementVector(const mfem::FiniteElement &el, mfem::ElementTransformation &Tr,
+                                      const mfem::Vector &el_u, mfem::Vector &el_dudx);
     ~DGSEMIntegrator() = default;
   public:
 
@@ -258,7 +275,7 @@ namespace Prandtl
           }
         }
       // #ifdef AXISYMMETRIC
-      //        Vector phys(dim);
+      //        mfem::Vector phys(dim);
       //        Tr.Transform(ip, phys);
       //        real_t r = phys[1]; 
       //        flux_num *= r;
