@@ -2,82 +2,102 @@
 
 namespace Prandtl
 {
-DGSEMOperator::DGSEMOperator(std::shared_ptr<ParFiniteElementSpace> vfes_,
-                             std::shared_ptr<ParFiniteElementSpace> fes0_,
-                             std::shared_ptr<ParMesh> pmesh_,
-                             std::shared_ptr<ParGridFunction> eta_,
-                             std::shared_ptr<ParGridFunction> alpha_,
-                             std::vector<std::shared_ptr<ParGridFunction> > &grad_u_,
-                             std::unique_ptr<DGSEMIntegrator> integrator_,
-                             std::unique_ptr<Indicator> indicator_,
-                             const IdealGasModel &gasModel_,
-                             std::shared_ptr<ParGridFunction> r_gf_,
-                             const real_t alpha_max, const real_t alpha_min)
-                             : TimeDependentOperator(vfes_->GetTrueVSize()),
-                             vfes(vfes_), fes0(fes0_), pmesh(pmesh_),
-                               eta(eta_), alpha(alpha_), grad_u(grad_u_),
-                             integrator(std::move(integrator_)), indicator(std::move(indicator_)),
-                             gasModel(gasModel_),
-                             num_equations(vfes->GetVDim()), dim(pmesh->SpaceDimension()),
-                             order(vfes->GetElementOrder(0)), num_elements(pmesh->GetNE()),
-                             Ndofs(vfes->GetFE(0)->GetDof()),
-                             modalThreshold(0.5 * std::pow(10.0, -1.8 * std::pow(order, 0.25))),
-                             r_gf(r_gf_), alpha_max(alpha_max), alpha_min(alpha_min),
-                             num_dofs_scalar(vfes_->GetTrueVSize()/vfes_->GetVDim())
-                             #ifdef AXISYMMETRIC
-                             , U(vfes->GetTrueVSize())
-                             #endif
-{
+  DGSEMOperator::DGSEMOperator(std::shared_ptr<ParFiniteElementSpace> vfes_,
+                               std::shared_ptr<ParFiniteElementSpace> fes0_,
+                               std::shared_ptr<ParMesh> pmesh_,
+                               std::shared_ptr<ParGridFunction> eta_,
+                               std::shared_ptr<ParGridFunction> alpha_,
+                               std::vector<std::shared_ptr<ParGridFunction> > &grad_u_,
+                               std::unique_ptr<DGSEMIntegrator> integrator_,
+                               std::unique_ptr<Indicator> indicator_,
+                               const IdealGasModel &gasModel_,
+                               std::shared_ptr<ParGridFunction> r_gf_,
+                               const real_t alpha_max, const real_t alpha_min)
+  : TimeDependentOperator(vfes_->GetTrueVSize()),
+    vfes(vfes_), fes0(fes0_), pmesh(pmesh_),
+    eta(eta_), alpha(alpha_), grad_u(grad_u_),
+    integrator(std::move(integrator_)), indicator(std::move(indicator_)),
+    gasModel(gasModel_),
+    num_equations(vfes->GetVDim()), dim(pmesh->SpaceDimension()),
+    order(vfes->GetElementOrder(0)), num_elements(pmesh->GetNE()),
+    Ndofs(vfes->GetFE(0)->GetDof()),
+    modalThreshold(0.5 * std::pow(10.0, -1.8 * std::pow(order, 0.25))),
+    r_gf(r_gf_), alpha_max(alpha_max), alpha_min(alpha_min),
+    num_dofs_scalar(vfes_->GetTrueVSize()/vfes_->GetVDim())
+#ifdef AXISYMMETRIC
+  , U(vfes->GetTrueVSize())
+#endif
+  {
     nonlinearForm.reset(new DGSEMNonlinearForm(vfes.get()));
-
+    
     nonlinearForm->AddDomainIntegrator(integrator.get());
     nonlinearForm->AddInteriorFaceIntegrator(integrator.get());
-
+    
     std::vector<BdrFaceIntegrator*>::iterator it1 = bfnfi.begin();
     std::vector<Array<int>>::iterator it2 = bdr_marker.begin();
-
+    
     for (; it1 != bfnfi.end() && it2 != bdr_marker.end(); ++it1, ++it2)
-    {
+      {
         nonlinearForm->AddBdrFaceIntegrator(*it1, *it2);
-    }
+      }
     nonlinearForm->UseExternalIntegrators();
-
+    
 #ifdef PARABOLIC
     global_entropy.SetSize(vfes->GetVSize());
 #endif
-}
+    
+    CreateOperatorCache();
+    AssembleDeviceCache();
+    nonlinearForm->SetOperatorCache(&operator_cache);
+    integrator->SetOperatorCache(&operator_cache);
+  }
+  
+  void DGSEMOperator::CreateOperatorCache()
+  {
+    GetDiscretizationInfo(vfes.get(), &operator_cache);
+    SetupRestrictions(vfes.get(), &operator_cache);
+    SetupVolumeMarkers(vfes.get(), &operator_cache);
+    SetupGeometricTerms(vfes.get(), &operator_cache);
+    // Important that gasModel is POD for host<->device
+    operator_cache.gas = gasModel;
+  }
 
-DGSEMOperator::~DGSEMOperator()
-{
+  void DGSEMOperator::AssembleDeviceCache()
+  {
+    GetDeviceCache(operator_cache, device_cache);
+  }
+  
+  DGSEMOperator::~DGSEMOperator()
+  {
     for (auto ptr : bfnfi)
-    {
+      {
         delete ptr;
-    }
-}
-
-void DGSEMOperator::ComputeBlendingCoefficient(const Vector &x) const
-{
+      }
+  }
+  
+  void DGSEMOperator::ComputeBlendingCoefficient(const Vector &x) const
+  {
     indicator->CheckSmoothness(x);
     for (int el = 0; el < num_elements; el++)
-    {
+      {
         fes0->GetElementDofs(el, ind_indx);
         eta->GetSubVector(ind_indx, ind_dof);
         alpha_dof = 1.0 / (1.0 + std::exp(-sharpness_fac * (ind_dof(0) - modalThreshold) / modalThreshold));
         if (alpha_dof < alpha_min)
-        {
+          {
             alpha_dof = 0.0;
-        }
+          }
         else if (alpha_dof > (1.0 - alpha_min))
-        {
+          {
             alpha_dof = 1.0;
-        }
+          }
         alpha_dof = std::min(alpha_dof, alpha_max);
         alpha->SetSubVector(ind_indx, alpha_dof);
-    }
+      }
     
-}
-
-void DGSEMOperator::ComputeGlobalEntropyVector(const Vector &u, Vector &global_entropy) const
+  }
+  
+  void DGSEMOperator::ComputeGlobalEntropyVector(const Vector &u, Vector &global_entropy) const
 {
     DenseMatrix ent_mat(Ndofs, num_equations);
     for (int el = 0; el < num_elements; el++)
@@ -500,7 +520,7 @@ void DGSEMOperator::ComputeGlobalPrimitiveGradVector(const Vector &u, Vector &du
                 const IntegrationPoint &ip = nodes.IntPoint(ld);
                 Vector X(dim);
                 Tr.Transform(ip, X);
-                const double r = (dim > 1) ? X(1) : 0.0;
+                const real_t r = (dim > 1) ? X(1) : 0.0;
 
                 if (std::abs(r) <= 1e-14)
                 {
@@ -585,6 +605,7 @@ void DGSEMOperator::Mult(const Vector &u, Vector &dudt) const
         max_char_speed = std::max(bfnfi[b]->GetMaxCharSpeed(), max_char_speed);
     }
 #endif
+
 }
 
 void DGSEMOperator::AddBdrFaceIntegrator(BdrFaceIntegrator *bfi, Array<int> &bdr_marker)

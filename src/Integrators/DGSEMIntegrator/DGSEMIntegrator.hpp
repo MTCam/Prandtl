@@ -3,6 +3,8 @@
 #include "mfem.hpp"
 #include "NumericalFlux.hpp"
 #include "LiftingScheme.hpp"
+#include "ChandrashekarFlux.hpp"
+#include "dgsem_cache.hpp"
 
 namespace Prandtl
 {
@@ -57,6 +59,7 @@ private:
     Vector el_dudxi, el_dudeta, el_dudzeta;
 
     std::shared_ptr<LiftingScheme> liftingScheme;
+  DGSEMOperatorCache *operator_cache = nullptr;
 
     void ComputeSubcellMetrics();
     void ComputeFVFluxes(const DenseMatrix &el_u_mat, real_t alpha_value, ElementTransformation &Tr, DenseMatrix &el_dudt_mat);
@@ -65,7 +68,8 @@ private:
 #endif
 
 public:
-
+  void SetOperatorCache(DGSEMOperatorCache *cache_)
+  { operator_cache = cache_; };
     inline real_t GetMaxCharSpeed()
     {
         return max_char_speed;
