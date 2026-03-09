@@ -582,6 +582,7 @@ void DGSEMOperator::Mult(const Vector &u, Vector &dudt) const
     }
   
 #else
+
   bool use_device_path = true;
   if(use_device_path){
     max_char_speed = nonlinearForm->MultInviscid(Ustate, dudt);
@@ -599,7 +600,7 @@ void DGSEMOperator::Mult(const Vector &u, Vector &dudt) const
 #ifdef AXISYMMETRIC
   ZeroAxisRadialMom(dudt);
 #endif
-  
+
 }
 
 void DGSEMOperator::AddBdrFaceIntegrator(BdrFaceIntegrator *bfi, Array<int> &bdr_marker)

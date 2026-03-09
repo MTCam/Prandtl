@@ -41,25 +41,22 @@ namespace Prandtl
     real_t MultVolumeInviscidDevice(const mfem::Vector &pu, mfem::Vector &pdudt) const;
     real_t MultInteriorFacesInviscidDevice(const mfem::Vector &pu, mfem::Vector &pdudt) const;
     real_t MultInviscid(const mfem::Vector &pu, mfem::Vector &pdudt) const;
-  void AddDomainIntegrator(DGSEMIntegrator *nlfi)
+    void AddDomainIntegrator(DGSEMIntegrator *nlfi)
     {
-        dnfi.Append(nlfi);
-        dnfi_marker.Append(NULL);
+      dnfi.Append(nlfi);
+      dnfi_marker.Append(NULL);
     }
-         
+
     void AddInteriorFaceIntegrator(DGSEMIntegrator *nlfi)
     {
-        fnfi.Append(nlfi);
+      fnfi.Append(nlfi);
     }
-
-
+    
     void AddBdrFaceIntegrator(BdrFaceIntegrator *bfi, mfem::Array<int> &bdr_marker)
     {
-        bfnfi.Append(bfi);
-        bfnfi_marker.Append(&bdr_marker);
+      bfnfi.Append(bfi);
+      bfnfi_marker.Append(&bdr_marker);
     }
 
-
-};
-
+  };
 }

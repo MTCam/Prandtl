@@ -62,7 +62,6 @@ private:
     mutable Array<int> ind_indx;
     mutable Vector ind_dof;
     mutable real_t alpha_dof;
-
     DGSEMOperatorCache operator_cache;
 
     void CreateOperatorCache();
