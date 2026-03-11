@@ -16,11 +16,11 @@ namespace Prandtl
     real_t gamma_gammaM1Inverse; // gamma * gammaM1Inverse;
     real_t gammaM1_gammaInverse; // gammaM1 * gammaInverse;
 
-    const real_t Pr;
-    const real_t PrInverse;
-    const real_t R_gas;
-    const real_t cp;
-    const real_t mu;
+    real_t Pr;
+    real_t PrInverse;
+    real_t R_gas;
+    real_t cp;
+    real_t mu;
 
     const real_t *lte_table = nullptr;
     int *hunt      = nullptr;
@@ -44,10 +44,10 @@ namespace Prandtl
         PrInverse(0), cp(0),
         lte_table(lte_table), hunt(hunt), rho_grid(rho_grid), rhoe_grid(rhoe_grid) {}
 
-    const real_t mu_bulk = 2.0 / 3.0;
-    const real_t mu0 = 1.716e-5;
-    const real_t T0 = 273.15;
-    const real_t Ts = 110.4;
+    real_t mu_bulk = 2.0 / 3.0;
+    real_t mu0 = 1.716e-5;
+    real_t T0 = 273.15;
+    real_t Ts = 110.4;
 };
 
 // extern const real_t gamma;
