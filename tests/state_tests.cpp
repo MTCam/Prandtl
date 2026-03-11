@@ -154,10 +154,10 @@ TEST(LTE_StateLayout_Indexing_NoScalars_2D)
     EXPECT_CLOSE(layout.num_properties,   9,      0.0);
     EXPECT_CLOSE(layout.P_idx,            0,      0.0);
     EXPECT_CLOSE(layout.T_idx,            1,      0.0);
-    EXPECT_CLOSE(layout.H_idx,            2,      0.0);
+    EXPECT_CLOSE(layout.s_idx,            2,      0.0);
     EXPECT_CLOSE(layout.c_idx,            3,      0.0);
     EXPECT_CLOSE(layout.cv_idx,           4,      0.0);
-    EXPECT_CLOSE(layout.cp_idx,           5,      0.0);
+    EXPECT_CLOSE(layout.R_eq_idx,         5,      0.0);
     EXPECT_CLOSE(layout.gamma_eq_idx,     6,      0.0);
     EXPECT_CLOSE(layout.mu_idx,           7,      0.0);
     EXPECT_CLOSE(layout.lambda_idx,       8,      0.0);

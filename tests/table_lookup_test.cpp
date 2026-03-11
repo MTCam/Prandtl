@@ -372,5 +372,12 @@ TEST(InverseLTETable_test)
     real_t rho_inverse_interp = mix2.density();
     EXPECT_CLOSE(rho_true, rho_inverse_interp, 1e-5);
 
+    // TEST 3 - Obtaining internal energy from the from pressure (inverse table lookup)
+    real_t rhoe_new = 700000.0;
+    fill_single_dof_state(L, U, dim, rho_true, u1, rhoe_new);
+    PointStateView S(U.data());
+    real_t rhoe_inverse = eos.internal_energy_from_pressure(*phys, L, S, P_interpolated, 0);
+    EXPECT_CLOSE(rhoe_true, rhoe_inverse, 1e-8);
+
     return 0;
 }

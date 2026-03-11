@@ -18,8 +18,7 @@ namespace Prandtl
     inline real_t R_gas(const PhysicsConstants &phys, const StateLayout &L,
                         const StateView &S, const int dof) const
     {
-      std::cerr<< " CL ALERT : R_gas is currently not stored in LTE tables " << phys.R_gas << std::endl;
-      return phys.R_gas;
+      return bilinear_interpolate(L.R_eq_idx, phys, L, S, dof);
     }
  
     template<typename StateView>
@@ -76,11 +75,50 @@ namespace Prandtl
     template<typename StateView>
     MFEM_HOST_DEVICE
     inline real_t internal_energy_from_pressure(const PhysicsConstants &phys, const StateLayout &L,
-                                                const StateView &S, real_t pressure) const
+                                                const StateView &S, real_t pressure_target,
+                                                const int dof) const
     {
-        // rho*e = rho*E - 0.5*rho*|u|^2
-      std::cerr<< " internal_energy_from_pressure is currently not functional in LTE "<<std::endl;
-      return pressure / (phys.gamma - 1.0);
+      real_t U[L.eq_energy + 1]; // CL NOTE : Need a MACRO for size
+      PointStateViewRW S_dummy(U);
+      S_dummy.set_mass(L, S.mass(L));
+      for(int idim = 0; idim < L.dim; idim++)
+      {
+        S_dummy.set_momentum(L, idim, S.momentum(L, idim));
+      }
+      S_dummy.set_energy(L, S.energy(L));
+
+      // Secant Method to find internal energy that matches a target pressure
+      real_t tol   = 1e-12;
+      real_t denom = 0.0;
+      real_t ie_old = internal_energy_density(phys, L, S, dof);
+      real_t ie_new = ie_old*1.01 + 1e-12;
+
+      real_t ke = kinetic_energy_density(phys, L, S, dof);
+
+      real_t f_old, f_new, ie_update;
+
+      for(int iter = 0; iter < 100; iter++)
+      {
+        S_dummy.set_energy(L, ie_old+ke);
+        f_old = bilinear_interpolate(L.P_idx, phys, L, S_dummy, dof, true) - pressure_target;
+
+        S_dummy.set_energy(L, ie_new+ke);
+        f_new = bilinear_interpolate(L.P_idx, phys, L, S_dummy, dof, true) - pressure_target;
+
+        denom = f_new - f_old;
+
+        if( std::abs(f_new) < tol || std::abs(denom) < 1e-12){
+          std::cout<<"\n\tCL DEBUG : iterations = "<<iter<<std::endl;
+          break;
+        }
+
+        ie_update = ie_new - f_new * (ie_new - ie_old) / denom;
+
+        ie_old = ie_new;
+        ie_new = ie_update;
+      }
+
+      return ie_new;
     }
 
     template<typename StateView>
@@ -89,8 +127,8 @@ namespace Prandtl
                                            const StateView &S, const int dof) const
     {
         // e = (rho*e) / rho
-      const real_t rho  = density(phys, L, S);
-      const real_t rhoe = internal_energy_density(phys, L, S);
+      const real_t rho  = density(phys, L, S, dof);
+      const real_t rhoe = internal_energy_density(phys, L, S, dof);
       return rhoe / rho;
     }
 
@@ -126,15 +164,9 @@ namespace Prandtl
                                  const StateView &S, const real_t *grad_rho,
                                  const real_t *grad_p, real_t *grad_t) const
     {
-      std::cerr<< " CL ALERT : grad_temperature is currently not functional in LTE yet"<<std::endl;
-      // const int dim = L.dim;
-      // const real_t rho = density(phys, L, S);
-      // const real_t pressor = pressure(phys, L, S)/rho;
-      // const real_t cv = cp(phys, L, S)/phys.gamma;
-      // const real_t fac = phys.gammaM1Inverse/(cv*rho);
-      // for(int i = 0; i < dim; i++){
-      //   grad_t[i] = fac*(grad_p[i] - pressor*grad_rho[i]);
-      // }
+      for(int i = 0; i < L.dim; i++){
+        grad_t[i] = grad_p[i]; // CL NOTE : we store T_xi in contiguous gradient array for LTE (W=[rho, u, v, w , T])
+      }     
     }
 
     template<typename StateView>
@@ -145,13 +177,20 @@ namespace Prandtl
       return bilinear_interpolate(L.c_idx, phys, L, S, dof);
     }
     
-    // cp is constant for ideal gas
+    template<typename StateView>
+    MFEM_HOST_DEVICE
+    inline real_t cv(const PhysicsConstants &phys, const StateLayout &L,
+                     const StateView &S, const int dof) const
+    {
+      return bilinear_interpolate(L.cv_idx, phys, L, S, dof);
+    }
+
     template<typename StateView>
     MFEM_HOST_DEVICE
     inline real_t cp(const PhysicsConstants &phys, const StateLayout &L,
                      const StateView &S, const int dof) const
     {
-        return bilinear_interpolate(L.cp_idx, phys, L, S, dof);
+        return cv(phys, L, S, dof) * gamma(phys, L, S, dof);
     }
 
     template<typename StateView>
@@ -159,11 +198,7 @@ namespace Prandtl
     inline real_t entropy(const PhysicsConstants &phys, const StateLayout &L,
                           const StateView &S, const int dof) const
     {
-      std::cerr<< " CL ALERT : entropy is currently not functional in LTE yet"<<std::endl;
-      // const real_t p = pressure(phys, L, S);
-      // const real_t gamma = phys.gamma;
-      // // TODO: Augment for correct treatment of passive scalars
-      // return std::log(p) - gamma * std::log(S.mass(L));
+      return bilinear_interpolate(L.s_idx, phys, L, S, dof);
       return 0.0;
     }
 
@@ -172,30 +207,23 @@ namespace Prandtl
     inline void entropy_state(const PhysicsConstants &phys, const StateLayout &L,
                               const InStateView &S, OutStateView &E, const int dof) const
     {
-      std::cerr<< " CL ALERT : entropy_state is currently not functional in LTE yet"<<std::endl;
-      // const real_t p = pressure(phys, L, S);
-      // const real_t gamma = phys.gamma;
-      // const real_t rho = S.mass(L);
-      // const real_t s = std::log(p) - gamma*std::log(rho);
-      // const real_t beta = rho / p;
-      // const real_t v2o2 = kinetic_energy_density(phys, L, S) / rho;
-      // const real_t s_rho = (gamma - s)/(gamma - 1) - beta*v2o2;
+      const real_t p    = pressure(phys, L, S, dof);
+      const real_t rho  = S.mass(L);
+      const real_t T    = temperature(phys, L, S, dof);
+      const real_t s    = entropy(phys, L, S, dof);
+      const real_t e    = specific_internal_energy(phys, L, S, dof);
+      const real_t v2o2 = kinetic_energy_density(phys, L, S) / rho;
+      const real_t beta = 1/T;
 
-      // E.set_mass(L, s_rho);
-      // int dim = L.dim;
-      // int num_scalars = L.num_scalars;
-      // for(int idim = 0;idim < dim;idim++){
-      //   E.set_momentum(L, idim, beta * S.velocity(L, idim));
-      // }
-      // E.set_energy(L, -beta);
-      // // TODO: Update for correct treatment of passive scalars (depends on ES approach)
-      // // - Here we should probably set the entropy state to scalar_state / density
-      // // - If we do that, we need to modify the mass component of the entropy state
-      // // - Making this fix will make the sensor function sensitive to the scalars
-      // // - If we need to recover CV from this, lax scalar treatment is a nogo
-      // for(int iscalar = 0;iscalar < num_scalars;iscalar++){
-      //   E.set_scalar(L, iscalar, 0.0);
-      // }
+      const real_t ent_1 = (e + p/rho - v2o2)*beta - s;
+
+      E.set_mass(L, ent_1);
+      int dim = L.dim;
+      int num_scalars = L.num_scalars;
+      for(int idim = 0;idim < dim;idim++){
+        E.set_momentum(L, idim, beta * S.velocity(L, idim));
+      }
+      E.set_energy(L, -beta);
     }
 
     template<typename InStateView, typename OutStateView>
@@ -204,27 +232,19 @@ namespace Prandtl
                                           const InStateView &S, const InStateView &dE,
                                           OutStateView &dPrim, const int dof) const
     {
-      std::cerr<< " CL ALERT : not functional in LTE yet"<<std::endl;
-      // const real_t ke = kinetic_energy_density(phys, L, S);
-      // const real_t p = pressure(phys, L, S);
-      // const real_t rho = S.mass(L);
-      // const real_t rhoE = S.energy(L);
-      // const real_t ie = internal_energy_density(phys, L, S);
 
-      // int dim = L.dim;
-      // int num_scalars = L.num_scalars;
+      const real_t T    = temperature(phys, L, S, dof);
 
-      // real_t drho = 0.0;
-      // for(int idim = 0; idim < dim; idim++){
-      //   dPrim.set_momentum(L, idim, p/rho * (dE.momentum(L, idim) + S.velocity(L, idim)*dE.energy(L)));
-      //   drho += S.momentum(L, idim)*dPrim.momentum(L, idim);
-      // }
-      // drho = rho*dE.mass(L) - dE.energy(L)*(ke - ie) + rho*drho/p;
-      // dPrim.set_mass(L, drho);
-      // dPrim.set_energy(L, p/rho * (dPrim.mass(L) + p*dE.energy(L)));
-      // for(int isp = 0; isp < num_scalars; isp++){
-      //   dPrim.set_scalar(L, isp, 0.0); // just a placeholder for now
-      // }
+      dPrim.set_mass(L, 0.0); // CL NOTE : won't be using density gradient in LTE (if W = [rho, u, v, w , T])
+
+      int dim = L.dim;
+      for(int i=0; i < dim; i++)
+      {
+        dPrim.set_momentum(L, i, dE.momentum(L, i)*T + T*S.velocity(L, i)*dE.energy(L));
+      }
+
+      dPrim.set_energy(L, T*T*dE.energy(L));
+
     }
 
     template<typename InStateView, typename OutStateView>
@@ -232,23 +252,7 @@ namespace Prandtl
     inline void entropy_to_conserved(const PhysicsConstants &phys, const StateLayout &L,
                                      const InStateView &Se, OutStateView &Sc, const int dof) const
     {
-      std::cerr<< " CL ALERT : not functional in LTE yet"<<std::endl;
-      // int dim = L.dim;
-      // const real_t beta = -Se.energy(L);
-      // real_t k = 0.0;
-      // real_t vel[3];
-      // for(int idim = 0;idim < dim;idim++){
-      //   vel[idim] = Se.momentum(L, idim)/beta;
-      //   k += vel[idim]*vel[idim];
-      // }
-      // const real_t gamma = phys.gamma;
-      // const real_t s = gamma - (Se.mass(L) + 0.5*k*beta)*(gamma - 1.);
-      // const real_t rho = std::pow(std::exp(-s)/beta, 1.0/(gamma - 1));
-      // Sc.set_mass(L, rho);
-      // Sc.set_energy(L, rho*(1.0/(beta*(gamma-1.)) + 0.5*k));
-      // for(int idim = 0;idim < dim;idim++){
-      //   Sc.set_momentum(L, idim, rho*vel[idim]);
-      // }
+      std::cerr<< " CL ALERT : Not functional in LTE yet "<<std::endl;
     }
 
     // TODO: Consider whether this is needed/convenient
@@ -272,7 +276,8 @@ namespace Prandtl
     template<typename StateView>
     MFEM_HOST_DEVICE
     inline real_t bilinear_interpolate(int property_idx, const PhysicsConstants &phys,
-                                       const StateLayout &L, const StateView &S, const int dof) const
+                                       const StateLayout &L, const StateView &S, const int dof,
+                                       const bool check=false) const
     {
       /*
       * Q01--------Q11
@@ -292,17 +297,27 @@ namespace Prandtl
       real_t rho_l  = phys.rho_grid[l_x] , rho_u = phys.rho_grid[u_x];
       real_t rhoe_l = phys.rhoe_grid[l_y], rhoe_u = phys.rhoe_grid[u_y];
 
+      // Point rho and rhoe values
+      real_t rho  = density(phys, L, S, dof);
+      real_t rhoe = internal_energy_density(phys, L, S, dof);
+
+      if(check)
+      {
+        if(rhoe_l > rhoe || rho_u < rhoe )
+        {
+          l_y = hunt(phys.rhoe_grid, L.ny, rhoe, l_y);
+          phys.hunt[dof + L.num_dofs_scalar] = l_y;
+          u_y = l_y + 1;
+          rhoe_l = phys.rhoe_grid[l_y];
+          rhoe_u = phys.rhoe_grid[u_y];
+        }
+      }
 
       // Get the corner property values
       real_t Q00 = phys.lte_table[L.lte_property_index(property_idx, l_x, l_y)];
       real_t Q01 = phys.lte_table[L.lte_property_index(property_idx, l_x, u_y)];
       real_t Q10 = phys.lte_table[L.lte_property_index(property_idx, u_x, l_y)];
       real_t Q11 = phys.lte_table[L.lte_property_index(property_idx, u_x, u_y)];
-
-
-      // Point rho and rhoe values
-      real_t rho  = density(phys, L, S, dof);
-      real_t rhoe = internal_energy_density(phys, L, S, dof);
 
 
       real_t wx = (rho  - rho_l)  / (rho_u - rho_l);

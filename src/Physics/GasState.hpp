@@ -50,10 +50,10 @@ namespace Prandtl
     // Property indices in the LTE table
     int P_idx        = 0;  // pressure
     int T_idx        = 1;  // temperature
-    int H_idx        = 2;  // total enthalpy
-    int c_idx        = 3;  // sound speed
+    int s_idx        = 2;  // mixture entropy
+    int c_idx        = 3;  // equilibrium sound-speed
     int cv_idx       = 4;  // specific heat at constant volume
-    int cp_idx       = 5;  // specific heat at constant pressure
+    int R_eq_idx     = 5;  // Mixture gas constant
     int gamma_eq_idx = 6;  // gamma-eq
     int mu_idx       = 7;  // shear viscosity
     int lambda_idx   = 8;  // thermal conductivity
