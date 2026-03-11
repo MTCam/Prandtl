@@ -107,8 +107,8 @@ namespace Prandtl
 
         denom = f_new - f_old;
 
-        if( std::abs(f_new) < tol || std::abs(denom) < 1e-12){
-          std::cout<<"\n\tCL DEBUG : iterations = "<<iter<<std::endl;
+        if( std::abs(f_new) < tol || std::abs(denom) < 1e-12)
+        {
           break;
         }
 

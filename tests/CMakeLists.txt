@@ -28,12 +28,10 @@ add_executable(gas_tests
    transport_tests.cpp
    gas_model_tests.cpp
 )
+
 target_include_directories(gas_tests
-    PUBLIC ${PROJECT_SOURCE_DIR}/libs/mfem
-    PUBLIC ${PROJECT_SOURCE_DIR}/libs/hypre/src/hypre/include
-    PUBLIC ${PROJECT_SOURCE_DIR}/libs/metis-5.1.0/include
-    ${PROJECT_SOURCE_DIR}/src/Physics
-    ${PROJECT_SOURCE_DIR}/src/Device
+    PRIVATE ${PROJECT_SOURCE_DIR}/src/Physics
+    PRIVATE ${PROJECT_SOURCE_DIR}/src/Device
 )
 
 # Propagate SUTHERLAND compile definition to gas_tests if enabled
@@ -41,14 +39,7 @@ if(SUTHERLAND)
     target_compile_definitions(gas_tests PRIVATE SUTHERLAND)
 endif()
 
-target_link_directories(gas_tests
-    PUBLIC ${PROJECT_SOURCE_DIR}/libs/mfem
-    PUBLIC ${PROJECT_SOURCE_DIR}/libs/hypre/src/lib
-    PUBLIC ${PROJECT_SOURCE_DIR}/libs/metis-5.1.0/lib
-)
-target_link_libraries(gas_tests
-    mfem HYPRE metis MPI::MPI_CXX
-)
+target_link_libraries(gas_tests PRIVATE ${PRANDTL_MFEM_TARGET})
 
 add_test(NAME GasPhysicsTestingSuite COMMAND gas_tests)
 
@@ -59,21 +50,11 @@ add_executable(state_tests
 )
 
 target_include_directories(state_tests
-    PUBLIC ${PROJECT_SOURCE_DIR}/libs/mfem
-    PUBLIC ${PROJECT_SOURCE_DIR}/libs/hypre/src/hypre/include
-    PUBLIC ${PROJECT_SOURCE_DIR}/libs/metis-5.1.0/include
-    ${PROJECT_SOURCE_DIR}/src/Physics
-    ${PROJECT_SOURCE_DIR}/src/Device
+    PRIVATE ${PROJECT_SOURCE_DIR}/src/Physics
+    PRIVATE ${PROJECT_SOURCE_DIR}/src/Device
 )
 
-target_link_directories(state_tests
-    PUBLIC ${PROJECT_SOURCE_DIR}/libs/mfem
-    PUBLIC ${PROJECT_SOURCE_DIR}/libs/hypre/src/lib
-    PUBLIC ${PROJECT_SOURCE_DIR}/libs/metis-5.1.0/lib
-)
-target_link_libraries(state_tests
-    mfem HYPRE metis MPI::MPI_CXX
-)
+target_link_libraries(state_tests PRIVATE ${PRANDTL_MFEM_TARGET})
 
 add_test(NAME StateTestingSuite COMMAND state_tests)
     

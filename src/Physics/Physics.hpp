@@ -1,20 +1,20 @@
 #pragma once
 
-#include "Kernels.hpp"
+#include "prandtl_kernels.hpp"
 
 namespace Prandtl
 {
 
   struct PhysicsConstants
   {
-    const real_t gamma;
-    const real_t gammaInverse;
-    const real_t gammaP1;
-    const real_t gammaM1;
-    const real_t gammaP1Inverse;
-    const real_t gammaM1Inverse;
-    const real_t gamma_gammaM1Inverse; // gamma * gammaM1Inverse;
-    const real_t gammaM1_gammaInverse; // gammaM1 * gammaInverse;
+    real_t gamma;
+    real_t gammaInverse;
+    real_t gammaP1;
+    real_t gammaM1;
+    real_t gammaP1Inverse;
+    real_t gammaM1Inverse;
+    real_t gamma_gammaM1Inverse; // gamma * gammaM1Inverse;
+    real_t gammaM1_gammaInverse; // gammaM1 * gammaInverse;
 
     const real_t Pr;
     const real_t PrInverse;
@@ -26,6 +26,8 @@ namespace Prandtl
     int *hunt      = nullptr;
     const real_t *rho_grid  = nullptr;
     const real_t *rhoe_grid = nullptr;
+
+    MFEM_HOST_DEVICE PhysicsConstants() = default;
 
     PhysicsConstants(real_t gamma, real_t Pr, real_t R_gas, real_t mu)
       : gamma(gamma), Pr(Pr), R_gas(R_gas), mu(mu),

@@ -20,7 +20,7 @@
 //
 // Each block has length = num_dofs_scalar (wrt mesh or element)
 //
-#include "Kernels.hpp"
+#include "prandtl_kernels.hpp"
 
 namespace Prandtl
 {
@@ -58,6 +58,7 @@ namespace Prandtl
     int mu_idx       = 7;  // shear viscosity
     int lambda_idx   = 8;  // thermal conductivity
 
+    MFEM_HOST_DEVICE StateLayout() = default;
     /**
      * Set up after creation.
      *
@@ -166,7 +167,7 @@ namespace Prandtl
   {
     const real_t* U;           // packed state data -> [rho, rhoVx, rhoVy, ..., rhoE]
     
-    PointStateView(const real_t* U_)
+    MFEM_HOST_DEVICE explicit PointStateView(const real_t* U_)
       : U(U_)
     { }
 
