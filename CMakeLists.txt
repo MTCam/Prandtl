@@ -115,7 +115,7 @@ endif()
 option(NO_OPT "Disable optimizations for testing" OFF)
 
 if (NO_OPT AND CMAKE_CXX_COMPILER_ID MATCHES "Clang|AppleClang|GNU")
-  message(STATUS "Disabling all optimizations on target: myexe")
+  message(STATUS "Disabling all optimizations on target: ${PROJECT_NAME}")
 
   # Compile flags
   target_compile_options(${PROJECT_NAME} PRIVATE
