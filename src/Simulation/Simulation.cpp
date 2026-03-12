@@ -831,6 +831,8 @@ void Simulation::LoadConfig(const std::string &config_file_path)
             }
         }
     }
+    // Set up the operator cache
+    NS->Finalize();
 
     if (Mpi::Root())
     {

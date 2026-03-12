@@ -1,4 +1,5 @@
 #pragma once
+
 #include <cmath>
 // Drag in essential parts of MFEM for kernels
 #include "config/config.hpp"
@@ -22,8 +23,85 @@ namespace Prandtl
   namespace Kernels {
     MFEM_HOST_DEVICE inline real_t rmax(real_t a, real_t b) { return a > b ? a : b; }
     MFEM_HOST_DEVICE inline real_t rsqrt(real_t x) { return std::sqrt(x); }  // mfem::sqrt?
-    MFEM_HOST_DEVICE inline real_t rlog(real_t x)  { return std::log(x); }   // mfe::log?
-    
+    MFEM_HOST_DEVICE inline real_t rlog(real_t x)  { return std::log(x); }   // mfem::log?
+    MFEM_HOST_DEVICE inline real_t rpow(real_t x, real_t y) { return std::pow(x, y); };
+
+    MFEM_HOST_DEVICE inline void Normalize(const int dim, real_t *vec){
+      real_t fac = 0.0;
+      for(int idim = 0;idim < dim;idim++){
+        fac += (vec[idim]*vec[idim]);
+      }
+      fac = 1.0/rsqrt(fac);
+      for(int idim = 0;idim < dim;idim++){
+        vec[idim] *= fac;
+      }
+    }
+
+    MFEM_HOST_DEVICE
+    inline void Normal(const int dim, const real_t *vec, real_t *nor)
+    {
+      MFEM_ASSERT(dim == 2 || dim == 3, "Normal only defined here for 2D/3D");
+      
+      if (dim == 2)
+        {
+          nor[0] = -vec[1];
+          nor[1] =  vec[0];
+          return;
+        }
+      
+      // 3D
+      const real_t x = vec[0];
+      const real_t y = vec[1];
+      const real_t z = vec[2];
+      
+      const real_t ax = fabs(x);
+      const real_t ay = fabs(y);
+      const real_t az = fabs(z);
+      
+      // Reject zero vector
+      MFEM_ASSERT(ax > 0 || ay > 0 || az > 0, "Zero vector has no normal");
+      
+      // Pick the coordinate axis least aligned with vec.
+      // Then nor = vec x e_i.
+      if (ax <= ay && ax <= az)
+        {
+          nor[0] =  0.0;
+          nor[1] =  z;
+          nor[2] = -y;
+        }
+      else if (ay <= ax && ay <= az)
+        {
+          nor[0] = -z;
+          nor[1] =  0.0;
+          nor[2] =  x;
+        }
+      else
+        {
+          nor[0] =  y;
+          nor[1] = -x;
+          nor[2] =  0.0;
+        }
+    }
+
+    MFEM_HOST_DEVICE
+    inline real_t Dot(const int dim, const real_t *vec1, const real_t *vec2)
+    {
+      real_t dp = 0.0;
+      for(int idim = 0;idim < dim;idim++)
+        dp += vec1[idim]*vec2[idim];
+      return dp;
+    }
+
+    MFEM_HOST_DEVICE
+    inline void Cross(const int dim, const real_t *vec1, const real_t *vec2, real_t *cross)
+    {
+      MFEM_ASSERT(dim == 3, "Apply cross product only to 3D vectors");
+      
+      cross[0] = vec1[1] * vec2[2] - vec1[2] * vec2[1];
+      cross[1] = vec1[2] * vec2[0] - vec1[0] * vec2[2];
+      cross[2] = vec1[0] * vec2[1] - vec1[1] * vec2[0];
+    }
+
     MFEM_HOST_DEVICE
     inline void ComputeMeanVec(const real_t* a, const real_t* b, real_t* out, int n)
     {
@@ -48,6 +126,7 @@ namespace Prandtl
           return (y - x) / Kernels::rlog(xi);
         }
     }
+
     // Element storage: component-major (q blocks), length = dof*num_eq
     // u[q*dof + id]
     MFEM_HOST_DEVICE inline

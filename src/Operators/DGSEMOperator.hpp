@@ -64,7 +64,6 @@ private:
     mutable real_t alpha_dof;
     DGSEMOperatorCache operator_cache;
 
-    void CreateOperatorCache();
     void ComputeGlobalEntropyVector(const Vector &u, Vector &global_entropy) const;
     void ComputeGlobalPrimitiveGradVector(const Vector &u, Vector &dudx) const;
     void ComputeGlobalPrimitiveGradVector(const Vector &u, Vector &dudx, Vector &dudy) const;
@@ -136,6 +135,7 @@ public:
         p_floor_abs = std::max(p_floor_abs, p_fac * p_inf);
     }
 #endif
+    void Finalize();
 };
 
 }

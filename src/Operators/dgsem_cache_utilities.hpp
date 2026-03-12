@@ -4,6 +4,8 @@
 
 namespace Prandtl {
 
+  // TODO: Not complete as written, after this, callsites need to set up
+  //       Boundary Face data structures with a separate call.  Need to fix.
   template<typename CacheT>
   void GetOperatorCache(mfem::FiniteElementSpace *fes, CacheT *cache)
   {
@@ -11,7 +13,7 @@ namespace Prandtl {
     SetupRestrictions(fes, cache);
     SetupVolumeMarkers(fes, cache);
     SetupGeometricTerms(fes, cache);
- 
+    // AssembleBoundaryFaceGeometryTerms(fes, cache);
     // TODO: Move these to where the caches are created and validated
     // MFEM_VERIFY(nfaces == cache.num_interior_faces, "restriction faces != cached interior faces");
     // MFEM_VERIFY(cache.face_normals.Size() == nfaces*nfp*dim, "normals size mismatch");
@@ -61,6 +63,9 @@ namespace Prandtl {
     cache->restr_v = fes->GetElementRestriction(mfem::ElementDofOrdering::LEXICOGRAPHIC);
     cache->restr_f = pfes->GetFaceRestriction(mfem::ElementDofOrdering::LEXICOGRAPHIC,
                                               mfem::FaceType::Interior,
+                                              mfem::L2FaceValues::DoubleValued);
+    cache->restr_b = pfes->GetFaceRestriction(mfem::ElementDofOrdering::LEXICOGRAPHIC,
+                                              mfem::FaceType::Boundary,
                                               mfem::L2FaceValues::DoubleValued);
   }
 
@@ -179,9 +184,6 @@ namespace Prandtl {
     cache->num_interior_faces = nfaces_restr;
     MFEM_VERIFY(nfaces_restr > 0, "nfaces_restr is 0");
 
-    cache->face_normals.SetSize(nfaces_restr * nfp * dim);
-    cache->face_wt_minus.SetSize(nfaces_restr * nfp);
-    cache->face_wt_plus.SetSize(nfaces_restr * nfp);
     AssembleInteriorFaceGeometryTerms(fes, cache);
     
     cache->face_normals.UseDevice();
@@ -240,6 +242,185 @@ namespace Prandtl {
   }
 
   
+  template <typename CacheT>
+  void BuildBoundaryFacePermutationMap(mfem::ParMesh *pmesh, CacheT *cache)
+  {
+    MFEM_VERIFY(cache->ir_face, "cache->ir_face must exist");
+
+    auto &bnd_faces = pmesh->GetFaceIndices(mfem::FaceType::Boundary);
+    const int nbnd_faces = bnd_faces.Size();
+    const int nfp = cache->ir_face->GetNPoints();
+
+    cache->inv_fp_map_bnd.SetSize(nbnd_faces * nfp);
+
+    for (int fslot = 0; fslot < nbnd_faces; ++fslot)
+      {
+        for (int fp_restr = 0; fp_restr < nfp; ++fp_restr)
+          {
+            const int fp_perm = cache->fqs_bnd->GetPermutedIndex(fslot, fp_restr);
+            cache->inv_fp_map_bnd[fslot * nfp + fp_perm] = fp_restr;
+          }
+      }
+  }
+
+  template <typename CacheT>
+  void BuildBoundaryFaceBCMap(mfem::ParMesh *pmesh,
+                              const std::vector<mfem::Array<int>> &bdr_marker_vector,
+                              CacheT *cache)
+  {
+    auto &bnd_faces = pmesh->GetFaceIndices(mfem::FaceType::Boundary);
+    const auto &bnd_face_attr = pmesh->GetBdrFaceAttributes();
+
+    const int nbnd_faces = bnd_faces.Size();
+
+    MFEM_VERIFY(bnd_face_attr.Size() == nbnd_faces,
+                "Expected compact boundary-face attribute array");
+
+    cache->bnd_attr.SetSize(nbnd_faces);
+    cache->bc_index.SetSize(nbnd_faces);
+    
+    for (int fslot = 0; fslot < nbnd_faces; ++fslot)
+      {
+        const int attr = bnd_face_attr[fslot];
+        cache->bnd_attr[fslot] = attr;
+        cache->bc_index[fslot] = -1;
+        
+        if (attr <= 0) { continue; }
+        
+        for (int bc = 0; bc < (int)bdr_marker_vector.size(); ++bc)
+          {
+            const auto &marker = bdr_marker_vector[bc];
+            MFEM_VERIFY(attr-1 < marker.Size(), "boundary attribute out of marker range");
+            
+            if (marker[attr-1])
+              {
+                cache->bc_index[fslot] = bc;
+                break;
+              }
+          }
+      }
+  }
+
+  inline void BuildBoundaryFaceToBEMap(mfem::ParMesh *pmesh,
+                                       mfem::Array<int> &face_to_be)
+  {
+    const int nfaces = pmesh->GetNumFaces();
+    face_to_be.SetSize(nfaces);
+    face_to_be = -1;
+    
+    for (int be = 0; be < pmesh->GetNBE(); ++be)
+      {
+        const int face_id = pmesh->GetBdrElementFaceIndex(be);
+        // const int face_id = pmesh->GetBdrFace(be);
+        MFEM_VERIFY(face_id >= 0 && face_id < nfaces, "bad boundary face id");
+        MFEM_VERIFY(face_to_be[face_id] < 0, "duplicate boundary element for face");
+        face_to_be[face_id] = be;
+      }
+  }
+
+  template<typename CacheT>
+  void AssembleBoundaryFaceGeometryTerms(mfem::FiniteElementSpace *fes,
+                                         const std::vector<mfem::Array<int>> &bdr_marker_vector,
+                                         CacheT *cache)
+  {
+    auto *mesh  = fes->GetMesh();
+    auto *pmesh = dynamic_cast<mfem::ParMesh*>(mesh);
+    auto *pfes  = dynamic_cast<mfem::ParFiniteElementSpace*>(fes);
+
+    MFEM_VERIFY(pmesh, "need ParMesh");
+    MFEM_VERIFY(pfes,  "need ParFiniteElementSpace");
+    MFEM_VERIFY(cache, "need cache");
+    MFEM_VERIFY(cache->ir_face, "cache->ir_face must exist");
+    MFEM_VERIFY(cache->ir, "cache->ir must exist");
+    
+    cache->fqs_bnd.reset(new mfem::FaceQuadratureSpace(*mesh, *cache->ir_face,
+                                                       mfem::FaceType::Boundary));
+    
+    const int dim = mesh->Dimension();
+    const int nfp = cache->ir_face->GetNPoints();
+
+    auto &bnd_faces = pmesh->GetFaceIndices(mfem::FaceType::Boundary);
+    const int nbnd_faces = bnd_faces.Size();
+
+    cache->bndWaveSpeed.SetSize(nbnd_faces);
+    cache->bndWaveSpeed = 0.0;
+    cache->bndWaveSpeed.Read();
+
+    // 0. Get a restriction-face-to-bnd-element mapping
+    mfem::Array<int> face_to_be;
+    BuildBoundaryFaceToBEMap(pmesh, face_to_be);
+
+    // 1. Permutation map
+    BuildBoundaryFacePermutationMap(pmesh, cache);
+
+    // 2. BC mapping
+    BuildBoundaryFaceBCMap(pmesh, bdr_marker_vector, cache);
+
+    // 3. Geometry arrays
+    cache->bnd_normals.SetSize(nbnd_faces * nfp * dim);
+    cache->bnd_wt.SetSize(nbnd_faces * nfp);
+    cache->bnd_xyz.SetSize(nbnd_faces * nfp * dim);     // recommended
+    cache->bnd_radius.SetSize(nbnd_faces * nfp);        // optional, useful later
+    
+    real_t *nor_d = cache->bnd_normals.HostWrite();
+    real_t *wt_d  = cache->bnd_wt.HostWrite();
+    real_t *xyz_d = cache->bnd_xyz.HostWrite();
+    real_t *rad_d = cache->bnd_radius.HostWrite();
+
+    const real_t w0 = cache->ir->IntPoint(0).weight;
+
+    mfem::Vector nor(dim);
+    mfem::Vector phys(dim);
+
+    auto store = [&](int fslot, int fp_restr,
+                     const mfem::Vector &nor,
+                     const mfem::Vector &phys,
+                     real_t inv_wJ1)
+    {
+      const int base_scl = fslot * nfp + fp_restr;
+      const int base_vec = base_scl * dim;
+      
+      for (int d = 0; d < dim; ++d)
+        {
+          nor_d[base_vec + d] = nor(d);
+          xyz_d[base_vec + d] = phys(d);
+        }
+      
+      wt_d[base_scl] = inv_wJ1;
+      rad_d[base_scl] = (dim > 1) ? phys(1) : 0.0;
+    };
+    
+    for (int fslot = 0; fslot < nbnd_faces; ++fslot)
+      {
+        const int face_id = bnd_faces[fslot];
+        const int be_match = face_to_be[face_id];
+        // Map boundary face slot -> boundary element index.
+        // We need boundary-element index for GetBdrFaceTransformations(be).
+        MFEM_VERIFY(be_match >= 0, "Could not find boundary element for boundary face");
+        auto *tr = mesh->GetBdrFaceTransformations(be_match);
+        MFEM_VERIFY(tr, "expected boundary face transformation");
+
+        for (int fp_restr = 0; fp_restr < nfp; ++fp_restr)
+          {
+            const int fp_geom = cache->inv_fp_map_bnd[fslot * nfp + fp_restr];
+            const mfem::IntegrationPoint &ip = cache->ir_face->IntPoint(fp_geom);
+            tr->SetAllIntPoints(&ip);
+
+            const real_t J1 = tr->GetElement1Transformation().Weight();
+            if (dim == 1)
+              {
+                nor(0) = (tr->GetElement1IntPoint().x - 0.5) * 2.0;
+              }
+            else
+              {
+                mfem::CalcOrtho(tr->Jacobian(), nor);
+              }
+            tr->Transform(ip, phys);
+            store(fslot, fp_restr, nor, phys, 1.0 / (w0 * J1));
+          }
+      }
+  }
+
   // Builds element-specific Jac/Metric and stuffs into cache.elJac, cache.elMetric
   template<typename CacheT>
   void AssembleElementVolumeGeometricTerms(mfem::ElementTransformation &Tr, CacheT *cache)
@@ -273,7 +454,6 @@ namespace Prandtl {
       }
   }
 
-  //  void DGSEMNonlinearForm::AssembleFaceGeomCacheInterior()
   template<typename CacheT>
   void AssembleInteriorFaceGeometryTerms(mfem::FiniteElementSpace *fes, CacheT *cache)
   {
@@ -301,6 +481,10 @@ namespace Prandtl {
           }
       }
 
+    cache->face_normals.SetSize(ninterior_faces * nfp * dim);
+    cache->face_wt_minus.SetSize(ninterior_faces * nfp);
+    cache->face_wt_plus.SetSize(ninterior_faces * nfp);
+ 
     real_t *nor_d  = cache->face_normals.HostWrite();
     real_t *inv1_d = cache->face_wt_minus.HostWrite();
     real_t *inv2_d = cache->face_wt_plus.HostWrite();
@@ -316,7 +500,6 @@ namespace Prandtl {
     };
     
     mfem::Vector nor(dim);
-    const int num_elements_pmesh = pmesh->GetNE();
     // The order of faces in GetFaceIndices(FaceType::Interior) *must*
     // match the order of the faces in the interior face restriction
     // operator face slots.
@@ -373,13 +556,14 @@ namespace Prandtl {
               store(fslot, fp_restr, nor, fac1/(w0*J1), fac2/(w0*J2));
             }
         } // Shared face processing
-      }
+      } // Interior face processing
   }
 
   template<typename CacheT, typename DeviceCacheT>
   void GetDeviceCache(CacheT &cache, DeviceCacheT &device_cache)
   {
     // Fixed data items
+    // - Discretization parameters:
     device_cache.ndof_scalar_el = cache.ndof_scalar_el;
     device_cache.num_attr = cache.num_attr;
     device_cache.attr_marker_d = cache.vol_attr_marker.Read();
@@ -393,14 +577,19 @@ namespace Prandtl {
     device_cache.Np_z = cache.Np_z;
     device_cache.num_elements = cache.num_elements;
     device_cache.num_equations = cache.num_equations;
+    // - Volume element data
     device_cache.elJac_d = cache.elJac.Read();
     device_cache.elMetric_d = cache.elMetric.Read();
     device_cache.D_d = cache.D.Read();
     device_cache.Dhat_d = cache.Dhat.Read();
     device_cache.Dhat2_d = cache.Dhat2.Read();
+    // - Interior faces (including remote)
     device_cache.nor_d = cache.face_normals.Read();
     device_cache.fw_minus_d = cache.face_wt_minus.Read();
     device_cache.fw_plus_d = cache.face_wt_plus.Read();
+    // - Boundary faces
+    device_cache.bnd_nor_d = cache.bnd_normals.Read();
+    device_cache.bnd_wt_d = cache.bnd_wt.Read();
 
     // Updated every step by the compute device
     device_cache.elWaveSpeed_d = cache.elWaveSpeed.Write();

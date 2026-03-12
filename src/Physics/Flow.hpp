@@ -2,6 +2,7 @@
 #include <cassert>
 #include <cmath>
 #include "GasModel.hpp"
+
 // This file contains helper routines that implement flow physics models
 // and methods. Helpers in this module need and use results from the gas
 // EOS and Transport models, but do not belong themselves in the EOS or
@@ -13,6 +14,38 @@
 // gas types, but are central to how fluxes are computed.
 namespace Prandtl {
   namespace Flow {
+
+    MFEM_HOST_DEVICE
+    inline void RotateState(const StateLayout layout, const real_t *nor, real_t *state)
+    {
+      int dim = layout.dim;
+      
+      Prandtl::PointStateViewRW S{state};
+      if(dim == 1){
+        S.set_momentum(layout, 0, S.momentum(layout, 0)*nor[0]);
+        return;
+      }
+  
+      real_t tan1[3];
+      real_t rhoV[3];
+      for(int idim = 0;idim < dim;idim++)
+        rhoV[idim] = S.momentum(layout, idim);
+      Prandtl::Kernels::Normal(dim, nor, tan1);
+      real_t rho_u = Prandtl::Kernels::Dot(dim, rhoV, nor);
+      real_t rho_v = Prandtl::Kernels::Dot(dim, rhoV, tan1);
+      
+      if (dim == 3)
+        {
+          real_t tan2[3];
+          Prandtl::Kernels::Cross(dim, nor, tan1, tan2);
+          rhoV[2] = Prandtl::Kernels::Dot(dim, rhoV, tan2);
+        }
+      rhoV[0] = rho_u;
+      rhoV[1] = rho_v;
+      for(int idim = 0;idim < dim;idim++){
+        S.set_momentum(layout, idim, rhoV[idim]);
+      }
+    }
 
     // This routine takes as input a  *face-oriented* state as input and returns
     // p* for the 1D Riemann problem at the face. 

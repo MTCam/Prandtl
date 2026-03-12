@@ -1006,6 +1006,146 @@ real_t DGSEMNonlinearForm::MultInteriorFacesInviscidDevice(const Vector &pu, Vec
   return max_char_speed_facial;
 }
 
+
+real_t DGSEMNonlinearForm::MultBndFacesInviscidDevice(const Vector &pu, Vector &pdudt) const
+{
+  //  ScopedTimer timer("MultBndFacesInviscidDevice");
+  auto dc = device_cache;
+  const int neq = dc.num_equations;
+  const int nfp = dc.num_face_points;
+  const int face_size = nfp * neq;
+  const int nfaces_restr = cache->restr_b->Height() / face_size;
+  const int norm_size = nfp * dc.dim;
+
+  mfem::Vector u_faces(cache->restr_b->Height());
+  mfem::Vector rhs_faces(cache->restr_b->Height());
+  mfem::Vector faces_dudt(pdudt.Size());
+
+  faces_dudt.UseDevice();
+  rhs_faces.UseDevice();
+  u_faces.UseDevice();
+
+  // If zeroed before accumulation, do it explicitly on device:
+  // Potentially, this is not needed at all since I think we overwrite everything
+  {
+    real_t *rd = rhs_faces.Write();
+    mfem::forall(rhs_faces.Size(), [=] MFEM_HOST_DEVICE (int i)
+    { rd[i] = real_t(0);});
+    real_t *fd = faces_dudt.Write();
+    mfem::forall(faces_dudt.Size(), [=] MFEM_HOST_DEVICE (int i)
+    { fd[i] = real_t(0);});
+  }
+
+  cache->restr_b->Mult(pu, u_faces);
+
+  const real_t *u_d = u_faces.Read();
+  real_t *rhs_d = rhs_faces.Write();
+
+  const real_t *nor_d   = dc.bnd_nor_d;      // size nfaces*nfp*dim
+  const real_t *inv1_d  = dc.bnd_wt_d; // size nfaces*nfp
+  const int *bc_index = dc.bc_index_d;
+  const int *bnd_attr = dc.bnd_attr_d;
+
+  real_t *ws_d = dc.bndWaveSpeed_d;
+
+  mfem::forall(nfaces_restr, [=] MFEM_HOST_DEVICE (int i)
+  {
+    int bnd_face_bc = bc_index[i];
+    if(bnd_face_bc < 0){
+      ws_d[i] = 0.0;
+      return;
+    }
+    const int face_offset = i * face_size;
+    const int n_offset = i * norm_size;
+    const int w_offset = i * nfp;
+
+    const real_t *u_face_d = u_d + face_offset;
+    real_t *rhs_face_d = rhs_d + face_offset;
+    const real_t *nor_face_d = nor_d + n_offset;
+    const real_t *w_minus_d = inv1_d + w_offset;
+
+    // real_t ws = DGSEMIntegrator::AssembleElementFaceKernel(dc, u_face_d, nor_face_d,
+    //                                                        w_minus_d, w_plus_d, rhs_face_d);
+    ws_d[i] = 0.0;
+  });
+
+  cache->restr_b->MultTranspose(rhs_faces, faces_dudt);
+  pdudt += faces_dudt; // on device? 
+
+  // Finish up on the host:
+  //  - Reduce for rank-local max_char_speed
+  const real_t *ws = cache->bndWaveSpeed.HostRead();
+  real_t max_char_speed_facial = 0.0;
+  for(int f = 0;f < nfaces_restr;f++)
+    {
+      max_char_speed_facial = std::max(max_char_speed_facial, ws[f]);
+    }
+
+  return max_char_speed_facial;
+}
+
+real_t DGSEMNonlinearForm::MultBndFacesInviscidHost(const Vector &pu, Vector &pdudt) const {
+  Array<int> vdofs;
+  Vector el_u, el_dudt;
+  const FiniteElement *fe;
+  ElementTransformation *T;
+  Mesh *mesh = fes->GetMesh();
+  
+  
+  if (bfnfi.Size())
+    {
+      FaceElementTransformations *tr;
+      const FiniteElement *fe1, *fe2;
+      
+      // Which boundary attributes need to be processed?
+      Array<int> bdr_attr_marker(mesh->bdr_attributes.Size() ?
+                                 mesh->bdr_attributes.Max() : 0);
+      bdr_attr_marker = 0;
+      for (int k = 0; k < bfnfi.Size(); k++)
+        {
+          if (bfnfi_marker[k] == NULL)
+            {
+              bdr_attr_marker = 1;
+              break;
+            }
+          Array<int> &bdr_marker = *bfnfi_marker[k];
+          MFEM_ASSERT(bdr_marker.Size() == bdr_attr_marker.Size(),
+                      "invalid boundary marker for boundary face integrator #"
+                      << k << ", counting from zero");
+          for (int i = 0; i < bdr_attr_marker.Size(); i++)
+            {
+              bdr_attr_marker[i] |= bdr_marker[i];
+            }
+        }
+      
+      for (int i = 0; i < fes->GetNBE(); i++)
+        {
+          const int bdr_attr = mesh->GetBdrAttribute(i);
+          if (bdr_attr_marker[bdr_attr-1] == 0) { continue; }
+          
+          tr = mesh->GetBdrFaceTransformations(i);
+          if (tr != NULL)
+            {
+              fes->GetElementVDofs(tr->Elem1No, vdofs);
+              
+              pu.GetSubVector(vdofs, el_u);
+              
+              fe1 = fes->GetFE(tr->Elem1No);
+              fe2 = fe1;
+              for (int k = 0; k < bfnfi.Size(); k++)
+                {
+                  if (bfnfi_marker[k] &&
+                      (*bfnfi_marker[k])[bdr_attr-1] == 0) { continue; }
+                  
+                  bfnfi[k]->AssembleFaceVector(*fe1, *fe2, *tr, el_u, el_dudt);
+                  pdudt.AddElementVector(vdofs, el_dudt);
+                }
+            }
+        }
+    }
+  return 0.0;
+}
+
 // Top level MULT for inviscid cases, called from DGSEMOperator
 real_t DGSEMNonlinearForm::MultInviscid(const Vector &u, Vector &dudt) const
 {
@@ -1029,86 +1169,25 @@ real_t DGSEMNonlinearForm::MultInviscid(const Vector &u, Vector &dudt) const
     // std::cout << "Facial wavespeed: " << max_char_speed_facial << std::endl;
     max_char_speed = std::max(max_char_speed, max_char_speed_facial);
 
-    Array<int> vdofs;
-    Vector el_u, el_dudt;
-    const FiniteElement *fe;
-    ElementTransformation *T;
-    Mesh *mesh = fes->GetMesh();
-
-
-    if (bfnfi.Size())
-    {
-        FaceElementTransformations *tr;
-        const FiniteElement *fe1, *fe2;
-
-        // Which boundary attributes need to be processed?
-        Array<int> bdr_attr_marker(mesh->bdr_attributes.Size() ?
-                                    mesh->bdr_attributes.Max() : 0);
-        bdr_attr_marker = 0;
-        for (int k = 0; k < bfnfi.Size(); k++)
-        {
-            if (bfnfi_marker[k] == NULL)
-            {
-                bdr_attr_marker = 1;
-                break;
-            }
-            Array<int> &bdr_marker = *bfnfi_marker[k];
-            MFEM_ASSERT(bdr_marker.Size() == bdr_attr_marker.Size(),
-                        "invalid boundary marker for boundary face integrator #"
-                        << k << ", counting from zero");
-            for (int i = 0; i < bdr_attr_marker.Size(); i++)
-            {
-                bdr_attr_marker[i] |= bdr_marker[i];
-            }
-        }
-
-        for (int i = 0; i < fes->GetNBE(); i++)
-        {
-            const int bdr_attr = mesh->GetBdrAttribute(i);
-            if (bdr_attr_marker[bdr_attr-1] == 0) { continue; }
-
-            tr = mesh->GetBdrFaceTransformations(i);
-            if (tr != NULL)
-            {
-                fes->GetElementVDofs(tr->Elem1No, vdofs);
-
-                pu.GetSubVector(vdofs, el_u);
-
-                fe1 = fes->GetFE(tr->Elem1No);
-                fe2 = fe1;
-                for (int k = 0; k < bfnfi.Size(); k++)
-                {
-                    if (bfnfi_marker[k] &&
-                        (*bfnfi_marker[k])[bdr_attr-1] == 0) { continue; }
-
-                    bfnfi[k]->AssembleFaceVector(*fe1, *fe2, *tr, el_u, el_dudt);
-                    pdudt.AddElementVector(vdofs, el_dudt);
-                }
-            }
-        }
-    }
+    real_t max_char_speed_bnd = 0.0;
+    max_char_speed_bnd = MultBndFacesInviscidHost(pu, pdudt);
+    // std::cout << "Boundary wavespeed: " << max_char_speed_bnd << std::endl;
+    max_char_speed = std::max(max_char_speed, max_char_speed_bnd);
 
     if (Serial())
     {
-        if (cP)
-        {
-            cP->MultTranspose(pdudt, dudt);
-        }
-
-        for (int i = 0; i < ess_tdof_list.Size(); i++)
-        {
-            dudt(ess_tdof_list[i]) = 0.0;
-        }
+        if(cP) cP->MultTranspose(pdudt, dudt);
     }
     else
     {
-        P->MultTranspose(aux2, dudt);
-
-        const int N = ess_tdof_list.Size();
-        const auto idx = ess_tdof_list.Read();
-        auto DU_RW = dudt.ReadWrite();
-        mfem::forall(N, [=] MFEM_HOST_DEVICE (int i) { DU_RW[idx[i]] = 0.0; });
+      if(P) P->MultTranspose(aux2, dudt);
     }
+
+    const int N = ess_tdof_list.Size();
+    const auto idx = ess_tdof_list.Read();
+    auto DU_RW = dudt.ReadWrite();
+    mfem::forall(N, [=] MFEM_HOST_DEVICE (int i) { DU_RW[idx[i]] = 0.0; });
+
     return max_char_speed;
 }
 
@@ -1811,3 +1890,8 @@ void DGSEMNonlinearForm::Mult(const Vector &u, const Vector &dudx, const Vector 
 
 }
 
+real_t SlipWallBdrFaceIntegrator::ComputeBdrFaceInviscidFlux(const Vector &state1, Vector &state2,
+    Vector &fluxN, const Vector &nor, FaceElementTransformations &Tr, const IntegrationPoint &ip)
+{
+  return Prandtl::SlipWallInviscidFluxKernel(gasModel, state1.HostRead(), nor.HostRead(), fluxN.HostWrite());
+}

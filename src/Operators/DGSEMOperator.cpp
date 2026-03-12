@@ -45,21 +45,23 @@ namespace Prandtl
 #ifdef PARABOLIC
     global_entropy.SetSize(vfes->GetVSize());
 #endif
-    
-    CreateOperatorCache();
+  }
+
+  void DGSEMOperator::Finalize()
+  {    
+    GetOperatorCache(vfes.get(), &operator_cache);
+    AssembleBoundaryFaceGeometryTerms(vfes.get(), bdr_marker, &operator_cache);
+    // GetDiscretizationInfo(vfes.get(), &operator_cache);
+    // SetupRestrictions(vfes.get(), &operator_cache);
+    // SetupVolumeMarkers(vfes.get(), &operator_cache);
+    // SetupGeometricTerms(vfes.get(), &operator_cache);
+    // AssembleBoundaryFaceGeometryTerms(vfes.get(), &operator_cache);
+    // Important that gasModel is POD for host<->device
+    operator_cache.gas = gasModel;
     nonlinearForm->SetOperatorCache(&operator_cache);
     integrator->SetOperatorCache(&operator_cache); 
   }
-  
-  void DGSEMOperator::CreateOperatorCache()
-  {
-    GetDiscretizationInfo(vfes.get(), &operator_cache);
-    SetupRestrictions(vfes.get(), &operator_cache);
-    SetupVolumeMarkers(vfes.get(), &operator_cache);
-    SetupGeometricTerms(vfes.get(), &operator_cache);
-    // Important that gasModel is POD for host<->device
-    operator_cache.gas = gasModel;
-  }
+
 
   DGSEMOperator::~DGSEMOperator()
   {
@@ -603,9 +605,11 @@ void DGSEMOperator::Mult(const Vector &u, Vector &dudt) const
 
 }
 
-void DGSEMOperator::AddBdrFaceIntegrator(BdrFaceIntegrator *bfi, Array<int> &bdr_marker)
+void DGSEMOperator::AddBdrFaceIntegrator(BdrFaceIntegrator *bfi, Array<int> &bdr_marker_)
 {
-    nonlinearForm->AddBdrFaceIntegrator(bfi, bdr_marker);
+  bfnfi.push_back(bfi);
+  bdr_marker.push_back(bdr_marker_);
+  nonlinearForm->AddBdrFaceIntegrator(bfi, bdr_marker_);
 }
 
 }
