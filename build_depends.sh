@@ -34,7 +34,8 @@ cd ../../
 # --- Step 3: Build Parallel MFEM ---
 echo "--- Building Parallel MFEM ---"
 cd libs/mfem/
-mkdir -p build
+rm -rf build
+mkdir build
 export METIS_DIR="$(cd ../metis-5.1.0/ && pwd)"
 export HYPRE_DIR="$(cd ../hypre/src/hypre && pwd)"
 cd build
