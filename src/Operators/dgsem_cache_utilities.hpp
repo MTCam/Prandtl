@@ -66,7 +66,7 @@ namespace Prandtl {
                                               mfem::L2FaceValues::DoubleValued);
     cache->restr_b = pfes->GetFaceRestriction(mfem::ElementDofOrdering::LEXICOGRAPHIC,
                                               mfem::FaceType::Boundary,
-                                              mfem::L2FaceValues::DoubleValued);
+                                              mfem::L2FaceValues::SingleValued);
   }
 
   // Set up and populate elJac, elMetric, D, Dhat, Dhat2
@@ -264,37 +264,37 @@ namespace Prandtl {
   }
 
   template <typename CacheT>
-  void BuildBoundaryFaceBCMap(mfem::ParMesh *pmesh,
-                              const std::vector<mfem::Array<int>> &bdr_marker_vector,
-                              CacheT *cache)
+  void BuildBoundaryFaceToMarkerMap(mfem::ParMesh *pmesh,
+                                    const std::vector<mfem::Array<int>> &bdr_marker_vector,
+                                    CacheT *cache)
   {
     auto &bnd_faces = pmesh->GetFaceIndices(mfem::FaceType::Boundary);
     const auto &bnd_face_attr = pmesh->GetBdrFaceAttributes();
 
     const int nbnd_faces = bnd_faces.Size();
-
+    
     MFEM_VERIFY(bnd_face_attr.Size() == nbnd_faces,
                 "Expected compact boundary-face attribute array");
-
+    
     cache->bnd_attr.SetSize(nbnd_faces);
-    cache->bc_index.SetSize(nbnd_faces);
+    cache->bnd_marker_index.SetSize(nbnd_faces);
     
     for (int fslot = 0; fslot < nbnd_faces; ++fslot)
       {
         const int attr = bnd_face_attr[fslot];
         cache->bnd_attr[fslot] = attr;
-        cache->bc_index[fslot] = -1;
+        cache->bnd_marker_index[fslot] = -1;
         
         if (attr <= 0) { continue; }
         
-        for (int bc = 0; bc < (int)bdr_marker_vector.size(); ++bc)
+        for (int mindex = 0; mindex < (int)bdr_marker_vector.size(); ++mindex)
           {
-            const auto &marker = bdr_marker_vector[bc];
+            const auto &marker = bdr_marker_vector[mindex];
             MFEM_VERIFY(attr-1 < marker.Size(), "boundary attribute out of marker range");
             
             if (marker[attr-1])
               {
-                cache->bc_index[fslot] = bc;
+                cache->bnd_marker_index[fslot] = mindex;
                 break;
               }
           }
@@ -342,7 +342,7 @@ namespace Prandtl {
     auto &bnd_faces = pmesh->GetFaceIndices(mfem::FaceType::Boundary);
     const int nbnd_faces = bnd_faces.Size();
 
-    cache->bndWaveSpeed.SetSize(nbnd_faces);
+    cache->bndWaveSpeed.SetSize(nbnd_faces*nfp);
     cache->bndWaveSpeed = 0.0;
     cache->bndWaveSpeed.Read();
 
@@ -354,7 +354,7 @@ namespace Prandtl {
     BuildBoundaryFacePermutationMap(pmesh, cache);
 
     // 2. BC mapping
-    BuildBoundaryFaceBCMap(pmesh, bdr_marker_vector, cache);
+    BuildBoundaryFaceToMarkerMap(pmesh, bdr_marker_vector, cache);
 
     // 3. Geometry arrays
     cache->bnd_normals.SetSize(nbnd_faces * nfp * dim);
@@ -587,13 +587,20 @@ namespace Prandtl {
     device_cache.nor_d = cache.face_normals.Read();
     device_cache.fw_minus_d = cache.face_wt_minus.Read();
     device_cache.fw_plus_d = cache.face_wt_plus.Read();
+
     // - Boundary faces
     device_cache.bnd_nor_d = cache.bnd_normals.Read();
     device_cache.bnd_wt_d = cache.bnd_wt.Read();
-
+    device_cache.bnd_marker_index_d = cache.bnd_marker_index.Read();
+    device_cache.bnd_marker_to_bc_descr_d = cache.bnd_marker_to_bc_descr.Read();
+    device_cache.bc_scalar_d = cache.bc_scalar_data.Read();
+    device_cache.bc_vector_d = cache.bc_vector_data.Read();
+    device_cache.bc_descr_d = cache.bc_descriptors.Read();
+ 
     // Updated every step by the compute device
-    device_cache.elWaveSpeed_d = cache.elWaveSpeed.Write();
-    device_cache.ifWaveSpeed_d = cache.ifWaveSpeed.Write();
+    device_cache.elWaveSpeed_d = cache.elWaveSpeed.ReadWrite();
+    device_cache.ifWaveSpeed_d = cache.ifWaveSpeed.ReadWrite();
+    device_cache.bndWaveSpeed_d = cache.bndWaveSpeed.ReadWrite();
 
     // POD gas model
     device_cache.gas = cache.gas;

@@ -3,6 +3,7 @@
 #include "mfem.hpp"
 #include "GasModel.hpp"
 #include "ChandrashekarFlux.hpp"
+#include "bc_cache_utilities.hpp"
 
 namespace Prandtl
 {
@@ -48,13 +49,18 @@ namespace Prandtl
       mfem::Vector face_normals;
       mfem::Vector face_wt_minus;
       mfem::Vector face_wt_plus;
+
       // Domain boundary device arrays
       mfem::Vector bnd_normals;
       mfem::Vector bnd_wt;
       mfem::Vector bnd_xyz;
       mfem::Vector bnd_radius;
       mfem::Array<int> bnd_attr;
-      mfem::Array<int> bc_index;
+      mfem::Array<int> bnd_marker_index;
+      mfem::Array<int> bnd_marker_to_bc_descr;
+      mfem::Array<Prandtl::BCDescriptor> bc_descriptors;
+      mfem::Vector bc_scalar_data;
+      mfem::Vector bc_vector_data;
 
       // Physics parts - used directly on device
       mutable mfem::Vector elWaveSpeed; // size nelements
@@ -89,6 +95,7 @@ namespace Prandtl
     int Np_z = 0;
     int Np = 0;
     int num_attr = 0;
+    int num_bcs = 0;
     // Volume elements
     const int *elem_attr_d = nullptr;    // size ne, values are 1-based attributes
     const int *attr_marker_d = nullptr;  // size nattr, 0/1
@@ -105,7 +112,11 @@ namespace Prandtl
     const real_t *bnd_nor_d = nullptr;
     const real_t *bnd_wt_d = nullptr;
     const int *bnd_attr_d = nullptr;
-    const int *bc_index_d = nullptr;
+    const int *bnd_marker_index_d = nullptr;
+    const Prandtl::BCDescriptor *bc_descr_d = nullptr;
+    const real_t *bc_scalar_d = nullptr;
+    const real_t *bc_vector_d = nullptr;
+    const int *bnd_marker_to_bc_descr_d = nullptr;
 
     // Physics parts
     real_t *elWaveSpeed_d = nullptr;
