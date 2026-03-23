@@ -13,6 +13,8 @@
 
 namespace Prandtl
 {
+  constexpr const int MAXEQ = 5;
+  constexpr const int MAXDIM = 3;
 
 #ifdef MFEM_USE_SINGLE
   using real_t = float;
