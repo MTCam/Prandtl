@@ -1011,11 +1011,13 @@ real_t DGSEMNonlinearForm::MultBndFacesInviscidDevice(const Vector &pu, Vector &
 {
   //  ScopedTimer timer("MultBndFacesInviscidDevice");
   auto dc = device_cache;
+  const int dim = dc.dim;
   const int neq = dc.num_equations;
   const int nfp = dc.num_face_points;
   const int face_size = nfp * neq;
   const int nfaces_restr = cache->restr_b->Height() / face_size;
   const int norm_size = nfp * dc.dim;
+  const int npoints_bnd = nfaces_restr * nfp;
 
   mfem::Vector u_faces(cache->restr_b->Height());
   mfem::Vector rhs_faces(cache->restr_b->Height());
@@ -1043,42 +1045,72 @@ real_t DGSEMNonlinearForm::MultBndFacesInviscidDevice(const Vector &pu, Vector &
 
   const real_t *nor_d   = dc.bnd_nor_d;      // size nfaces*nfp*dim
   const real_t *inv1_d  = dc.bnd_wt_d; // size nfaces*nfp
-  const int *bc_index = dc.bc_index_d;
-  const int *bnd_attr = dc.bnd_attr_d;
-
+  const int *bnd_marker_index_d = dc.bnd_marker_index_d;
+  // const int *bnd_attr = dc.bnd_attr_d;
+  // const int *bnd_marker_to_bc_descr_d = dc.bnd_marker_to_bc_descr_d;
   real_t *ws_d = dc.bndWaveSpeed_d;
 
-  mfem::forall(nfaces_restr, [=] MFEM_HOST_DEVICE (int i)
+  mfem::forall(npoints_bnd, [=] MFEM_HOST_DEVICE (int p)
   {
-    int bnd_face_bc = bc_index[i];
-    if(bnd_face_bc < 0){
-      ws_d[i] = 0.0;
+    const int f = p / nfp;
+    const int fp = p % nfp;
+
+    int bnd_face_marker_index = bnd_marker_index_d[f];
+    if(bnd_face_marker_index < 0){
+      ws_d[p] = 0.0;
       return;
     }
-    const int face_offset = i * face_size;
-    const int n_offset = i * norm_size;
-    const int w_offset = i * nfp;
+    //    int bc_index = bnd_marker_to_bc_descr_d[bnd_face_marker_index];
+    int bc_index = bnd_face_marker_index; // no mapping atm
+    if(bc_index < 0){
+      ws_d[p] = 0.0;
+      return;
+    }
+    const Prandtl::BCDescriptor &bc = dc.bc_descr_d[bc_index];
+    if (bc.type == int(Prandtl::BCType::Invalid))
+      {
+        ws_d[p] = 0.0;
+        return;
+      }
+
+    const int face_offset = f * face_size;
+    const int n_offset = f * norm_size;
+    const int w_offset = f * nfp;
 
     const real_t *u_face_d = u_d + face_offset;
     real_t *rhs_face_d = rhs_d + face_offset;
     const real_t *nor_face_d = nor_d + n_offset;
     const real_t *w_minus_d = inv1_d + w_offset;
+    const real_t *nor_point = nor_face_d + fp*dim;
+    real_t scale = -w_minus_d[fp];
+    // #ifdef AXISYMMETRIC
+    // NOTE: axisymmetric not ready for device yet
+    // scale *= rad_face[fp];
+    // #else
+    // #error "Axisymmetric boundary device path not implemented yet."
+    // #endif
+    real_t state1[Prandtl::MAXEQ];
+    real_t fluxN[Prandtl::MAXEQ];
 
-    // real_t ws = DGSEMIntegrator::AssembleElementFaceKernel(dc, u_face_d, nor_face_d,
-    //                                                        w_minus_d, w_plus_d, rhs_face_d);
-    ws_d[i] = 0.0;
+    Prandtl::Kernels::el_gather_state(u_face_d, nfp, neq, fp, state1);
+    const real_t ws = \
+      Prandtl::BC::ApplyBoundaryConditionInviscid(dc, bc, state1,
+                                                  nor_point, fluxN);
+    Prandtl::Kernels::el_scatter_add(fluxN, nfp, neq, fp, scale, rhs_face_d);
+    ws_d[p] = ws;
+
   });
 
   cache->restr_b->MultTranspose(rhs_faces, faces_dudt);
-  pdudt += faces_dudt; // on device? 
+  pdudt += faces_dudt; // on device? (likely yes) 
 
   // Finish up on the host:
   //  - Reduce for rank-local max_char_speed
   const real_t *ws = cache->bndWaveSpeed.HostRead();
   real_t max_char_speed_facial = 0.0;
-  for(int f = 0;f < nfaces_restr;f++)
+  for(int p = 0;p < npoints_bnd;p++)
     {
-      max_char_speed_facial = std::max(max_char_speed_facial, ws[f]);
+      max_char_speed_facial = std::max(max_char_speed_facial, ws[p]);
     }
 
   return max_char_speed_facial;
@@ -1153,7 +1185,7 @@ real_t DGSEMNonlinearForm::MultInviscid(const Vector &u, Vector &dudt) const
     const Vector &pu = Prolongate(u);
     if (P)
     {
-        aux2.SetSize(P->Height());
+      aux2.SetSize(P->Height());
     }
 
     Vector &pdudt = P ? aux2 : dudt;
@@ -1170,7 +1202,8 @@ real_t DGSEMNonlinearForm::MultInviscid(const Vector &u, Vector &dudt) const
     max_char_speed = std::max(max_char_speed, max_char_speed_facial);
 
     real_t max_char_speed_bnd = 0.0;
-    max_char_speed_bnd = MultBndFacesInviscidHost(pu, pdudt);
+    max_char_speed_bnd = MultBndFacesInviscidDevice(pu, pdudt);
+    // max_char_speed_bnd = MultBndFacesInviscidHost(pu, pdudt);
     // std::cout << "Boundary wavespeed: " << max_char_speed_bnd << std::endl;
     max_char_speed = std::max(max_char_speed, max_char_speed_bnd);
 
@@ -1888,10 +1921,4 @@ void DGSEMNonlinearForm::Mult(const Vector &u, const Vector &dudx, const Vector 
     }
 }
 
-}
-
-real_t SlipWallBdrFaceIntegrator::ComputeBdrFaceInviscidFlux(const Vector &state1, Vector &state2,
-    Vector &fluxN, const Vector &nor, FaceElementTransformations &Tr, const IntegrationPoint &ip)
-{
-  return Prandtl::SlipWallInviscidFluxKernel(gasModel, state1.HostRead(), nor.HostRead(), fluxN.HostWrite());
 }

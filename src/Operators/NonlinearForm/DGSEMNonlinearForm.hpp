@@ -6,6 +6,7 @@
 #include "timer.hpp"
 #include "general/forall.hpp"
 #include "dgsem_cache_utilities.hpp"
+#include "bc_kernels.hpp"
 
 namespace Prandtl
 {
