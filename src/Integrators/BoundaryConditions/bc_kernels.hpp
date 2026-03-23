@@ -1,59 +1,102 @@
 #pragma once
 
+#include "bc_cache_utilities.hpp"
+#include "Flow.hpp"
+
 namespace Prandtl {
-  
-  template <typename DeviceCacheT, typename GasModelT>
-  MFEM_HOST_DEVICE
-  real_t ApplyBoundaryConditionInviscid(const DeviceCacheT &dc,
-                                        const Prandtl::BCDescriptor &bc,
-                                        const real_t *state1,
-                                        const real_t *nor,
-                                        const real_t *aux_scalar_data,
-                                        const real_t *aux_vector_data,
-                                        real_t *fluxN)
-  {
-    const GasModelT &gas = dc.gas;
-    switch (static_cast<Prandtl::BCType>(bc.type))
-      {
-      case Prandtl::BCType::SlipWall:
-        return SlipWallInviscidFluxKernel(gas, state1, nor, fluxN);
-        
-      case Prandtl::BCType::SupersonicOutflow:
-        return dc.iflux.ComputeFaceFlux(gas, state1, state1, nor, fluxN);
 
-      case Prandtl::BCType::SupersonicInflow:
-        {
-          const real_t *bc_state = aux_vector_data + bc.primary_data_index;
-          return dc.iflux(gas, state1, bc_state, nor, fluxN);
-        }
-        
-      case Prandtl::BCType::Symmetry:
-        const int neq = dc.num_equations;
-        Prandtl::PointStateView S{state1};
-        real_t bc_state[5];
-        for(int ieq = 0;ieq < neq;ieq++){
-          bc_state[5] = state1[ieq];
-        }
-        Prandtl::PointStateViewRW S2{bc_state};
-        const int dim = dc.dim;
-        real_t unorm[3];
-        real_t mom[3];
-        for(int idim = 0;idim < dim;dim++){
-          unorm[idim] = nor[idim];
-          mom[idim] = S.momentum(gas.L, idim);
-        }
-        Prandtl::Kernels::Normalize(dim, unorm);
-        real_t nv = Prandtl::Kernels::Dot(dim, mom, unorm);
-        for(int idim = 0;idim < dim;dim++){
-          real_t mm = -2.0*nv*unorm[idim] + mom[idim];
-          S2.set_momentum(gas.L, idim, mm);
-        }
-        return dc.iflux(gas, state1, bc_state, nor, fluxN);
+  namespace BC {
 
-      default:
-        const neq = dc.num_equations;
-        for (int eq = 0; eq < neq; ++eq) { fluxN[eq] = 0.0; }
-        return 0.0;
+    template<typename GasModelT>
+    MFEM_HOST_DEVICE
+    real_t SlipWallInviscidFluxKernel(const GasModelT &gasModel, const real_t *state1,
+                                      const real_t *nor, real_t *fluxN)
+    {
+      
+      real_t unit_nor[Prandtl::MAXDIM];
+      real_t state2[Prandtl::MAXEQ];
+      const int dim = gasModel.L.dim;
+      const int neq = gasModel.L.nequations();
+      for(int idim = 0;idim < dim;idim++)
+        unit_nor[idim] = nor[idim];
+      for(int ieq = 0;ieq < neq;ieq++){
+        state2[ieq] = state1[ieq];
+        fluxN[ieq] = 0.0;
       }
+      Prandtl::Kernels::Normalize(dim, unit_nor);
+      Prandtl::Flow::RotateState(gasModel.L, state2, unit_nor);
+      Prandtl::PointStateView S{state2};
+      const real_t p_star = Prandtl::Flow::slipwall_pstar(S, gasModel);
+      const real_t v = gasModel.velocity(S, 0); // the "x" component is v*n
+      const real_t c = gasModel.sound_speed(S);
+      const int mom_eq = gasModel.L.eq_mom0;
+      
+      fluxN[mom_eq] = p_star * nor[0];
+      if (dim > 1){
+        fluxN[mom_eq+1] = p_star * nor[1];
+        if (dim > 2)
+          fluxN[mom_eq+2] = p_star * nor[2];
+      }
+      return std::abs(v) + c;
+    }
+
+    template <typename DeviceCacheT>
+    MFEM_HOST_DEVICE
+    real_t ApplyBoundaryConditionInviscid(const DeviceCacheT &dc,
+                                          const Prandtl::BCDescriptor &bc,
+                                          const real_t *state1,
+                                          const real_t *nor,
+                                          real_t *fluxN)
+    {
+      const auto &gas = dc.gas;
+      const real_t *scalar_data = dc.bc_scalar_d;
+      const real_t *vector_data = dc.bc_vector_d;
+      switch (static_cast<Prandtl::BCType>(bc.type))
+        {
+        case Prandtl::BCType::SlipWall:
+          return SlipWallInviscidFluxKernel(gas, state1, nor, fluxN);
+          
+        case Prandtl::BCType::SupersonicOutflow:
+          return dc.iflux.ComputeFaceFlux(gas, state1, state1, nor, fluxN);
+          
+        case Prandtl::BCType::SupersonicInflow:
+          {
+            const real_t *bc_state = vector_data + bc.data_index;
+            return dc.iflux.ComputeFaceFlux(gas, state1, bc_state, nor, fluxN);
+          }
+          
+        case Prandtl::BCType::Symmetry:
+          {
+            const int neq = dc.num_equations;
+            Prandtl::PointStateView S{state1};
+            real_t bc_state[Prandtl::MAXEQ];
+            for(int ieq = 0;ieq < neq;ieq++){
+              bc_state[ieq] = state1[ieq];
+            }
+            Prandtl::PointStateViewRW S2{bc_state};
+            const int dim = dc.dim;
+            real_t unorm[Prandtl::MAXDIM];
+            real_t mom[Prandtl::MAXDIM];
+            for(int idim = 0;idim < dim;idim++){
+              unorm[idim] = nor[idim];
+              mom[idim] = S.momentum(gas.L, idim);
+            }
+            Prandtl::Kernels::Normalize(dim, unorm);
+            real_t nv = Prandtl::Kernels::Dot(dim, mom, unorm);
+            for(int idim = 0;idim < dim;idim++){
+              real_t mm = -2.0*nv*unorm[idim] + mom[idim];
+              S2.set_momentum(gas.L, idim, mm);
+            }
+            return dc.iflux.ComputeFaceFlux(gas, state1, bc_state, nor, fluxN);
+          }
+        default:
+          {
+            const int neq = dc.num_equations;
+            for (int eq = 0; eq < neq; ++eq) { fluxN[eq] = 0.0; }
+            return 0.0;
+          }
+        }
+      return 0.0;
+    }
   }
 }
