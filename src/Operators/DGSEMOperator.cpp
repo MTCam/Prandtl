@@ -58,6 +58,9 @@ namespace Prandtl
     // AssembleBoundaryFaceGeometryTerms(vfes.get(), &operator_cache);
     // Important that gasModel is POD for host<->device
     operator_cache.gas = gasModel;
+    operator_cache.bc_descriptors = bc_descriptors;
+    operator_cache.bc_scalar_data = bc_scalar_data;
+    operator_cache.bc_vector_data = bc_vector_data;
     nonlinearForm->SetOperatorCache(&operator_cache);
     integrator->SetOperatorCache(&operator_cache); 
   }

@@ -8,6 +8,7 @@
 #include "BasicOperations.hpp"
 #include "GasModel.hpp"
 #include "dgsem_cache_utilities.hpp"
+#include "bc_cache_utilities.hpp"
 
 namespace Prandtl
 {
@@ -31,7 +32,7 @@ private:
 
     mutable Array<int> vdof_indices;
     mutable Vector el_vdofs, grad_vdofs;
-
+    
     const int num_equations, dim, order, num_elements;
     const int num_dofs_scalar;
     const int Ndofs;
@@ -59,6 +60,9 @@ private:
     
     std::vector<BdrFaceIntegrator*> bfnfi;
     std::vector<Array<int>> bdr_marker;
+  mfem::Array<Prandtl::BCDescriptor> bc_descriptors;
+  mfem::Vector bc_vector_data;
+  mfem::Vector bc_scalar_data;
     mutable Array<int> ind_indx;
     mutable Vector ind_dof;
     mutable real_t alpha_dof;
@@ -98,7 +102,15 @@ public:
     
     ~DGSEMOperator();
     
-    void AddBdrFaceIntegrator(BdrFaceIntegrator *bfi, Array<int> &bdr_marker);
+  void SetBCDescriptorData(const mfem::Array<Prandtl::BCDescriptor> &bc_descr, const mfem::Vector &bc_scalar_dat,
+                           const mfem::Vector &bc_vector_dat)
+  {
+    bc_descriptors = bc_descr;
+    bc_scalar_data = bc_scalar_dat;
+    bc_vector_data = bc_vector_dat;
+  }
+
+  void AddBdrFaceIntegrator(BdrFaceIntegrator *bfi, Array<int> &bdr_marker);
     
     void Mult(const Vector &u, Vector &dudt) const override;
     inline real_t GetMaxCharSpeed()
