@@ -19,7 +19,8 @@ namespace Prandtl
 real_t SlipWallBdrFaceIntegrator::ComputeBdrFaceInviscidFlux(const Vector &state1, Vector &state2,
     Vector &fluxN, const Vector &nor, FaceElementTransformations &Tr, const IntegrationPoint &ip)
 {
-  return Prandtl::SlipWallInviscidFluxKernel(gasModel, state1.HostRead(), nor.HostRead(), fluxN.HostWrite());
+  return Prandtl::BC::SlipWallInviscidFluxKernel(gasModel, state1.HostRead(),
+                                                 nor.HostRead(), fluxN.HostWrite());
 }
 
 }
