@@ -24,19 +24,14 @@ namespace Prandtl {
         fluxN[ieq] = 0.0;
       }
       Prandtl::Kernels::Normalize(dim, unit_nor);
-      Prandtl::Flow::RotateState(gasModel.L, state2, unit_nor);
-      Prandtl::PointStateView S{state2};
+      Prandtl::PointStateViewRW S{state2};
+      Prandtl::Flow::RotateState(gasModel.L, unit_nor, S);
       const real_t p_star = Prandtl::Flow::slipwall_pstar(S, gasModel);
       const real_t v = gasModel.velocity(S, 0); // the "x" component is v*n
       const real_t c = gasModel.sound_speed(S);
       const int mom_eq = gasModel.L.eq_mom0;
-      
-      fluxN[mom_eq] = p_star * nor[0];
-      if (dim > 1){
-        fluxN[mom_eq+1] = p_star * nor[1];
-        if (dim > 2)
-          fluxN[mom_eq+2] = p_star * nor[2];
-      }
+      for(int idim = 0;idim < dim;idim++)
+        fluxN[mom_eq+idim] = p_star * nor[idim];
       return std::abs(v) + c;
     }
 

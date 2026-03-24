@@ -16,11 +16,9 @@ namespace Prandtl {
   namespace Flow {
 
     MFEM_HOST_DEVICE
-    inline void RotateState(const StateLayout layout, const real_t *nor, real_t *state)
+    inline void RotateState(const StateLayout layout, const real_t *nor, Prandtl::PointStateViewRW &S)
     {
       int dim = layout.dim;
-      
-      Prandtl::PointStateViewRW S{state};
       if(dim == 1){
         S.set_momentum(layout, 0, S.momentum(layout, 0)*nor[0]);
         return;
