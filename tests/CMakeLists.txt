@@ -70,15 +70,12 @@ set(MUTATIONPP_PREFIX ${PROJECT_SOURCE_DIR}/libs/Mutationpp/install)
 set(MUTATIONPP_DATA   ${PROJECT_SOURCE_DIR}/libs/Mutationpp/data)
 
 target_include_directories(table_lookup_tests
-    PUBLIC ${PROJECT_SOURCE_DIR}/libs/mfem
-    PUBLIC ${PROJECT_SOURCE_DIR}/libs/hypre/src/hypre/include
-    PUBLIC ${PROJECT_SOURCE_DIR}/libs/metis-5.1.0/include
+    PRIVATE
     ${PROJECT_SOURCE_DIR}/src/BasicOperations
     ${PROJECT_SOURCE_DIR}/src/Physics
     ${PROJECT_SOURCE_DIR}/src/Device
-    PUBLIC ${MUTATIONPP_PREFIX}/include
-    PUBLIC ${PROJECT_SOURCE_DIR}/libs/Mutationpp/data
-    PUBLIC ${EIGEN3_INCLUDE_DIR}
+    ${MUTATIONPP_PREFIX}/include
+    ${PROJECT_SOURCE_DIR}/libs/Mutationpp/data
 )
 
 target_link_directories(table_lookup_tests
@@ -89,8 +86,11 @@ target_link_directories(table_lookup_tests
 )
 
 target_link_libraries(table_lookup_tests
-    mfem HYPRE metis MPI::MPI_CXX
-    mutation++ Eigen3::Eigen
+    PRIVATE
+    ${PRANDTL_MFEM_TARGET}
+    MPI::MPI_CXX
+    mutation++::mutation++
+    Eigen3::Eigen
 )
 
 add_test(NAME TableLookupTestingSuite COMMAND table_lookup_tests)
