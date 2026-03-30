@@ -559,6 +559,223 @@ namespace Prandtl {
       } // Interior face processing
   }
 
+  template<typename CacheT>
+  void ComputeSubcellMetrics(mfem::FiniteElementSpace *fes, CacheT *cache)
+  {
+    auto *pfes = dynamic_cast<mfem::ParFiniteElementSpace *>(fes);
+    auto *pmesh = pfes->GetMesh();
+    const int dim = cache->dim;
+    const int ne = pmesh->GetNE();
+    const int Np_x = cache->Np_x;
+    const int Np_y = cache->Np_y;
+    const int Np_z = cache->Np_z;
+    const real_t *D = cache->D.HostRead();
+
+    mfem::DenseTensor SubcellMetricXi, SubcellMetricEta, SubcellMetricZeta;
+    SubcellMetricXi.SetSize(dim, Np_z * Np_y * (Np_x + 1), ne);
+    if(dim > 1)
+      SubcellMetricEta.SetSize(dim, Np_z * (Np_y + 1) * Np_x, ne);
+    if(dim == 3)
+      SubcellMetricZeta.SetSize(dim, (Np_z + 1) * Np_y * Np_x, ne);
+    
+    for (int el = 0; el < ne; el++)
+      {
+        mfem::ElementTransformation *Tr = pmesh->GetElementTransformation(el);
+        mfem::DenseMatrix &nor_mat_xi = SubcellMetricXi(el);
+
+        mfem::Vector tmp(dim);
+        mfem::Vector nor(dim);
+        mfem::Vector metric1(dim);
+        mfem::Vector metric2(dim);
+
+        for (int k = 0; k < Np_z; k++)
+          {
+            const int pos1 = k * Np_y * Np_x;
+            for (int j = 0; j < Np_y; j++)
+              {
+                const int pos = pos1 + j * Np_x;
+                const mfem::IntegrationPoint &ip1 = cache->ir_vol->IntPoint(pos); // left xi-face
+                Tr->SetIntPoint(&ip1);
+                Tr->AdjugateJacobian().GetRow(0, metric1);
+                for (int i = 0; i < Np_x + 1; i++)
+                  {
+                    nor = metric1;
+                    for (int l = 0; l < i; l++)
+                      {
+                        const real_t *Dcol = D + l*Np_x; // D_T.GetColumn(l, D_row);
+                        tmp = 0.0;
+                        real_t weight = cache->ir->IntPoint(l).weight;
+                        for (int m = 0; m < Np_x; m++)
+                          {
+                            const mfem::IntegrationPoint &ip2 = cache->ir_vol->IntPoint(pos + m);
+                            Tr->SetIntPoint(&ip2);
+                            Tr->AdjugateJacobian().GetRow(0, metric2);
+                            metric2 *= Dcol[m];
+                            tmp += metric2;
+                          }
+                        tmp *= weight;
+                        nor += tmp;
+                      }
+                    nor_mat_xi.SetCol(pos + i, nor);
+                  }
+              }
+          }
+        
+        if (dim > 1)
+          {
+            mfem::DenseMatrix &nor_mat_eta = SubcellMetricEta(el);
+            for (int k = 0; k < Np_z; k++)
+              {
+                const int pos1 = k * Np_y * Np_x;
+                for (int i = 0; i < Np_x; i++)
+                  {
+                    const mfem::IntegrationPoint &ip1 = cache->ir_vol->IntPoint(pos1 + i); // bottom eta-face
+                    Tr->SetIntPoint(&ip1);
+                    Tr->AdjugateJacobian().GetRow(1, metric1);
+                    for (int j = 0; j < Np_y + 1; j++)
+                      {
+                        nor = metric1;
+                        for (int l = 0; l < j; l++)
+                          {
+                            const real_t *Dcol = D + l*Np_x; // D_T.GetColumn(l, D_row);
+                            tmp = 0.0;
+                            real_t weight = cache->ir->IntPoint(l).weight;
+                            for (int m = 0; m < Np_y; m++)
+                              {
+                                const int pos = pos1 + m * Np_x;
+                                const mfem::IntegrationPoint &ip2 = cache->ir_vol->IntPoint(pos + i);
+                                Tr->SetIntPoint(&ip2);
+                                Tr->AdjugateJacobian().GetRow(1, metric2);
+                                metric2 *= Dcol[m];
+                                tmp += metric2;
+                              }
+                            tmp *= weight;
+                            nor += tmp;
+                          }
+                        nor_mat_eta.SetCol(pos1 + j * Np_x + i, nor);
+                      }
+                  }
+              }
+            
+            if (dim > 2)
+              {
+                mfem::DenseMatrix &nor_mat_zeta = SubcellMetricZeta(el);
+                for (int j = 0; j < Np_y; j++)
+                  {
+                    const int pos1 = j * Np_x;
+                    for (int i = 0; i < Np_x; i++)
+                      {
+                        const mfem::IntegrationPoint &ip1 = cache->ir_vol->IntPoint(pos1 + i); // bottom zeta-face
+                        Tr->SetIntPoint(&ip1);
+                        Tr->AdjugateJacobian().GetRow(2, metric1);
+                        for (int k = 0; k < Np_z + 1; k++)
+                          {
+                            nor = metric1;
+                            for (int l = 0; l < k; l++)
+                              {
+                                const real_t *Dcol = D + l*Np_x; // D_T.GetColumn(l, D_row);
+                                tmp = 0.0;
+                                real_t weight = cache->ir->IntPoint(l).weight;
+                                for (int m = 0; m < Np_z; m++)
+                                  {
+                                    const int pos = m * Np_y * Np_x + pos1 + i;
+                                    const mfem::IntegrationPoint &ip2 = cache->ir_vol->IntPoint(pos);
+                                    Tr->SetIntPoint(&ip2);
+                                    Tr->AdjugateJacobian().GetRow(2, metric2);
+                                    metric2 *= Dcol[m];
+                                    tmp += metric2;
+                                  }
+                                tmp *= weight;
+                                nor += tmp;
+                              }
+                            nor_mat_zeta.SetCol(k * Np_y * Np_x + pos1 + i, nor);
+                          }
+                      }
+                  }
+              }
+          }
+      }
+    CacheSubcellMetricData(SubcellMetricXi, SubcellMetricEta, SubcellMetricZeta, cache);
+  }
+
+  // Call this *after* element geometric cache is created
+  template <typename CacheT>
+  void CacheSubcellMetricData(const mfem::DenseTensor &SubcellMetricXi,
+                              const mfem::DenseTensor &SubcellMetricEta,
+                              const mfem::DenseTensor &SubcellMetricZeta,
+                              CacheT *cache)
+  {
+    const int ne = cache->num_elements;
+    const int dim = cache->dim;
+
+    // Num quadrature points per direction
+    const int Np_x = cache->Np_x;
+    const int Np_y = cache->Np_y;
+    const int Np_z = cache->Np_z;
+
+    // Num points per metric component per element
+    const int n_metric_xi = (Np_x + 1) * Np_y * Np_z;
+    const int n_metric_eta = Np_x * (Np_y + 1) * Np_z;
+    const int n_metric_zeta = Np_x * Np_y * (Np_z + 1);
+
+    // Num metric values per element
+    const int nq_metric_xi = n_metric_xi * dim;
+    const int nq_metric_eta = n_metric_eta * dim;
+    const int nq_metric_zeta = n_metric_zeta * dim;
+
+    cache->subcellWeights.SetSize(Np_x);
+    real_t *wgts = cache->subcellWeights.HostWrite();
+    for (int i = 0;i < Np_x;i++){
+      wgts[i] = cache->ir->IntPoint(i).weight;
+    }
+
+    cache->subcellMetricXi.SetSize(nq_metric_xi*ne);
+    if (dim > 1)
+      cache->subcellMetricEta.SetSize(nq_metric_eta*ne);
+    if (dim > 2)
+      cache->subcellMetricZeta.SetSize(nq_metric_zeta*ne);
+    
+    real_t *xi_h   = cache->subcellMetricXi.HostWrite();
+    real_t *eta_h  = (dim > 1 ? cache->subcellMetricEta.HostWrite() : nullptr);
+    real_t *zeta_h  = (dim > 2 ? cache->subcellMetricZeta.HostWrite() : nullptr);
+
+    for (int el = 0; el < ne; ++el){
+      const mfem::DenseMatrix &Mxi  = SubcellMetricXi(el);
+      MFEM_VERIFY(Mxi.Height() == dim && Mxi.Width() == n_metric_xi,
+                  "SubcellMetricXi has unexpected shape.");
+      for (int id = 0; id < n_metric_xi; ++id){
+        for (int d = 0; d < dim; ++d){
+          xi_h [((el * n_metric_xi + id) * dim) + d] = Mxi(d, id);
+        }
+      }
+      if (dim > 1) {
+        const mfem::DenseMatrix &Meta = SubcellMetricEta(el);
+        MFEM_VERIFY(Meta.Height() == dim && Meta.Width() == n_metric_eta,
+                    "SubcellMetricEta has unexpected shape.");
+        for (int id = 0; id < n_metric_eta; ++id)
+          {
+            for (int d = 0; d < dim; ++d)
+              {
+                eta_h[((el * n_metric_eta + id) * dim) + d] = Meta(d, id);
+              }
+          }
+      }
+      if (dim == 3)
+        {
+          const mfem::DenseMatrix &Mzeta = SubcellMetricZeta(el);
+          MFEM_VERIFY(Mzeta.Height() == dim && Mzeta.Width() == n_metric_zeta,
+                      "SubcellMetricZeta has unexpected shape.");
+          for (int id = 0; id < n_metric_zeta; ++id)
+            {
+              for (int d = 0; d < dim; ++d)
+                {
+                  zeta_h[((el * n_metric_zeta + id) * dim) + d] = Mzeta(d, id);
+                }
+            }
+        }
+    }
+  }
+
   template<typename CacheT, typename DeviceCacheT>
   void GetDeviceCache(CacheT &cache, DeviceCacheT &device_cache)
   {
@@ -605,7 +822,14 @@ namespace Prandtl {
     // POD gas model
     device_cache.gas = cache.gas;
     device_cache.iflux = cache.iflux;
- 
+
+#ifdef SUBCELL_FV_BLENDING
+    device_cache.subcell_metric_xi_d = cache.subcellMetricXi.Read();
+    device_cache.subcell_metric_eta_d = cache.subcellMetricEta.Read();
+    device_cache.subcell_metric_zeta_d = cache.subcellMetricZeta.Read();
+    device_cache.subcell_weights_d = cache.subcellWeights.Read();
+#endif
+
   }
 
   template<typename CacheT>
