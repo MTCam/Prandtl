@@ -769,9 +769,11 @@ void DGSEMIntegrator::AssembleElementVector(const mfem::FiniteElement &el, mfem:
     const mfem::DenseMatrix el_dudx_mat(el_dudx.GetData(), dof, num_equations);
     const mfem::DenseMatrix el_dudy_mat(el_dudy.GetData(), dof, num_equations);
     mfem::DenseMatrix el_dudt_mat(el_dudt.GetData(), dof, num_equations);
+
 #ifdef SUBCELL_FV_BLENDING
-    ComputeFVFluxes(el_u_mat, el_alpha(0), Tr, el_dudt_mat);
+    ComputeFVFluxesFromCache(el_u_mat, el_alpha(0), Tr, el_dudt_mat);
 #endif
+
     for (int i = 0; i < ir_vol->GetNPoints(); i++)
     {
         const mfem::IntegrationPoint &ip1 = ir_vol->IntPoint(i);
@@ -1218,6 +1220,166 @@ void DGSEMIntegrator::ComputeFVFluxes(const mfem::DenseMatrix &el_u_mat, real_t 
 }
 
 
+void DGSEMIntegrator::ComputeFVFluxesFromCache(const mfem::DenseMatrix &el_u_mat, real_t alpha_value,
+                                               mfem::ElementTransformation &Tr, mfem::DenseMatrix &el_dudt_mat)
+{
+  const int e = Tr.ElementNo;
+  const int dim = device_cache.dim;
+  const int Np_x = device_cache.Np_x;
+  const int Np_y = device_cache.Np_y;
+  const int Np_z = device_cache.Np_z;
+  const int neq = device_cache.num_equations;
+  const int npe = Np_x * Np_y * Np_z;
+  const int ndofe = npe * neq;
+
+  // We have only isotropic TPE so actually
+  // Np_{y,z} should == Np_x || 1, but for clarity:
+  const int npe_metric_xi = (Np_x + 1)*Np_y*Np_z;
+  const int npe_metric_eta = Np_x*(Np_y + 1)*Np_z;
+  const int npe_metric_zeta = Np_x * Np_y * (Np_z + 1);
+
+  const real_t *el_metric_xi = device_cache.subcell_metric_xi_d + e*npe_metric_xi*dim;
+  const real_t *el_metric_eta = (dim > 1 ? device_cache.subcell_metric_eta_d + e*npe_metric_eta*dim :
+                                 nullptr);
+  const real_t *el_metric_zeta = (dim > 2 ? device_cache.subcell_metric_zeta_d + e*npe_metric_zeta*dim :
+                                  nullptr);
+
+  const real_t *elJac = device_cache.elJac_d + e*npe;
+  const real_t *qWgt = device_cache.subcell_weights_d;
+
+  // ------ Debugging ----------
+  // mfem::Vector el_u(ndofe);
+  // mfem::Vector el_du_dt(ndofe);
+  
+  // real_t *el_u_h = el_u_mat.GetData();
+  // real_t *el_dudt_h = el_dudt_mat.GetData();
+
+  // for(int vali = 0;vali < ndofe;vali++){
+  //   el_u[vali] = el_u_h[vali];
+  //   el_du_dt[vali] = el_dudt_h[vali];
+  // }
+
+  // AssembleElementFV(device_cache, el_u.HostRead(), elJac, el_metric_xi, el_metric_eta,
+  //                   el_metric_zeta, alpha_value, el_du_dt.HostReadWrite());
+  
+  // for(int vali = 0;vali < ndofe;vali++){
+  //   el_u_h[vali] = el_u[vali];
+  //   el_dudt_h[vali] = el_du_dt[vali];
+  // }
+  // return;
+
+  real_t *numflux = flux_num.HostReadWrite();
+
+  for (int k = 0; k < Np_z; k++)
+    {
+      for (int j = 0; j < Np_y; j++)
+        {
+          dU_subcell = 0.0;
+          id1 = k * Np_y * Np_x + j * Np_x;
+          el_u_mat.GetRow(id1, state1);
+          for (int i = 0; i < Np_x - 1; i++)
+            {
+              id2 = id1 + 1;
+              el_u_mat.GetRow(id2, state2);
+              const real_t *nor = el_metric_xi + id2*dim;
+              // SubcellMetricXi(Tr.ElementNo).GetColumn(id2, nor);
+              max_char_speed = \
+                std::max(max_char_speed,
+                         device_cache.iflux.ComputeFaceFlux(device_cache.gas, state1.HostRead(),
+                                                            state2.HostRead(), nor, numflux));
+
+              // Tr.SetIntPoint(&ir_vol->IntPoint(id1));
+              dU_subcell -= flux_num;
+              // (Tr.Weight() *ir->IntPoint(i).weight);
+              dU_subcell /= (10.1*elJac[id1] * qWgt[i]);
+              el_dudt_mat.SetRow(id1, dU_subcell);
+              
+              dU_subcell = flux_num;
+              state1 = state2;
+              id1 = id2;
+            }
+          //            Tr.SetIntPoint(&ir_vol->IntPoint(id1));
+          // Tr.Weight() * (ir->IntPoint(Np_x - 1).weight);
+          dU_subcell /= (elJac[id1] * qWgt[Np_x-1]);
+          el_dudt_mat.SetRow(id1, dU_subcell);
+        }
+    }
+  
+  if (dim > 1)
+    {
+      for (int k = 0; k < Np_z; k++)
+        {
+          for (int i = 0; i < Np_x; i++)
+            {
+              dU_subcell = 0.0;
+              id1 = k * Np_y * Np_x + i;
+              el_u_mat.GetRow(id1, state1);
+              for (int j = 0; j < Np_y - 1; j++)
+                {
+                  id2 = k * Np_y * Np_x + (j + 1) * Np_x + i;
+                  el_u_mat.GetRow(id2, state2);
+                  const real_t *nor = el_metric_eta + id2*dim;
+                  max_char_speed = \
+                    std::max(max_char_speed,
+                             device_cache.iflux.ComputeFaceFlux(device_cache.gas, state1.HostRead(),
+                                                                state2.HostRead(), nor, numflux));
+                  
+                  //Tr.SetIntPoint(&ir_vol->IntPoint(id1));
+                  // Tr.Weight() * (ir->IntPoint(j).weight);
+                  dU_subcell -= flux_num;
+                  dU_subcell /= (elJac[id1] * qWgt[j]);
+                  AddRow(el_dudt_mat, dU_subcell, id1);
+                  dU_subcell = flux_num;
+                  state1 = state2;
+                  id1 = id2;                   
+                }
+              // Tr.SetIntPoint(&ir_vol->IntPoint(id1));
+              // Tr.Weight() * (ir->IntPoint(Np_y - 1).weight);
+              dU_subcell /= (elJac[id1] * qWgt[Np_y - 1]); 
+              AddRow(el_dudt_mat, dU_subcell, id1);
+            }
+        }
+      if (dim > 2)
+        {
+          const real_t *metric_zeta = device_cache.subcell_metric_zeta_d + e*npe_metric_zeta*dim;
+          for (int j = 0; j < Np_y; j++)
+            {
+              for (int i = 0; i < Np_x; i++)
+                {
+                  dU_subcell = 0.0;
+                  id1 = j * Np_x + i;
+                  el_u_mat.GetRow(id1, state1);
+                  for (int k = 0; k < Np_z - 1; k++)
+                    {
+                      id2 = (k + 1) * Np_y * Np_x + j * Np_x + i;
+                      el_u_mat.GetRow(id2, state2);
+                      // SubcellMetricZeta(Tr.ElementNo).GetColumn(id2, nor);
+                      const real_t *nor = el_metric_zeta + id2*dim; 
+                      max_char_speed = \
+                        std::max(max_char_speed,
+                                 device_cache.iflux.ComputeFaceFlux(device_cache.gas, state1.HostRead(),
+                                                                    state2.HostRead(), nor, numflux));
+                      // Tr.SetIntPoint(&ir_vol->IntPoint(id1));
+                      // Tr.Weight() * (ir->IntPoint(k).weight);
+                      dU_subcell -= flux_num;
+                      dU_subcell /= (elJac[id1] * qWgt[k]);
+                      AddRow(el_dudt_mat, dU_subcell, id1);
+                      
+                      dU_subcell = flux_num;
+                      state1 = state2;
+                      id1 = id2;            
+                    }
+                  // Tr.SetIntPoint(&ir_vol->IntPoint(id1));
+                  // Tr.Weight() * (ir->IntPoint(Np_z - 1).weight);
+                  dU_subcell /= (elJac[id1] * qWgt[Np_z - 1]);
+                  AddRow(el_dudt_mat, dU_subcell, id1);
+                }
+            }
+        }
+    }
+  el_dudt_mat *= alpha_value;
+}
+
 void DGSEMIntegrator::ComputeSubcellMetrics()
 {
     for (int el = 0; el < pmesh->GetNE(); el++)
@@ -1322,7 +1484,7 @@ void DGSEMIntegrator::ComputeSubcellMetrics()
                 }
             }
         }
-    }   
+    }
 }
 
 }
