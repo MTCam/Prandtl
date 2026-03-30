@@ -51,6 +51,9 @@ namespace Prandtl
   {    
     GetOperatorCache(vfes.get(), &operator_cache);
     AssembleBoundaryFaceGeometryTerms(vfes.get(), bdr_marker, &operator_cache);
+#ifdef SUBCELL_FV_BLENDING
+    ComputeSubcellMetrics(vfes.get(), &operator_cache);
+#endif
     // GetDiscretizationInfo(vfes.get(), &operator_cache);
     // SetupRestrictions(vfes.get(), &operator_cache);
     // SetupVolumeMarkers(vfes.get(), &operator_cache);
