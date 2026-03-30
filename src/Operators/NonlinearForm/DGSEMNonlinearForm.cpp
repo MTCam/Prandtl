@@ -884,17 +884,26 @@ real_t DGSEMNonlinearForm::MultVolumeInviscidDevice(const Vector &pu, Vector &pd
   const int ne = dc.num_elements;
   const int ndof = dc.ndof_scalar_el;
   const int neq = dc.num_equations;
+  const int Np_x = dc.Np_x;
+  const int Np_y = dc.Np_y;
+  const int Np_z = dc.Np_z;
 
   // Derived parameters
   const int metric_stride = ndof * dim * dim;
   const int jac_stride    = ndof;
   const int estride = ndof*neq;
+  const int npe_metric_xi = (Np_x + 1)*Np_y*Np_z;
+  const int npe_metric_eta = Np_x*(Np_y + 1)*Np_z;
+  const int npe_metric_zeta = Np_x * Np_y * (Np_z + 1);
   
   // Device cache data/arrays
   const int *elem_attr_d = dc.elem_attr_d;
   const int *attr_marker_d = dc.attr_marker_d;
   const real_t *elJac_d = dc.elJac_d;
   const real_t *elMetric_d = dc.elMetric_d;
+  const real_t *subcell_metric_xi = dc.subcell_metric_xi_d;
+  const real_t *subcell_metric_eta = dc.subcell_metric_eta_d;
+  const real_t *subcell_metric_zeta = dc.subcell_metric_zeta_d;
   real_t *ws_d = dc.elWaveSpeed_d;
 
   // Inside the FORALL below, executed on device
@@ -904,19 +913,33 @@ real_t DGSEMNonlinearForm::MultVolumeInviscidDevice(const Vector &pu, Vector &pd
     const real_t *jac_el    = elJac_d    + e * jac_stride;
     const real_t *metric_el = elMetric_d + e * metric_stride;
 
+#ifdef SUBCELL_FV_BLENDING
+    const real_t *el_metric_xi = subcell_metric_xi + e*npe_metric_xi*dim;
+    const real_t *el_metric_eta = (dim > 1 ? subcell_metric_eta + e*npe_metric_eta*dim :
+                                   nullptr);
+    const real_t *el_metric_zeta = (dim > 2 ? subcell_metric_zeta + e*npe_metric_zeta*dim :
+                                    nullptr);
+#else
+    const real_t *el_metric_xi = nullptr;
+    const real_t *el_metric_eta = nullptr;
+    const real_t *el_metric_zeta = nullptr;
+#endif
+
     const int attr = elem_attr_d[e];
     if (attr_marker_d[attr-1] == 0) {
        ws_d[e] = 0.0;
        return;
     }
-    
+
     const int eoff = e * estride;
     const real_t *u_el = Ue_d + eoff;
     real_t *du_el = dUe_d + eoff;
 
     const real_t cs_el = \
       DGSEMIntegrator::AssembleElementVolumeKernel(dc, u_el,
-                                                   jac_el, metric_el, du_el);
+                                                   jac_el, metric_el,
+                                                   el_metric_xi, el_metric_eta,
+                                                   el_metric_zeta, du_el);
     ws_d[e] = cs_el;
   });
 
