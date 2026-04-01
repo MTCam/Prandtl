@@ -773,8 +773,8 @@ void DGSEMIntegrator::AssembleElementVector(const mfem::FiniteElement &el, mfem:
     // fes0->GetElementDofs(Tr.ElementNo, alpha_indx);
     // alpha->GetSubVector(alpha_indx, el_alpha);
 
-    // el_dudt.SetSize(dof * num_equations);
-    // el_dudt = 0.0;
+    el_dudt.SetSize(dof * num_equations);
+    el_dudt = 0.0;
 
     const mfem::DenseMatrix el_u_mat(el_u.GetData(), dof, num_equations);
     const mfem::DenseMatrix el_dudx_mat(el_dudx.GetData(), dof, num_equations);
@@ -878,7 +878,7 @@ void DGSEMIntegrator::AssembleElementVector(const mfem::FiniteElement &el, mfem:
         
             dU_inviscid.Neg();
 #ifdef SUBCELL_FV_BLENDING
-            dU_inviscid *= (1.0 - el_alpha(0));
+            dU_inviscid *= (1.0 - alpha0);
 #endif
             add(dU_inviscid, dU_viscous, dU_volume);
             dU_volume /= J;
