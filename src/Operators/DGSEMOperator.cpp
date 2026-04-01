@@ -591,7 +591,7 @@ void DGSEMOperator::Mult(const Vector &u, Vector &dudt) const
   
 #else
 
-  bool use_device_path = true;
+  bool use_device_path = false;
   if(use_device_path){
     max_char_speed = nonlinearForm->MultInviscid(Ustate, dudt);
   } else {
