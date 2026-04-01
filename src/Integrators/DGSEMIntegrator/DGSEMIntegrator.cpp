@@ -229,18 +229,26 @@ void DGSEMIntegrator::AssembleFaceVector(const mfem::FiniteElement &el1, const m
         std::cout << "===== Entering DGSEMIntegrator::AssembleElementVector =====" << std::endl;
       }
     
-    fes0->GetElementDofs(Tr.ElementNo, alpha_indx);
-    alpha->GetSubVector(alpha_indx, el_alpha);
-    
+    // fes0->GetElementDofs(Tr.ElementNo, alpha_indx);
+    // This passes:
+    // MFEM_ASSERT(alpha_indx == Tr.ElementNo,"alpha / elno skew");
+    // alpha->GetSubVector(alpha_indx, el_alpha);
+
     el_dudt.SetSize(dof * num_equations);
     el_dudt = 0.0;
     
     const mfem::DenseMatrix el_u_mat(el_u.GetData(), dof, num_equations);
     mfem::DenseMatrix el_dudt_mat(el_dudt.GetData(), dof, num_equations);
-
+    
 #ifdef SUBCELL_FV_BLENDING
-    ComputeFVFluxesFromCache(el_u_mat, el_alpha(0), Tr, el_dudt_mat);
+    const real_t *elalpha = operator_cache->alpha.HostRead();
+    real_t alpha0 = elalpha[Tr.ElementNo];
+    // alpha0 = el_alpha(0);
+    // MFEM_ASSERT(alpha0 == el_alpha(0), "Alphas mismatch");
+    ComputeFVFluxesFromCache(el_u_mat, Tr, el_dudt_mat);
+    el_dudt *= alpha0;
 #endif
+
 // #ifdef SUBCELL_FV_BLENDING    
 //     ComputeFVFluxes(el_u_mat, el_alpha(0), Tr, el_dudt_mat);
 // #endif
@@ -396,11 +404,11 @@ void DGSEMIntegrator::AssembleFaceVector(const mfem::FiniteElement &el1, const m
                  dU_inviscid.Neg();
                 
 #ifdef SUBCELL_FV_BLENDING
-                dU_inviscid *= (1.0 - el_alpha(0));
+                dU_inviscid *= (1.0 - alpha0);
 
                  if (debug_integrator)
                 {
-                    std::cout << "[AssembleElement]" << " alpha = " << el_alpha(0) << "\n";
+                    std::cout << "[AssembleElement]" << " alpha = " << alpha0 << "\n";
                     std::cout << "[AssembleElement]" << " -rdU_inviscid *= 1-a    = [" << dU_inviscid[0] << ", " << dU_inviscid[1] << ", " << dU_inviscid[2] << ", " << dU_inviscid[3] << "]\n";
                 }
 #endif
@@ -762,11 +770,11 @@ void DGSEMIntegrator::AssembleElementVector(const mfem::FiniteElement &el, mfem:
                                             const mfem::Vector &el_u, const mfem::Vector &el_dudx,
                                             const mfem::Vector &el_dudy, mfem::Vector &el_dudt)
 {
-    fes0->GetElementDofs(Tr.ElementNo, alpha_indx);
-    alpha->GetSubVector(alpha_indx, el_alpha);
+    // fes0->GetElementDofs(Tr.ElementNo, alpha_indx);
+    // alpha->GetSubVector(alpha_indx, el_alpha);
 
-    el_dudt.SetSize(dof * num_equations);
-    el_dudt = 0.0;
+    // el_dudt.SetSize(dof * num_equations);
+    // el_dudt = 0.0;
 
     const mfem::DenseMatrix el_u_mat(el_u.GetData(), dof, num_equations);
     const mfem::DenseMatrix el_dudx_mat(el_dudx.GetData(), dof, num_equations);
@@ -774,7 +782,10 @@ void DGSEMIntegrator::AssembleElementVector(const mfem::FiniteElement &el, mfem:
     mfem::DenseMatrix el_dudt_mat(el_dudt.GetData(), dof, num_equations);
 
 #ifdef SUBCELL_FV_BLENDING
-    ComputeFVFluxesFromCache(el_u_mat, el_alpha(0), Tr, el_dudt_mat);
+    const real_t *elalpha = operator_cache->alpha.HostRead();
+    real_t alpha0 = elalpha[Tr.ElementNo];
+    ComputeFVFluxesFromCache(el_u_mat, Tr, el_dudt_mat);
+    el_dudt *= alpha0;
 #endif
 
     for (int i = 0; i < ir_vol->GetNPoints(); i++)
@@ -1223,15 +1234,12 @@ void DGSEMIntegrator::ComputeFVFluxes(const mfem::DenseMatrix &el_u_mat, real_t 
 }
 
 
-void DGSEMIntegrator::ComputeFVFluxesFromCache(const mfem::DenseMatrix &el_u_mat, real_t alpha_value,
-                                               mfem::ElementTransformation &Tr, mfem::DenseMatrix &el_dudt_mat)
+void DGSEMIntegrator::ComputeFVFluxesFromCache(const mfem::DenseMatrix &el_u_mat, mfem::ElementTransformation &Tr,
+                                               mfem::DenseMatrix &el_dudt_mat)
 {
   const int e = Tr.ElementNo;
   real_t *el_dudt = el_dudt_mat.GetData();
   const real_t *el_u = el_u_mat.GetData();
-  max_char_speed = ComputeFVFluxesKernelIsh(device_cache, e, el_u, alpha_value, el_dudt);
-  return;
-
   const int dim = device_cache.dim;
   const int Np_x = device_cache.Np_x;
   const int Np_y = device_cache.Np_y;
@@ -1239,11 +1247,6 @@ void DGSEMIntegrator::ComputeFVFluxesFromCache(const mfem::DenseMatrix &el_u_mat
   const int neq = device_cache.num_equations;
   const int npe = Np_x * Np_y * Np_z;
   const int ndofe = npe * neq;
-  MFEM_ASSERT(dim == 2, "Bad dim");
-  MFEM_ASSERT(neq == (dim+2), "Bad neq");
-  MFEM_ASSERT(npe == 16, "Bad npe");
-  // We have only isotropic TPE so actually
-  // Np_{y,z} should == Np_x || 1, but for clarity:
   const int npe_metric_xi = (Np_x + 1)*Np_y*Np_z;
   const int npe_metric_eta = Np_x*(Np_y + 1)*Np_z;
   const int npe_metric_zeta = Np_x * Np_y * (Np_z + 1);
@@ -1253,222 +1256,9 @@ void DGSEMIntegrator::ComputeFVFluxesFromCache(const mfem::DenseMatrix &el_u_mat
                                  nullptr);
   const real_t *el_metric_zeta = (dim > 2 ? device_cache.subcell_metric_zeta_d + e*npe_metric_zeta*dim :
                                   nullptr);
-
   const real_t *elJac = device_cache.elJac_d + e*npe;
-  const real_t *qWgt = device_cache.subcell_weights_d;
 
-  // ------ Debugging ----------
-  // mfem::Vector el_u(ndofe);
-  // mfem::Vector el_du_dt(ndofe);
-  
-  // real_t *el_u_h = el_u_mat.GetData();
-  // real_t *el_dudt_h = el_dudt_mat.GetData();
-
-  // for(int vali = 0;vali < ndofe;vali++){
-  //   el_u[vali] = el_u_h[vali];
-  //   el_du_dt[vali] = el_dudt_h[vali];
-  // }
-
-  // AssembleElementFV(device_cache, el_u.HostRead(), elJac, el_metric_xi, el_metric_eta,
-  //                   el_metric_zeta, alpha_value, el_du_dt.HostReadWrite());
-  
-  // for(int vali = 0;vali < ndofe;vali++){
-  //   el_u_h[vali] = el_u[vali];
-  //   el_dudt_h[vali] = el_du_dt[vali];
-  // }
-  // return;
-
-  real_t flux_num[5];
-  real_t du_subcell[5];
-  // real_t *numflux = flux_num.HostReadWrite();
-  // real_t *numflux = flux_num;
-  real_t state1_local[5];
-  real_t state2_local[5];
-
-  for (int k = 0; k < Np_z; k++)
-    {
-      for (int j = 0; j < Np_y; j++)
-        {
-          for(int q = 0; q < neq;q++){
-            du_subcell[q] = 0.0;
-          }
-          // dU_subcell = 0.0;
-          id1 = k * Np_y * Np_x + j * Np_x;
-          // el_u_mat.GetRow(id1, state1);
-          Kernels::el_gather_state(el_u, npe, neq, id1, state1_local);
-          for (int i = 0; i < Np_x - 1; i++)
-            {
-              id2 = id1 + 1;
-              Kernels::el_gather_state(el_u, npe, neq, id2, state2_local);
-              // el_u_mat.GetRow(id2, state2);
-              const real_t *nor = el_metric_xi + id2*dim;
-
-              max_char_speed = \
-                std::max(max_char_speed,
-                         device_cache.iflux.ComputeFaceFlux(device_cache.gas, state1_local,
-                                                            state2_local, nor, flux_num));
-              // Tr.SetIntPoint(&ir_vol->IntPoint(id1));
-              // dU_subcell -= flux_num;
-              for(int q = 0; q < neq;q++){
-                du_subcell[q] -= flux_num[q];
-              }
-              for(int q = 0; q < neq;q++){
-                du_subcell[q] /= (elJac[id1] * qWgt[i]);
-              }
-              // (Tr.Weight() *ir->IntPoint(i).weight);
-              // dU_subcell /= (elJac[id1] * qWgt[i]);
-              // for(int q = 0;q < neq;q++){
-              //   du_subcell[q] = dU_subcell(q);
-              // }
-              // el_dudt_mat.SetRow(id1, dU_subcell);
-              Kernels::el_scatter_assign(du_subcell, npe, neq, id1, 1.0, el_dudt);
-              for(int q = 0; q < neq;q++){
-                du_subcell[q] = flux_num[q];
-              }
-              // dU_subcell = flux_num;
-              // state1 = state2;
-              for(int q = 0;q < neq;q++){
-                state1_local[q] = state2_local[q];
-              }
-              id1 = id2;
-            }
-          //            Tr.SetIntPoint(&ir_vol->IntPoint(id1));
-          // Tr.Weight() * (ir->IntPoint(Np_x - 1).weight);
-          //          dU_subcell /= (elJac[id1] * qWgt[Np_x-1]);
-          for(int q = 0;q < neq;q++){
-            du_subcell[q] /= (elJac[id1] * qWgt[Np_x-1]);  //.dU_subcell(q);
-          }
-          // el_dudt_mat.SetRow(id1, dU_subcell);
-          Kernels::el_scatter_assign(du_subcell, npe, neq, id1, 1.0, el_dudt);
-        }
-    }
-  
-  if (dim > 1)
-    {
-      for (int k = 0; k < Np_z; k++)
-        {
-          for (int i = 0; i < Np_x; i++)
-            {
-              for(int q = 0; q < neq;q++){
-                du_subcell[q] = 0.0;
-              }
-              // dU_subcell = 0.0;
-              id1 = k * Np_y * Np_x + i;
-              Kernels::el_gather_state(el_u, npe, neq, id1,
-                                       state1_local);
-              //el_u_mat.GetRow(id1, state1);
-              for (int j = 0; j < Np_y - 1; j++)
-                {
-                  id2 = k * Np_y * Np_x + (j + 1) * Np_x + i;
-                  Kernels::el_gather_state(el_u, npe, neq, id2,
-                                           state2_local);
-                  //el_u_mat.GetRow(id2, state2);
-                  const real_t *nor = el_metric_eta + id2*dim;
-                  max_char_speed = \
-                    std::max(max_char_speed,
-                             device_cache.iflux.ComputeFaceFlux(device_cache.gas,
-                                                                state1_local,
-                                                                state2_local,
-                                                                nor, flux_num));
-                  
-                  //Tr.SetIntPoint(&ir_vol->IntPoint(id1));
-                  // Tr.Weight() * (ir->IntPoint(j).weight);
-                  // dU_subcell -= flux_num;
-                  // dU_subcell /= (elJac[id1] * qWgt[j]);
-                  for(int q = 0;q < neq;q++){
-                    du_subcell[q] -= flux_num[q];
-                    // du_subcell[q] = dU_subcell(q);
-                  }
-                  for(int q = 0;q < neq;q++){
-                    du_subcell[q] /= (elJac[id1] * qWgt[j]);
-                  }
-                  Kernels::el_scatter_add(du_subcell, npe, neq, id1, 1.0, el_dudt);
-                  // AddRow(el_dudt_mat, dU_subcell, id1);
-                  // dU_subcell = flux_num;
-                  for(int q = 0;q < neq;q++){
-                    du_subcell[q] = flux_num[q];
-                    state1_local[q] = state2_local[q];
-                  }
-                  id1 = id2;                   
-                }
-              // Tr.SetIntPoint(&ir_vol->IntPoint(id1));
-              // Tr.Weight() * (ir->IntPoint(Np_y - 1).weight);
-              // dU_subcell /= (elJac[id1] * qWgt[Np_y - 1]); 
-              for(int q = 0;q < neq;q++){
-                //du_subcell[q] = dU_subcell(q);
-                du_subcell[q] /= (elJac[id1] * qWgt[Np_y - 1]);
-              }
-              //              AddRow(el_dudt_mat, dU_subcell, id1);
-              Kernels::el_scatter_add(du_subcell, npe, neq, id1, 1.0, el_dudt);
-            }
-        }
-      if (dim > 2)
-        {
-          const real_t *metric_zeta = device_cache.subcell_metric_zeta_d + e*npe_metric_zeta*dim;
-          for (int j = 0; j < Np_y; j++)
-            {
-              for (int i = 0; i < Np_x; i++)
-                {
-                  //                  dU_subcell = 0.0;
-                  for(int q = 0; q < neq;q++){
-                    du_subcell[q] = 0.0;
-                  }
-                  id1 = j * Np_x + i;
-                  Kernels::el_gather_state(el_u, npe, neq, id1,
-                                           state1_local);
-                  //                  el_u_mat.GetRow(id1, state1);
-                  for (int k = 0; k < Np_z - 1; k++)
-                    {
-                      id2 = (k + 1) * Np_y * Np_x + j * Np_x + i;
-                      // el_u_mat.GetRow(id2, state2);
-                      Kernels::el_gather_state(el_u, npe, neq, id2,
-                                               state2_local);
-                      // SubcellMetricZeta(Tr.ElementNo).GetColumn(id2, nor);
-                      const real_t *nor = el_metric_zeta + id2*dim; 
-                      max_char_speed = \
-                        std::max(max_char_speed,
-                                 device_cache.iflux.ComputeFaceFlux(device_cache.gas, state1_local,
-                                                                    state2_local, nor, flux_num));
-                      // Tr.SetIntPoint(&ir_vol->IntPoint(id1));
-                      // Tr.Weight() * (ir->IntPoint(k).
-                      // dU_subcell -= flux_num;
-                      // dU_subcell /= (elJac[id1] * qWgt[k]);
-                      for(int q = 0;q < neq;q++){
-                        du_subcell[q] -= flux_num[q];
-                        // du_subcell[q] = dU_subcell(q);
-                      }
-                      for(int q = 0;q < neq;q++){
-                        du_subcell[q] /= (elJac[id1] * qWgt[k]);
-                      }
-                      Kernels::el_scatter_add(du_subcell, npe, neq, id1, 1.0, el_dudt);
-                      //                      AddRow(el_dudt_mat, dU_subcell, id1);
-                      
-                      // dU_subcell = flux_num;
-                      for(int q = 0;q < neq;q++){
-                        du_subcell[q] = flux_num[q];
-                        state1_local[q] = state2_local[q];
-                      }
-                      // state1 = state2;
-                      id1 = id2;            
-                    }
-                  for(int q = 0;q < neq;q++){
-                    //du_subcell[q] = dU_subcell(q);
-                    du_subcell[q] /= (elJac[id1] * qWgt[Np_z - 1]);
-                  }
-                  //              AddRow(el_dudt_mat, dU_subcell, id1);
-                  Kernels::el_scatter_add(du_subcell, npe, neq, id1, 1.0, el_dudt);
-                  // Tr.SetIntPoint(&ir_vol->IntPoint(id1));
-                  // Tr.Weight() * (ir->IntPoint(Np_z - 1).weight);
-                  // dU_subcell /= (elJac[id1] * qWgt[Np_z - 1]);
-                  // AddRow(el_dudt_mat, dU_subcell, id1);
-                }
-            }
-        }
-    }
-  for(int q = 0;q < neq*npe;q++){
-    el_dudt[q] *= alpha_value;
-  }
-  // el_dudt_mat *= alpha_value;
+  max_char_speed = ComputeFVFluxesKernel(device_cache, el_u, elJac, el_metric_xi, el_metric_eta, el_metric_zeta, el_dudt);
 }
 
 void DGSEMIntegrator::ComputeSubcellMetrics()

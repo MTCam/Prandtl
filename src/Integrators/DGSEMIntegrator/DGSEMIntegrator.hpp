@@ -63,8 +63,8 @@ namespace Prandtl
     void ComputeSubcellMetrics();
     void ComputeFVFluxes(const mfem::DenseMatrix &el_u_mat, real_t alpha_value, mfem::ElementTransformation &Tr,
                          mfem::DenseMatrix &el_dudt_mat);
-    void ComputeFVFluxesFromCache(const mfem::DenseMatrix &el_u_mat, real_t alpha_value,
-                                  mfem::ElementTransformation &Tr, mfem::DenseMatrix &el_dudt_mat);
+    void ComputeFVFluxesFromCache(const mfem::DenseMatrix &el_u_mat, mfem::ElementTransformation &Tr,
+                                  mfem::DenseMatrix &el_dudt_mat);
 #ifdef AXISYMMETRIC
     inline real_t PressureFromConservative(const mfem::Vector& U) const;
 #endif
@@ -290,197 +290,24 @@ namespace Prandtl
       return max_char_speed;
     }
   };
-
+ 
   template<typename ContextT>
-  MFEM_HOST_DEVICE
-  inline void AssembleElementFV(const ContextT &ctx, const real_t *el_u, const real_t *elJac,
-                                const real_t *el_metric_xi, const real_t *el_metric_eta,
-                                const real_t *el_metric_zeta, const real_t alpha, real_t *el_dudt)
+  MFEM_HOST_DEVICE inline real_t ComputeFVFluxesKernel(const ContextT &ctx,
+                                                       const real_t *el_u,
+                                                       const real_t *elJac,
+                                                       const real_t *el_metric_xi,
+                                                       const real_t *el_metric_eta,
+                                                       const real_t *el_metric_zeta,
+                                                       real_t *el_dudt)
   {
-
-    MFEM_ASSERT(ctx.num_equations <= Prandtl::MAXEQ,        
-                "num_equations exceeds Prandtl::MAXEQ");
     const int dim = ctx.dim;
     const int Np_x = ctx.Np_x;
     const int Np_y = ctx.Np_y;
     const int Np_z = ctx.Np_z;
-    const int npe = Np_x * Np_y * Np_z;
     const int neq = ctx.num_equations;
-
-    const real_t *qWgt = ctx.subcell_weights_d;
-
-    real_t flux_num[Prandtl::MAXEQ];
-    real_t du_subcell[Prandtl::MAXEQ];
-    real_t state1[Prandtl::MAXEQ];
-    real_t state2[Prandtl::MAXEQ];
- 
-    for (int ii = 0; ii < Prandtl::MAXEQ; ++ii) {
-      flux_num[ii] = NAN;
-      du_subcell[ii] = NAN;
-      state1[ii] = NAN;
-      state2[ii] = NAN;
-    }
-
-    real_t ws = 0.0;
-
-    for (int k = 0; k < Np_z; k++)
-      {
-        for (int j = 0; j < Np_y; j++)
-          {
-            for(int ii=0;ii < neq;ii++)
-              du_subcell[ii] = 0.0;
-            int id1 = k * Np_y * Np_x + j * Np_x;
-            Kernels::el_gather_state(el_u, npe, neq, id1, state1);
-
-            for (int i = 0; i < Np_x - 1; i++)
-              {
-                const int id2 = id1 + 1;
-                Kernels::el_gather_state(el_u, npe, neq, id2, state2);
-                MFEM_ASSERT(id2 < npe_metric_xi,   "xi metric index OOB");
-                MFEM_ASSERT(id2 < npe_metric_eta,  "eta metric index OOB");
-                MFEM_ASSERT(id2 < npe_metric_zeta, "zeta metric index OOB");
-                const real_t *nor = el_metric_xi + id2*dim;
-
-                real_t pws = ctx.iflux.ComputeFaceFlux(ctx.gas, state1, state2 , nor, flux_num);
-                ws = Kernels::rmax(ws, pws);
-
-                const real_t fac = 1.0 / (elJac[id1] * qWgt[i]);
-                for(int ii = 0;ii < neq;ii++)
-                  du_subcell[ii] = (du_subcell[ii] - flux_num[ii])*fac;
-
-                Kernels::el_scatter_assign(du_subcell, npe, neq, id1, 1.0, el_dudt);
-
-                for(int ii = 0;ii < neq;ii++){
-                  du_subcell[ii] = flux_num[ii];
-                  state1[ii] = state2[ii];
-                }
-                id1 = id2;
-              }
-
-            const real_t fac = 1.0 / (elJac[id1] * qWgt[Np_x - 1]);
-            Kernels::el_scatter_assign(du_subcell, npe, neq, id1, fac, el_dudt);
-          }
-      }
-
-    if (dim > 1)
-      {
-        for (int k = 0; k < Np_z; k++)
-          {
-            for (int i = 0; i < Np_x; i++)
-              {
-                for(int ii = 0;ii < neq;ii++)
-                  du_subcell[ii] = 0.0;
-                int id1 = k * Np_y * Np_x + i;
-                Kernels::el_gather_state(el_u, npe, neq, id1, state1);
-
-                for (int j = 0; j < Np_y - 1; j++)
-                  {
-                    const int id2 = k * Np_y * Np_x + (j + 1) * Np_x + i;
-                    
-                    Kernels::el_gather_state(el_u, npe, neq, id2, state2);
-                    MFEM_ASSERT(id2 < npe_metric_xi,   "xi metric index OOB");
-                    MFEM_ASSERT(id2 < npe_metric_eta,  "eta metric index OOB");
-                    MFEM_ASSERT(id2 < npe_metric_zeta, "zeta metric index OOB");
-                    const real_t *nor = el_metric_eta + id2*dim;
-
-                    real_t pws = ctx.iflux.ComputeFaceFlux(ctx.gas, state1, state2, nor, flux_num);
-                    ws = Kernels::rmax(ws, pws);
-
-                    real_t fac = 1.0 / (elJac[id1] * qWgt[j]);
-                    for(int ii = 0;ii < neq;ii++)
-                      du_subcell[ii] = (du_subcell[ii] - flux_num[ii])*fac;
-
-                    Kernels::el_scatter_add(du_subcell, npe, neq, id1, 1.0, el_dudt);
-
-                    for(int ii = 0;ii < neq;ii++){
-                      du_subcell[ii] = flux_num[ii];
-                      state1[ii] = state2[ii];
-                    }
-                    id1 = id2;                   
-                  }
-
-                real_t fac = 1.0 / (elJac[id1] * qWgt[Np_y - 1]);
-                Kernels::el_scatter_add(du_subcell, npe, neq, id1, fac, el_dudt);
-              }
-          }
-        if (dim > 2)
-          {
-            for (int j = 0; j < Np_y; j++)
-              {
-                for (int i = 0; i < Np_x; i++)
-                  {
-
-                    for(int ii = 0;ii < neq;ii++)
-                      du_subcell[ii] = 0.0;
-                    int id1 = j * Np_x + i;
-                    Kernels::el_gather_state(el_u, npe, neq, id1, state1);
-
-                    for (int k = 0; k < Np_z - 1; k++)
-                      {
-                        const int id2 = (k + 1) * Np_y * Np_x + j * Np_x + i;
-
-                        Kernels::el_gather_state(el_u, npe, neq, id2, state2);
-                        const real_t *nor = el_metric_zeta + id2*dim;
-
-                        real_t pws = ctx.iflux.ComputeFaceFlux(ctx.gas, state1, state2, nor, flux_num); 
-                        ws = Kernels::rmax(ws, pws);
-
-                        real_t fac = 1.0 / (elJac[id1] * qWgt[k]);
-                        for(int ii = 0;ii < neq;ii++)
-                          du_subcell[ii] = (du_subcell[ii] - flux_num[ii])*fac;
-
-                        Kernels::el_scatter_add(du_subcell, npe, neq, id1, 1.0, el_dudt);
-
-                        for(int ii = 0;ii < neq;ii++){
-                          du_subcell[ii] = flux_num[ii];
-                          state1[ii] = state2[ii];
-                        }
-                        id1 = id2;            
-                      }
-
-                    real_t fac = 1.0 / (elJac[id1] * qWgt[Np_z - 1]);
-                    Kernels::el_scatter_add(du_subcell, npe, neq, id1, fac, el_dudt);
-                  }
-              }
-          }
-      }
-    const int npoints = npe * neq;
-    for(int ipt = 0;ipt < npoints;ipt++){
-      el_dudt[ipt] *= alpha;
-    }
-    // return max_char_speed;
-  };
-  
-  template<typename ContextT>
-  MFEM_HOST_DEVICE inline real_t ComputeFVFluxesKernelIsh(const ContextT &device_cache,
-                                                          const int e,
-                                                          const real_t *el_u,const real_t alpha_value,
-                                                          real_t *el_dudt)
-  {
-    const int dim = device_cache.dim;
-    const int Np_x = device_cache.Np_x;
-    const int Np_y = device_cache.Np_y;
-    const int Np_z = device_cache.Np_z;
-    const int neq = device_cache.num_equations;
     const int npe = Np_x * Np_y * Np_z;
     const int ndofe = npe * neq;
-    MFEM_ASSERT(dim == 2, "Bad dim");
-    MFEM_ASSERT(neq == (dim+2), "Bad neq");
-    MFEM_ASSERT(npe == 16, "Bad npe");
-    // We have only isotropic TPE so actually
-    // Np_{y,z} should == Np_x || 1, but for clarity:
-    const int npe_metric_xi = (Np_x + 1)*Np_y*Np_z;
-    const int npe_metric_eta = Np_x*(Np_y + 1)*Np_z;
-    const int npe_metric_zeta = Np_x * Np_y * (Np_z + 1);
-
-    const real_t *el_metric_xi = device_cache.subcell_metric_xi_d + e*npe_metric_xi*dim;
-    const real_t *el_metric_eta = (dim > 1 ? device_cache.subcell_metric_eta_d + e*npe_metric_eta*dim :
-                                   nullptr);
-    const real_t *el_metric_zeta = (dim > 2 ? device_cache.subcell_metric_zeta_d + e*npe_metric_zeta*dim :
-                                    nullptr);
-
-    const real_t *elJac = device_cache.elJac_d + e*npe;
-    const real_t *qWgt = device_cache.subcell_weights_d;
+    const real_t *qWgt = ctx.subcell_weights_d;
 
     real_t max_char_speed = 0.0;
     real_t flux_num[5];
@@ -505,7 +332,7 @@ namespace Prandtl
 
                 max_char_speed = \
                   std::max(max_char_speed,
-                           device_cache.iflux.ComputeFaceFlux(device_cache.gas, state1_local,
+                           ctx.iflux.ComputeFaceFlux(ctx.gas, state1_local,
                                                               state2_local, nor, flux_num));
                 for(int q = 0; q < neq;q++){
                   du_subcell[q] -= flux_num[q];
@@ -549,11 +376,10 @@ namespace Prandtl
                     const real_t *nor = el_metric_eta + id2*dim;
                     max_char_speed = \
                       std::max(max_char_speed,
-                               device_cache.iflux.ComputeFaceFlux(device_cache.gas,
-                                                                  state1_local,
-                                                                  state2_local,
-                                                                  nor, flux_num));
-                  
+                               ctx.iflux.ComputeFaceFlux(ctx.gas,
+                                                         state1_local,
+                                                         state2_local,
+                                                         nor, flux_num));
                     for(int q = 0;q < neq;q++){
                       du_subcell[q] -= flux_num[q];
                     }
@@ -575,7 +401,6 @@ namespace Prandtl
           }
         if (dim > 2)
           {
-            const real_t *metric_zeta = device_cache.subcell_metric_zeta_d + e*npe_metric_zeta*dim;
             for (int j = 0; j < Np_y; j++)
               {
                 for (int i = 0; i < Np_x; i++)
@@ -591,10 +416,10 @@ namespace Prandtl
                         int id2 = (k + 1) * Np_y * Np_x + j * Np_x + i;
                         Kernels::el_gather_state(el_u, npe, neq, id2,
                                                  state2_local);
-                        const real_t *nor = el_metric_zeta + id2*dim; 
+                        const real_t *nor = el_metric_zeta + id2*dim;
                         max_char_speed = \
                           std::max(max_char_speed,
-                                   device_cache.iflux.ComputeFaceFlux(device_cache.gas, state1_local,
+                                   ctx.iflux.ComputeFaceFlux(ctx.gas, state1_local,
                                                                       state2_local, nor, flux_num));
                         for(int q = 0;q < neq;q++){
                           du_subcell[q] -= flux_num[q];
@@ -618,9 +443,7 @@ namespace Prandtl
               }
           }
       }
-    for(int q = 0;q < neq*npe;q++){
-      el_dudt[q] *= alpha_value;
-    }
     return max_char_speed;
   };
+
 }
