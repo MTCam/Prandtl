@@ -884,26 +884,18 @@ real_t DGSEMNonlinearForm::MultVolumeInviscidDevice(const Vector &pu, Vector &pd
   const int ne = dc.num_elements;
   const int ndof = dc.ndof_scalar_el;
   const int neq = dc.num_equations;
-  const int Np_x = dc.Np_x;
-  const int Np_y = dc.Np_y;
-  const int Np_z = dc.Np_z;
 
   // Derived parameters
   const int metric_stride = ndof * dim * dim;
   const int jac_stride    = ndof;
   const int estride = ndof*neq;
-  const int npe_metric_xi = (Np_x + 1)*Np_y*Np_z;
-  const int npe_metric_eta = Np_x*(Np_y + 1)*Np_z;
-  const int npe_metric_zeta = Np_x * Np_y * (Np_z + 1);
   
   // Device cache data/arrays
   const int *elem_attr_d = dc.elem_attr_d;
   const int *attr_marker_d = dc.attr_marker_d;
   const real_t *elJac_d = dc.elJac_d;
   const real_t *elMetric_d = dc.elMetric_d;
-  const real_t *subcell_metric_xi = dc.subcell_metric_xi_d;
-  const real_t *subcell_metric_eta = dc.subcell_metric_eta_d;
-  const real_t *subcell_metric_zeta = dc.subcell_metric_zeta_d;
+
   real_t *ws_d = dc.elWaveSpeed_d;
 
   // Inside the FORALL below, executed on device
