@@ -913,18 +913,6 @@ real_t DGSEMNonlinearForm::MultVolumeInviscidDevice(const Vector &pu, Vector &pd
     const real_t *jac_el    = elJac_d    + e * jac_stride;
     const real_t *metric_el = elMetric_d + e * metric_stride;
 
-#ifdef SUBCELL_FV_BLENDING
-    const real_t *el_metric_xi = subcell_metric_xi + e*npe_metric_xi*dim;
-    const real_t *el_metric_eta = (dim > 1 ? subcell_metric_eta + e*npe_metric_eta*dim :
-                                   nullptr);
-    const real_t *el_metric_zeta = (dim > 2 ? subcell_metric_zeta + e*npe_metric_zeta*dim :
-                                    nullptr);
-#else
-    const real_t *el_metric_xi = nullptr;
-    const real_t *el_metric_eta = nullptr;
-    const real_t *el_metric_zeta = nullptr;
-#endif
-
     const int attr = elem_attr_d[e];
     if (attr_marker_d[attr-1] == 0) {
        ws_d[e] = 0.0;
@@ -937,9 +925,7 @@ real_t DGSEMNonlinearForm::MultVolumeInviscidDevice(const Vector &pu, Vector &pd
 
     const real_t cs_el = \
       DGSEMIntegrator::AssembleElementVolumeKernel(dc, u_el,
-                                                   jac_el, metric_el,
-                                                   el_metric_xi, el_metric_eta,
-                                                   el_metric_zeta, du_el);
+                                                   jac_el, metric_el, du_el);
     ws_d[e] = cs_el;
   });
 
