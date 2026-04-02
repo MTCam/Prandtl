@@ -103,8 +103,9 @@ jobs:
 
       - name: Example smoke test (Euler, IsentropicVortex)
         run: |
-          scripts/test_run_example.sh \
+          scripts/run_example.sh \
             -b "$(pwd)/build-euler" \
+            -t "0.002" \
             -c TestCases/Euler/2D/IsentropicVortex/config.json \
             -n 100
 
@@ -132,7 +133,7 @@ jobs:
 
       - name: Example smoke test (CNS, LidDrivenCavity)
         run: |
-          scripts/test_run_example.sh \
+          scripts/run_example.sh \
             -b "$(pwd)/build-cns" \
             -c TestCases/NavierStokes/2D/LidDrivenCavity/config.json \
             -n 100
