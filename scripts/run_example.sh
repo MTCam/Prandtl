@@ -177,7 +177,7 @@ patch_config() {
           | .paraview  = true
           | .visit     = false
           | .nancheck  = true
-          | .output_file_path = "./"
+          | .output_file_path = "./out"
           | .checkpoint_load = false
           | .variable_dt = false
           | .dt = $DT
@@ -194,7 +194,7 @@ patch_config() {
           | .paraview  = true
           | .visit     = false
           | .nancheck  = true
-          | .output_file_path = "./"
+          | .output_file_path = "./out"
           | .checkpoint_load = false
         )
     ' "${cfg_abs}" > "${patched}"
