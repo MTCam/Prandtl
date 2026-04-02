@@ -164,13 +164,11 @@ build_launcher() {
 patch_config() {
   local cfg_abs="$1"
   local patched="$2"
-  local outdir="$3"
-  local nsteps="$4"
+  local nsteps="$3"
 
   if [[ "${DT_OVERRIDE}" -eq 1 ]]; then
     jq --argjson N "${nsteps}" \
-       --argjson DT "${DT}" \
-       --arg out "${outdir}" '
+       --argjson DT "${DT}" '
       . as $root
       | ($root.runTime // {}) as $rt
       | .runTime = (
@@ -179,36 +177,15 @@ patch_config() {
           | .paraview  = true
           | .visit     = false
           | .nancheck  = true
-          | .output_file_path = $out
+          | .output_file_path = "./"
           | .checkpoint_load = false
           | .variable_dt = false
           | .dt = $DT
           | .final_time = ($N * $DT)
-          | .initial_save_dt = $DT
-        )
-    ' "${cfg_abs}" > "${patched}"
-  elif [[ "${CFL_OVERRIDE}" -eq 1 ]]; then
-    jq --argjson N "${nsteps}" \
-       --argjson CFL "${CFL}" \
-       --arg out "${outdir}" '
-      . as $root
-      | ($root.runTime // {}) as $rt
-      | .runTime = (
-          $rt
-          | .visualize = true
-          | .paraview  = true
-          | .visit     = false
-          | .nancheck  = true
-          | .output_file_path = $out
-          | .checkpoint_load = false
-          | .variable_dt = true
-          | .cfl = $CFL
         )
     ' "${cfg_abs}" > "${patched}"
   else
-    jq --argjson N "${nsteps}" \
-       --arg out "${outdir}" '
-      def isnum: type == "number";
+    jq --argjson N "${nsteps}" '
       . as $root
       | ($root.runTime // {}) as $rt
       | .runTime = (
@@ -217,19 +194,13 @@ patch_config() {
           | .paraview  = true
           | .visit     = false
           | .nancheck  = true
-          | .output_file_path = $out
+          | .output_file_path = "./"
           | .checkpoint_load = false
-          | .variable_dt = false
-          | ( if (.dt? | isnum) then .
-              elif (.final_time? | isnum) then (.dt = (.final_time / $N))
-              else (.dt = 0.0000001)
-              end )
-          | .final_time = (.dt * $N)
-          | .initial_save_dt = .dt
         )
     ' "${cfg_abs}" > "${patched}"
   fi
 }
+
 
 run_one() {
   local cfg_rel="$1"
@@ -268,7 +239,8 @@ run_one() {
     nsteps=100
   fi
 
-  patch_config "${cfg_abs}" "${patched}" "${outdir}" "${nsteps}"
+  # patch_config "${cfg_abs}" "${patched}" "${outdir}" "${nsteps}"
+  patch_config "${cfg_abs}" "${patched}" "${nsteps}"
 
   set +e
   ( cd "${work}" && eval ${mpi_launcher} ../Prandtl -d "${DEVICE}" -c "${patched}" )
