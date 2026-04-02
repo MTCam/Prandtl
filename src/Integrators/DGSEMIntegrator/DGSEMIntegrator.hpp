@@ -60,11 +60,13 @@ namespace Prandtl
     DGSEMOperatorCache *operator_cache = nullptr;
     DGSEMDeviceCache device_cache;
 
+#ifdef SUBCELL_FV_BLENDING
     void ComputeSubcellMetrics();
     void ComputeFVFluxes(const mfem::DenseMatrix &el_u_mat, real_t alpha_value, mfem::ElementTransformation &Tr,
                          mfem::DenseMatrix &el_dudt_mat);
     void ComputeFVFluxesFromCache(const mfem::DenseMatrix &el_u_mat, mfem::ElementTransformation &Tr,
                                   mfem::DenseMatrix &el_dudt_mat);
+#endif
 #ifdef AXISYMMETRIC
     inline real_t PressureFromConservative(const mfem::Vector& U) const;
 #endif
@@ -289,161 +291,162 @@ namespace Prandtl
       // #endif
       return max_char_speed;
     }
-  };
- 
-  template<typename ContextT>
-  MFEM_HOST_DEVICE inline real_t ComputeFVFluxesKernel(const ContextT &ctx,
-                                                       const real_t *el_u,
-                                                       const real_t *elJac,
-                                                       const real_t *el_metric_xi,
-                                                       const real_t *el_metric_eta,
-                                                       const real_t *el_metric_zeta,
-                                                       real_t *el_dudt)
-  {
-    const int dim = ctx.dim;
-    const int Np_x = ctx.Np_x;
-    const int Np_y = ctx.Np_y;
-    const int Np_z = ctx.Np_z;
-    const int neq = ctx.num_equations;
-    const int npe = Np_x * Np_y * Np_z;
-    const int ndofe = npe * neq;
-    const real_t *qWgt = ctx.subcell_weights_d;
 
-    real_t max_char_speed = 0.0;
-    real_t flux_num[5];
-    real_t du_subcell[5];
-    real_t state1_local[5];
-    real_t state2_local[5];
+    template<typename ContextT>
+    MFEM_HOST_DEVICE inline static real_t ComputeFVFluxesKernel(const ContextT &ctx,
+                                                                const real_t *el_u,
+                                                                const real_t *elJac,
+                                                                const real_t *el_metric_xi,
+                                                                const real_t *el_metric_eta,
+                                                                const real_t *el_metric_zeta,
+                                                                real_t *el_dudt)
+    {
+      const int dim = ctx.dim;
+      const int Np_x = ctx.Np_x;
+      const int Np_y = ctx.Np_y;
+      const int Np_z = ctx.Np_z;
+      const int neq = ctx.num_equations;
+      const int npe = Np_x * Np_y * Np_z;
+      const int ndofe = npe * neq;
+      const real_t *qWgt = ctx.subcell_weights_d;
 
-    for (int k = 0; k < Np_z; k++)
-      {
-        for (int j = 0; j < Np_y; j++)
-          {
-            for(int q = 0; q < neq;q++){
-              du_subcell[q] = 0.0;
-            }
-            int id1 = k * Np_y * Np_x + j * Np_x;
-            Kernels::el_gather_state(el_u, npe, neq, id1, state1_local);
-            for (int i = 0; i < Np_x - 1; i++)
-              {
-                int id2 = id1 + 1;
-                Kernels::el_gather_state(el_u, npe, neq, id2, state2_local);
-                const real_t *nor = el_metric_xi + id2*dim;
+      real_t max_char_speed = 0.0;
+      real_t flux_num[5];
+      real_t du_subcell[5];
+      real_t state1_local[5];
+      real_t state2_local[5];
 
-                max_char_speed = \
-                  std::max(max_char_speed,
-                           ctx.iflux.ComputeFaceFlux(ctx.gas, state1_local,
-                                                              state2_local, nor, flux_num));
-                for(int q = 0; q < neq;q++){
-                  du_subcell[q] -= flux_num[q];
-                }
-                for(int q = 0; q < neq;q++){
-                  du_subcell[q] /= (elJac[id1] * qWgt[i]);
-                }
-                Kernels::el_scatter_assign(du_subcell, npe, neq, id1, 1.0, el_dudt);
-                for(int q = 0; q < neq;q++){
-                  du_subcell[q] = flux_num[q];
-                }
-                for(int q = 0;q < neq;q++){
-                  state1_local[q] = state2_local[q];
-                }
-                id1 = id2;
+      for (int k = 0; k < Np_z; k++)
+        {
+          for (int j = 0; j < Np_y; j++)
+            {
+              for(int q = 0; q < neq;q++){
+                du_subcell[q] = 0.0;
               }
-            for(int q = 0;q < neq;q++){
-              du_subcell[q] /= (elJac[id1] * qWgt[Np_x-1]);
+              int id1 = k * Np_y * Np_x + j * Np_x;
+              Kernels::el_gather_state(el_u, npe, neq, id1, state1_local);
+              for (int i = 0; i < Np_x - 1; i++)
+                {
+                  int id2 = id1 + 1;
+                  Kernels::el_gather_state(el_u, npe, neq, id2, state2_local);
+                  const real_t *nor = el_metric_xi + id2*dim;
+
+                  max_char_speed = \
+                    std::max(max_char_speed,
+                             ctx.iflux.ComputeFaceFlux(ctx.gas, state1_local,
+                                                       state2_local, nor, flux_num));
+                  for(int q = 0; q < neq;q++){
+                    du_subcell[q] -= flux_num[q];
+                  }
+                  for(int q = 0; q < neq;q++){
+                    du_subcell[q] /= (elJac[id1] * qWgt[i]);
+                  }
+                  Kernels::el_scatter_assign(du_subcell, npe, neq, id1, 1.0, el_dudt);
+                  for(int q = 0; q < neq;q++){
+                    du_subcell[q] = flux_num[q];
+                  }
+                  for(int q = 0;q < neq;q++){
+                    state1_local[q] = state2_local[q];
+                  }
+                  id1 = id2;
+                }
+              for(int q = 0;q < neq;q++){
+                du_subcell[q] /= (elJac[id1] * qWgt[Np_x-1]);
+              }
+              Kernels::el_scatter_assign(du_subcell, npe, neq, id1, 1.0, el_dudt);
             }
-            Kernels::el_scatter_assign(du_subcell, npe, neq, id1, 1.0, el_dudt);
-          }
-      }
+        }
   
-    if (dim > 1)
-      {
-        for (int k = 0; k < Np_z; k++)
-          {
-            for (int i = 0; i < Np_x; i++)
-              {
-                for(int q = 0; q < neq;q++){
-                  du_subcell[q] = 0.0;
-                }
-                int id1 = k * Np_y * Np_x + i;
-                Kernels::el_gather_state(el_u, npe, neq, id1,
-                                         state1_local);
-                for (int j = 0; j < Np_y - 1; j++)
-                  {
-                    int id2 = k * Np_y * Np_x + (j + 1) * Np_x + i;
-                    Kernels::el_gather_state(el_u, npe, neq, id2,
-                                             state2_local);
-                    const real_t *nor = el_metric_eta + id2*dim;
-                    max_char_speed = \
-                      std::max(max_char_speed,
-                               ctx.iflux.ComputeFaceFlux(ctx.gas,
-                                                         state1_local,
-                                                         state2_local,
-                                                         nor, flux_num));
-                    for(int q = 0;q < neq;q++){
-                      du_subcell[q] -= flux_num[q];
-                    }
-                    for(int q = 0;q < neq;q++){
-                      du_subcell[q] /= (elJac[id1] * qWgt[j]);
-                    }
-                    Kernels::el_scatter_add(du_subcell, npe, neq, id1, 1.0, el_dudt);
-                    for(int q = 0;q < neq;q++){
-                      du_subcell[q] = flux_num[q];
-                      state1_local[q] = state2_local[q];
-                    }
-                    id1 = id2;                   
+      if (dim > 1)
+        {
+          for (int k = 0; k < Np_z; k++)
+            {
+              for (int i = 0; i < Np_x; i++)
+                {
+                  for(int q = 0; q < neq;q++){
+                    du_subcell[q] = 0.0;
                   }
-                for(int q = 0;q < neq;q++){
-                  du_subcell[q] /= (elJac[id1] * qWgt[Np_y - 1]);
-                }
-                Kernels::el_scatter_add(du_subcell, npe, neq, id1, 1.0, el_dudt);
-              }
-          }
-        if (dim > 2)
-          {
-            for (int j = 0; j < Np_y; j++)
-              {
-                for (int i = 0; i < Np_x; i++)
-                  {
-                    for(int q = 0; q < neq;q++){
-                      du_subcell[q] = 0.0;
-                    }
-                    int id1 = j * Np_x + i;
-                    Kernels::el_gather_state(el_u, npe, neq, id1,
-                                             state1_local);
-                    for (int k = 0; k < Np_z - 1; k++)
-                      {
-                        int id2 = (k + 1) * Np_y * Np_x + j * Np_x + i;
-                        Kernels::el_gather_state(el_u, npe, neq, id2,
-                                                 state2_local);
-                        const real_t *nor = el_metric_zeta + id2*dim;
-                        max_char_speed = \
-                          std::max(max_char_speed,
-                                   ctx.iflux.ComputeFaceFlux(ctx.gas, state1_local,
-                                                                      state2_local, nor, flux_num));
-                        for(int q = 0;q < neq;q++){
-                          du_subcell[q] -= flux_num[q];
-                        }
-                        for(int q = 0;q < neq;q++){
-                          du_subcell[q] /= (elJac[id1] * qWgt[k]);
-                        }
-                        Kernels::el_scatter_add(du_subcell, npe, neq, id1, 1.0, el_dudt);
-                      
-                        for(int q = 0;q < neq;q++){
-                          du_subcell[q] = flux_num[q];
-                          state1_local[q] = state2_local[q];
-                        }
-                        id1 = id2;            
+                  int id1 = k * Np_y * Np_x + i;
+                  Kernels::el_gather_state(el_u, npe, neq, id1,
+                                           state1_local);
+                  for (int j = 0; j < Np_y - 1; j++)
+                    {
+                      int id2 = k * Np_y * Np_x + (j + 1) * Np_x + i;
+                      Kernels::el_gather_state(el_u, npe, neq, id2,
+                                               state2_local);
+                      const real_t *nor = el_metric_eta + id2*dim;
+                      max_char_speed = \
+                        std::max(max_char_speed,
+                                 ctx.iflux.ComputeFaceFlux(ctx.gas,
+                                                           state1_local,
+                                                           state2_local,
+                                                           nor, flux_num));
+                      for(int q = 0;q < neq;q++){
+                        du_subcell[q] -= flux_num[q];
                       }
-                    for(int q = 0;q < neq;q++){
-                      du_subcell[q] /= (elJac[id1] * qWgt[Np_z - 1]);
+                      for(int q = 0;q < neq;q++){
+                        du_subcell[q] /= (elJac[id1] * qWgt[j]);
+                      }
+                      Kernels::el_scatter_add(du_subcell, npe, neq, id1, 1.0, el_dudt);
+                      for(int q = 0;q < neq;q++){
+                        du_subcell[q] = flux_num[q];
+                        state1_local[q] = state2_local[q];
+                      }
+                      id1 = id2;                   
                     }
-                    Kernels::el_scatter_add(du_subcell, npe, neq, id1, 1.0, el_dudt);
+                  for(int q = 0;q < neq;q++){
+                    du_subcell[q] /= (elJac[id1] * qWgt[Np_y - 1]);
                   }
-              }
-          }
-      }
-    return max_char_speed;
-  };
+                  Kernels::el_scatter_add(du_subcell, npe, neq, id1, 1.0, el_dudt);
+                }
+            }
+          if (dim > 2)
+            {
+              for (int j = 0; j < Np_y; j++)
+                {
+                  for (int i = 0; i < Np_x; i++)
+                    {
+                      for(int q = 0; q < neq;q++){
+                        du_subcell[q] = 0.0;
+                      }
+                      int id1 = j * Np_x + i;
+                      Kernels::el_gather_state(el_u, npe, neq, id1,
+                                               state1_local);
+                      for (int k = 0; k < Np_z - 1; k++)
+                        {
+                          int id2 = (k + 1) * Np_y * Np_x + j * Np_x + i;
+                          Kernels::el_gather_state(el_u, npe, neq, id2,
+                                                   state2_local);
+                          const real_t *nor = el_metric_zeta + id2*dim;
+                          max_char_speed = \
+                            std::max(max_char_speed,
+                                     ctx.iflux.ComputeFaceFlux(ctx.gas, state1_local,
+                                                               state2_local, nor, flux_num));
+                          for(int q = 0;q < neq;q++){
+                            du_subcell[q] -= flux_num[q];
+                          }
+                          for(int q = 0;q < neq;q++){
+                            du_subcell[q] /= (elJac[id1] * qWgt[k]);
+                          }
+                          Kernels::el_scatter_add(du_subcell, npe, neq, id1, 1.0, el_dudt);
+                      
+                          for(int q = 0;q < neq;q++){
+                            du_subcell[q] = flux_num[q];
+                            state1_local[q] = state2_local[q];
+                          }
+                          id1 = id2;            
+                        }
+                      for(int q = 0;q < neq;q++){
+                        du_subcell[q] /= (elJac[id1] * qWgt[Np_z - 1]);
+                      }
+                      Kernels::el_scatter_add(du_subcell, npe, neq, id1, 1.0, el_dudt);
+                    }
+                }
+            }
+        }
+      return max_char_speed;
+    }
+    
+  }; 
 
 }

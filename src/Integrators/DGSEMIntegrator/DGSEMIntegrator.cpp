@@ -1006,6 +1006,7 @@ void DGSEMIntegrator::AssembleLiftingElementVector(const mfem::FiniteElement &el
     liftingScheme->AssembleLiftingElementVector(el, Tr, el_u, el_dudx);
 }
 
+#ifdef SUBCELL_FV_BLENDING
 void DGSEMIntegrator::ComputeFVFluxes(const mfem::DenseMatrix &el_u_mat, real_t alpha_value,
                                       mfem::ElementTransformation &Tr, mfem::DenseMatrix &el_dudt_mat)
 {
@@ -1233,7 +1234,6 @@ void DGSEMIntegrator::ComputeFVFluxes(const mfem::DenseMatrix &el_u_mat, real_t 
     el_dudt_mat *= alpha_value;
 }
 
-
 void DGSEMIntegrator::ComputeFVFluxesFromCache(const mfem::DenseMatrix &el_u_mat, mfem::ElementTransformation &Tr,
                                                mfem::DenseMatrix &el_dudt_mat)
 {
@@ -1367,5 +1367,5 @@ void DGSEMIntegrator::ComputeSubcellMetrics()
         }
     }
 }
-
+#endif
 }
