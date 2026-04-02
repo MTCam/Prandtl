@@ -136,6 +136,7 @@ jobs:
           scripts/run_example.sh \
             -b "$(pwd)/build-cns" \
             -c TestCases/NavierStokes/2D/LidDrivenCavity/config.json \
+            -t ".0001" \
             -n 100
 
       - name: Example regression test (Cyclic - IsentropicVortex)
