@@ -862,12 +862,13 @@ real_t DGSEMNonlinearForm::MultVolumeInviscidDevice(const Vector &pu, Vector &pd
   // This block is executed by the host
   mfem::Vector Ue(cache->restr_v->Height());
   mfem::Vector dUe(cache->restr_v->Height());
+
   Ue.UseDevice();
   dUe.UseDevice();
 
   cache->restr_v->Mult(pu, Ue);
   
-  // If you want dUe zeroed before accumulation, do it explicitly on device:
+  // Zero the array on-device
   {
     real_t *d = dUe.Write();
     mfem::forall(dUe.Size(), [=] MFEM_HOST_DEVICE (int i) { d[i] = real_t(0); });
@@ -884,6 +885,31 @@ real_t DGSEMNonlinearForm::MultVolumeInviscidDevice(const Vector &pu, Vector &pd
   const int ne = dc.num_elements;
   const int ndof = dc.ndof_scalar_el;
   const int neq = dc.num_equations;
+
+#ifdef SUBCELL_FV_BLENDING
+  const int Np_x = dc.Np_x;
+  const int Np_y = dc.Np_y;
+  const int Np_z = dc.Np_z;
+  const int npe = Np_x * Np_y * Np_z;
+  const int ndofe = npe * neq;
+  const int npe_metric_xi = (Np_x + 1)*Np_y*Np_z;
+  const int npe_metric_eta = Np_x*(Np_y + 1)*Np_z;
+  const int npe_metric_zeta = Np_x * Np_y * (Np_z + 1);
+  const real_t *metric_xi_d = dc.subcell_metric_xi_d;
+  const real_t *metric_eta_d = (dim > 1 ? dc.subcell_metric_eta_d : nullptr);
+  const real_t *metric_zeta_d = (dim > 2 ? dc.subcell_metric_zeta_d : nullptr);
+
+  mfem::Vector dUfv(cache->restr_v->Height());
+  dUfv.UseDevice();
+  real_t *dUfv_d = dUfv.Write();
+  // zero the array on-device
+  {
+    real_t *d = dUfv_d;
+    mfem::forall(dUfv.Size(), [=] MFEM_HOST_DEVICE (int i) { d[i] = real_t(0); });
+  }
+
+  const real_t *alpha_d = cache->alpha.Read();
+#endif
 
   // Derived parameters
   const int metric_stride = ndof * dim * dim;
@@ -915,10 +941,32 @@ real_t DGSEMNonlinearForm::MultVolumeInviscidDevice(const Vector &pu, Vector &pd
     const real_t *u_el = Ue_d + eoff;
     real_t *du_el = dUe_d + eoff;
 
-    const real_t cs_el = \
+    real_t cs_el = \
       DGSEMIntegrator::AssembleElementVolumeKernel(dc, u_el,
                                                    jac_el, metric_el, du_el);
+#ifdef SUBCELL_FV_BLENDING
+    real_t alpha_fv = alpha_d[e];
+    if(alpha_fv > 1e-16){
+      real_t alpha_inv = (1.0 - alpha_fv);
+      real_t *du_fv = dUfv_d + eoff;
+      const real_t *el_metric_xi = metric_xi_d + e * npe_metric_xi * dim;
+      const real_t *el_metric_eta = (dim > 1 ? metric_eta_d + e * npe_metric_eta * dim :
+                                     nullptr);
+      const real_t *el_metric_zeta = (dim > 2 ? metric_zeta_d + e * npe_metric_zeta * dim :
+                                      nullptr);
+      const real_t cs_fv =                                              \
+        DGSEMIntegrator::ComputeFVFluxesKernel(dc, u_el, jac_el, el_metric_xi, el_metric_eta, el_metric_zeta, du_fv);
+      
+      for(int ipt = 0;ipt < estride;ipt++){
+        du_el[ipt] = alpha_inv * du_el[ipt] + alpha_fv * du_fv[ipt];
+      }
+
+      cs_el = Kernels::rmax(cs_el, cs_fv);
+    }
+#endif
+
     ws_d[e] = cs_el;
+
   });
 
   // Scatter RHS back to storage
