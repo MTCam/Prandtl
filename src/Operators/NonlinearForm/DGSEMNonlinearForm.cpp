@@ -1971,3 +1971,127 @@ void DGSEMNonlinearForm::Mult(const Vector &u, const Vector &dudx, const Vector 
 }
 
 }
+
+void DGSEMIntegrator::AssembleElementVector(const mfem::FiniteElement &el, mfem::ElementTransformation &Tr,
+                                            const mfem::Vector &el_u, const mfem::Vector &el_dudx,
+                                            const mfem::Vector &el_dudy, mfem::Vector &el_dudt)
+{
+    el_dudt.SetSize(dof * num_equations);
+    el_dudt = 0.0;
+
+    const mfem::DenseMatrix el_u_mat(el_u.GetData(), dof, num_equations);
+    const mfem::DenseMatrix el_dudx_mat(el_dudx.GetData(), dof, num_equations);
+    const mfem::DenseMatrix el_dudy_mat(el_dudy.GetData(), dof, num_equations);
+    mfem::DenseMatrix el_dudt_mat(el_dudt.GetData(), dof, num_equations);
+
+#ifdef SUBCELL_FV_BLENDING
+    int e = Tr.ElementNo;
+    fes0->GetElementDofs(e, alpha_indx);
+    alpha->GetSubVector(alpha_indx, el_alpha);
+    const real_t alpha_fv = el_alpha(0);
+    MFEM_ASSERT(alpha_fv == operator_cache->alpha(e), "Alphas dont match");
+    const real_t alpha_inv = 1.0 - alpha_fv;
+    ComputeFVFluxes(el_u_mat, alpha_fv, Tr, el_dudt_mat);
+    el_dudt *= 0.0;
+    ComputeFVFluxesFromCache(el_u_mat, Tr, el_dudt_mat);
+    el_dudt *= alpha_fv;
+#endif
+
+    for (int i = 0; i < ir_vol->GetNPoints(); i++)
+    {
+        const mfem::IntegrationPoint &ip1 = ir_vol->IntPoint(i);
+        el_u_mat.GetRow(id1, state1);
+        Tr.SetIntPoint(&ip1);
+        adj1 = Tr.AdjugateJacobian();
+
+        el_dudx_mat.GetRow(i, dqdx);
+
+        el_dudy_mat.GetRow(i, dqdy);
+
+        fluxFunction.ComputeViscousFlux(state1, dqdx, dqdy, flux_mat1);
+
+        mfem::MultABt(adj1, flux_mat1, flux_mat);
+        flux_mat.GetRow(0, f);
+        F_viscous.SetCol(i, f);
+
+        flux_mat.GetRow(1, g);
+        G_viscous.SetCol(i, g);
+    }
+    
+    for (int j = 0; j < Np_y; j++)
+    {
+        for (int i = 0; i < Np_x; i++)
+        {
+            id1 = j * Np_x + i;
+            const mfem::IntegrationPoint &ip1 = ir_vol->IntPoint(id1);
+            el_u_mat.GetRow(id1, state1);
+            Tr.SetIntPoint(&ip1);
+            J = Tr.Weight();
+            adj1 = Tr.AdjugateJacobian();
+            adj1.GetRow(0, metric1);
+            f = 0.0;
+            F_inviscid(id1).SetCol(i, f);
+
+            for (int m = i + 1; m < Np_x; m++)
+            {
+                id2 = j * Np_x + m;
+                const mfem::IntegrationPoint &ip2 = ir_vol->IntPoint(id2);
+                el_u_mat.GetRow(id2, state2);
+                Tr.SetIntPoint(&ip2);
+                adj2 = Tr.AdjugateJacobian();
+                adj2.GetRow(0, metric2);
+                max_char_speed = std::max(max_char_speed, rsolver.ComputeVolumeFlux(state1, state2, metric1, metric2, f));
+                F_inviscid(id1).SetCol(m, f);
+                F_inviscid(id2).SetCol(i, f);
+            }
+
+            adj1.GetRow(1, metric1);
+            g = 0.0;
+            G_inviscid(id1).SetCol(j, g);
+            for (int m = j + 1; m < Np_y; m++)
+            {
+                id2 = m * Np_x + i;
+                const mfem::IntegrationPoint &ip3 = ir_vol->IntPoint(id2);
+                el_u_mat.GetRow(id2, state2);
+                Tr.SetIntPoint(&ip3);
+                adj2 = Tr.AdjugateJacobian();
+                adj2.GetRow(1, metric2);
+                max_char_speed = std::max(max_char_speed, rsolver.ComputeVolumeFlux(state1, state2, metric1, metric2, g));
+                G_inviscid(id1).SetCol(m, g);
+                G_inviscid(id2).SetCol(j, g);
+            }
+
+            dU_viscous = 0.0;
+
+            Dhat2_T.GetColumn(i, D_row); 
+            F_inviscid(id1).Mult(D_row, dU_inviscid);
+
+            Dhat_T.GetColumn(i, D_row);
+            for (int l = 0; l < Np_x; l++)
+            {
+                F_viscous.GetColumn(j * Np_x + l, dU);
+                dU *= D_row(l);
+                dU_viscous += dU;
+            }
+
+            Dhat2_T.GetColumn(j, D_row);
+            G_inviscid(id1).AddMult(D_row, dU_inviscid);
+            
+            Dhat_T.GetColumn(j, D_row);
+            for (int l = 0; l < Np_y; l++)
+            {
+                G_viscous.GetColumn(l * Np_x + i, dU);
+                dU *= D_row(l);
+                dU_viscous += dU;
+            }
+        
+            dU_inviscid.Neg();
+#ifdef SUBCELL_FV_BLENDING
+            dU_inviscid *= alpha_inv;
+#endif
+            add(dU_inviscid, dU_viscous, dU_volume);
+            dU_volume /= J;
+            AddRow(el_dudt_mat, dU_volume, id1);
+        }
+    }   
+}
