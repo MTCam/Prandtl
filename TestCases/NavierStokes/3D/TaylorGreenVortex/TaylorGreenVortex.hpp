@@ -25,7 +25,8 @@ std::function<void(const Vector&, Vector&)> TaylorGreenVortexIC(real_t gamma, re
         y(0) = den;
         y(1) = den * velX;
         y(2) = den * velY;
-        y(3) = energy;
+        y(3) = den * velZ;
+        y(4) = energy;
     };
 }
 
