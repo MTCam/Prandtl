@@ -18,7 +18,7 @@ std::function<void(const Vector&, Vector&)> TaylorGreenVortexIC(real_t gamma, re
         velX = std::sin(x(0)) * std::cos(x(1)) * std::cos(x(2));
         velY = -std::cos(x(0)) * std::sin(x(1)) * std::cos(x(2));
         velZ = 0.0;
-        p = p0 + 1.0 / 16.0 * (std::cos(2.0 * x(0)) + std::cos(2.0 * x(1))) * std::cos(2.0 * x(2) + 2);
+        p = p0 + 1.0 / 16.0 * (std::cos(2.0 * x(0)) + std::cos(2.0 * x(1))) * (std::cos(2.0 * x(2)) + 2);
 
         energy = p / (gamma - 1.0) + 0.5 * den * (velX * velX + velY * velY + velZ * velZ);
   
