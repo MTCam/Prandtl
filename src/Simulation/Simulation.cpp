@@ -3,6 +3,7 @@
 
 #include "LidDrivenCavity.hpp"
 #include "TaylorGreenVortex.hpp"
+#include "TaylorGreenVortex2D.hpp"
 
 #include "SodShockTube.hpp"
 #include "ModifiedSodShockTube.hpp"
@@ -279,7 +280,12 @@ void Simulation::LoadConfig(const std::string &config_file_path)
     }
 
     Mesh *mesh;
-    mesh = new Mesh(runtime["mesh_file"].get<std::string>());
+    std::string mesh_file_name(runtime["mesh_file"].get<std::string>());
+    {
+      ScopedTimer timer("ReadMesh");
+      mesh = new Mesh(runtime["mesh_file"].get<std::string>());
+    }
+ 
     bool periodic;
     if (runtime.contains("periodic"))
     {
@@ -341,7 +347,9 @@ void Simulation::LoadConfig(const std::string &config_file_path)
     mesh->FinalizeMesh(0, true);
     pmesh = std::make_shared<ParMesh>(MPI_COMM_WORLD, *mesh);
     mesh->Clear();
-
+    if(myRank == 0){
+      std::cout << "Mesh distributed" << std::endl;
+    }
     if (runtime.contains("par_ref_levels"))
     {
         ref_levels = runtime.value("par_ref_levels", 0);
@@ -368,6 +376,10 @@ void Simulation::LoadConfig(const std::string &config_file_path)
 
     num_dofs_scalar = fes->GetNDofs();
     num_dofs_system = vfes->GetVSize();
+
+    if(myRank == 0){
+      std::cout << "Initial exchanges complete." << std::endl;
+    }
 
     stateLayout = std::make_shared<StateLayout>(dim, num_dofs_scalar);
     gasModel = std::make_shared<IdealGasModel>(*physicsConstants, *stateLayout);
@@ -1036,6 +1048,11 @@ void Simulation::Run()
     // Visualize the initial condition?
     if (visualize)
     {
+      if(Mpi::Root()){
+        std::cout << "Writing initial soln..." << std::endl;
+      }
+      ScopedTimer timer("VisInit");
+
 #ifdef AXISYMMETRIC
 
         if (debug_simulation)
@@ -1058,7 +1075,7 @@ void Simulation::Run()
         for (int i = 0; i < num_dofs_scalar; i++)
           {
             Prandtl::DofStateView dofState{sol_state, i};
-            (*u)(i) = gasModel->velocity(dofState,0);
+            (*u)(i) = gasModel->velocity(dofState, 0);
             if (dim > 1)
             {
               (*v)(i) = gasModel->velocity(dofState, 1);

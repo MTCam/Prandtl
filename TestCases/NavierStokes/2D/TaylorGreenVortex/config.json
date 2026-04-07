@@ -9,8 +9,8 @@
     "runTime":
     {
         "order": 3,
-        "dim" : 3, 
-        "num_equations": 5,
+        "dim" : 2, 
+        "num_equations": 4,
 
         "precision": 15,
 
@@ -34,7 +34,7 @@
 
         "mesh_ordering": "Hilbert",
 
-        "mesh_file": "../../TestCases/NavierStokes/3D/TaylorGreenVortex/TaylorGreenVortex.msh",
+        "mesh_file": "../../TestCases/NavierStokes/2D/TaylorGreenVortex/TaylorGreenVortex2D.msh",
         "conditions":
         {
             "initial_conditions":

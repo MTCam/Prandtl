@@ -725,7 +725,7 @@ void DGSEMIntegrator::AssembleElementVector(const mfem::FiniteElement &el, mfem:
                     adj2.GetRow(2, metric2);
                     max_char_speed = std::max(max_char_speed, rsolver.ComputeVolumeFlux(state1, state2, metric1, metric2, h));
                     H_inviscid(id1).SetCol(m, h);
-                    H_inviscid(id2).SetCol(k, g);
+                    H_inviscid(id2).SetCol(k, h);
                 }
 
                 dU_viscous = 0.0;
@@ -892,9 +892,11 @@ void DGSEMIntegrator::AssembleElementVector(const mfem::FiniteElement &el, mfem:
             }
         
             dU_inviscid.Neg();
+
 #ifdef SUBCELL_FV_BLENDING
             dU_inviscid *= alpha_inv;
 #endif
+
             add(dU_inviscid, dU_viscous, dU_volume);
             dU_volume /= J;
             AddRow(el_dudt_mat, dU_volume, id1);

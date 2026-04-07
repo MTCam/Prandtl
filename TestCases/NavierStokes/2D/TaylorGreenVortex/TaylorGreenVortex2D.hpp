@@ -16,7 +16,7 @@ std::function<void(const Vector&, Vector&)> TaylorGreenVortex2DIC(real_t gamma, 
 
         den = 1.0;
         velX = std::sin(x(0)) * std::cos(x(1));
-        velY = -std::cos(x(0)) * std::sin(x(1);
+        velY = -std::cos(x(0)) * std::sin(x(1));
         p = p0 + 0.25 * (std::cos(2.0 * x(0)) + std::cos(2.0 * x(1))) * std::cos(2.0 * x(2) + 2);
 
         energy = p / (gamma - 1.0) + 0.5 * den * (velX * velX + velY * velY);
