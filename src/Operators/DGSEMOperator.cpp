@@ -45,10 +45,16 @@ namespace Prandtl
 #ifdef PARABOLIC
     global_entropy.SetSize(vfes->GetVSize());
 #endif
+
+    diag0.mass = 0.0;
+    diag0.ke = 0.0;
+    diag0.en = 0.0;
+
   }
 
-  void DGSEMOperator::Finalize()
+  void DGSEMOperator::Finalize(real_t time)
   {    
+    this->SetTime(t);
     GetOperatorCache(vfes.get(), &operator_cache);
     AssembleBoundaryFaceGeometryTerms(vfes.get(), bdr_marker, &operator_cache);
 #ifdef SUBCELL_FV_BLENDING
@@ -79,7 +85,8 @@ namespace Prandtl
         delete ptr;
       }
   }
-  
+
+#ifdef SUBCELL_FV_BLENDING  
   void DGSEMOperator::ComputeBlendingCoefficient(const Vector &x) const
   {
     indicator->CheckSmoothness(x);
@@ -167,7 +174,182 @@ namespace Prandtl
       }
     
   }
-  
+#endif
+
+  void DGSEMOperator::ComputeIntegralMeasures(const Vector &u, IntegralMeasures &diag) const
+  {
+    
+    // This block is executed by the host
+    const int nval_restr = operator_cache.restr_v->Height();
+
+    // Copy the device cache so that it is not member data
+    auto dc = device_cache;
+    
+    // Device cache parameters
+    const int ne = dc.num_elements;
+    const int ndof = dc.ndof_scalar_el;
+    const int neq = dc.num_equations;
+    const real_t *qWts_d = dc.elQWgts_d;
+    auto gas = dc.gas;
+    
+ 
+    mfem::Vector Ue(nval_restr);
+    Ue.UseDevice();
+
+    operator_cache.restr_v->Mult(u, Ue);
+    const real_t *Ue_d = Ue.Read();
+    const int estride = ndof*neq;
+
+    mfem::Vector elMass_integral(ne);
+    mfem::Vector elKE_integral(ne);
+    mfem::Vector elEnergy_integral(ne);
+    mfem::Vector elMaxPressure(ne);
+    mfem::Vector elMaxTemperature(ne);
+    mfem::Vector elMaxDensity(ne);
+    mfem::Vector elMinPressure(ne);
+    mfem::Vector elMinTemperature(ne);
+    mfem::Vector elMinDensity(ne);
+
+    elMass_integral.UseDevice();
+    elKE_integral.UseDevice();
+    elEnergy_integral.UseDevice();
+    elMaxPressure.UseDevice();
+    elMaxTemperature.UseDevice();
+    elMaxDensity.UseDevice();
+    elMinPressure.UseDevice();
+    elMinTemperature.UseDevice();
+    elMinDensity.UseDevice();
+
+    real_t *elMass_int_d = elMass_integral.Write();
+    real_t *elKE_int_d = elKE_integral.Write();
+    real_t *elEnergy_int_d = elEnergy_integral.Write();
+
+    real_t *elPress_max_d = elMaxPressure.Write();
+    real_t *elTemp_max_d = elMaxTemperature.Write();
+    real_t *elDens_max_d = elMaxDensity.Write();
+    real_t *elPress_min_d = elMinPressure.Write();
+    real_t *elTemp_min_d = elMinTemperature.Write();
+    real_t *elDens_min_d = elMinDensity.Write();
+
+    // Inside the FORALL below, executed on device
+    mfem::forall(ne, [=] MFEM_HOST_DEVICE (int e)
+    {
+      const real_t *u_el = Ue_d + e * estride;
+      const real_t *qWgt = qWts_d + e * ndof;
+   
+      real_t mass_int = 0.0;
+      real_t ke_int = 0.0;
+      real_t en_int = 0.0;
+      real_t min_dens = 1e32;
+      real_t max_dens = 0.0;
+      real_t min_temp = 1e32;
+      real_t max_temp = 0.0;
+      real_t min_press = 1e32;
+      real_t max_press = 0.0;
+      for(int ep = 0;ep < ndof;ep++){
+        real_t elstate[Prandtl::MAXEQ];
+        Kernels::el_gather_state(u_el, ndof, neq, ep, elstate);
+        Prandtl::PointStateView S{elstate};
+
+        real_t rho = gas.density(S);
+        real_t ke = gas.kinetic_energy_density(S);
+        real_t rhoE = gas.energy(S); // energy density
+        real_t press = gas.pressure(S);
+        real_t temper = gas.temperature(S);
+
+        mass_int += rho * qWgt[ep];
+        ke_int += ke * qWgt[ep];
+        en_int += rhoE * qWgt[ep];
+
+        min_temp = Kernels::rmin(min_temp, temper);
+        max_temp = Kernels::rmax(max_temp, temper);
+        min_dens = Kernels::rmin(min_dens, rho);
+        max_dens = Kernels::rmax(max_dens, rho);
+        min_press = Kernels::rmin(min_press, press);
+        max_press = Kernels::rmax(max_press, press);
+      }
+
+      elMass_int_d[e]   = mass_int;
+      elKE_int_d[e]     = ke_int;
+      elEnergy_int_d[e] = en_int;
+      elPress_max_d[e]  = max_press;
+      elPress_min_d[e]  = min_press;
+      elDens_max_d[e]   = max_dens;
+      elDens_min_d[e]   = min_dens;
+      elTemp_min_d[e]   = min_temp;
+      elTemp_max_d[e]   = max_temp;
+
+    });
+
+    // diag.mass = mfem::Sum(elMass_integral);
+    // diag.ke = mfem::Sum(elKE_integral);
+    // diag.en = mfem::Sum(elEnergy_integral);
+    diag.mass = 0.0;
+    diag.ke   = 0.0;
+    diag.en   = 0.0;
+    diag.min_press = 1e32;
+    diag.max_press = 0.0;
+    diag.min_dens = 1e32;
+    diag.max_dens = 0.0;
+    diag.min_temp = 1e32;
+    diag.max_temp = 0.0;
+    const real_t *mass_h = elMass_integral.HostRead();
+    const real_t *ke_h   = elKE_integral.HostRead();
+    const real_t *en_h   = elEnergy_integral.HostRead();
+    const real_t *minpress_h = elMinPressure.HostRead();
+    const real_t *maxpress_h = elMaxPressure.HostRead();
+    const real_t *mindens_h = elMinDensity.HostRead();
+    const real_t *maxdens_h = elMaxDensity.HostRead();
+    const real_t *mintemp_h = elMinTemperature.HostRead();
+    const real_t *maxtemp_h = elMaxTemperature.HostRead();
+
+    for (int e = 0; e < ne; ++e) {
+      diag.mass += mass_h[e];
+      diag.ke   += ke_h[e];
+      diag.en   += en_h[e];
+      diag.min_press = Kernels::rmin(diag.min_press, minpress_h[e]);
+      diag.max_press = Kernels::rmax(diag.max_press, maxpress_h[e]);
+      diag.min_temp = Kernels::rmin(diag.min_temp, mintemp_h[e]);
+      diag.max_temp = Kernels::rmax(diag.max_temp, maxtemp_h[e]);
+      diag.min_dens = Kernels::rmin(diag.min_dens, mindens_h[e]);
+      diag.max_dens = Kernels::rmax(diag.max_dens, maxdens_h[e]);
+    }
+
+    real_t sendbuf[3] = {diag.mass, diag.ke, diag.en};
+    real_t recvbuf[3] = {0.0, 0.0, 0.0};
+
+    MPI_Allreduce(sendbuf, recvbuf, 3, MPITypeMap<real_t>::mpi_type, MPI_SUM, pmesh->GetComm());
+
+    diag.mass = recvbuf[0];
+    diag.ke = recvbuf[1];
+    diag.en = recvbuf[2];
+
+    sendbuf[0] = diag.min_press;
+    sendbuf[1] = diag.min_temp;
+    sendbuf[2] = diag.min_dens;
+
+    MPI_Allreduce(sendbuf, recvbuf, 3, MPITypeMap<real_t>::mpi_type, MPI_MIN, pmesh->GetComm());
+
+    diag.min_press = recvbuf[0];
+    diag.min_temp = recvbuf[1];
+    diag.min_dens = recvbuf[2];
+ 
+    sendbuf[0] = diag.max_press;
+    sendbuf[1] = diag.max_temp;
+    sendbuf[2] = diag.max_dens;
+
+    MPI_Allreduce(sendbuf, recvbuf, 3, MPITypeMap<real_t>::mpi_type, MPI_MAX, pmesh->GetComm());
+
+    diag.max_press = recvbuf[0];
+    diag.max_temp = recvbuf[1];
+    diag.max_dens = recvbuf[2];
+
+    if(diag0.mass == 0.0){
+      diag0 = diag;
+    }
+
+  }
+
   void DGSEMOperator::ComputeGlobalEntropyVector(const Vector &u, Vector &global_entropy) const
 {
     DenseMatrix ent_mat(Ndofs, num_equations);
@@ -631,7 +813,7 @@ void DGSEMOperator::Mult(const Vector &u, Vector &dudt) const
 #else
   const Vector &Ustate = u;
 #endif
-  
+
 #ifdef SUBCELL_FV_BLENDING
   mfem::Vector indicator_field;
   ComputeIndicatorField(Ustate, indicator_field);

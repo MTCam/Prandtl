@@ -90,7 +90,7 @@ Simulation::~Simulation()
     }
 }
 
-constexpr bool debug_simulation = false;
+constexpr bool debug_simulation = true;
 inline int AppendVectorPayload(mfem::Vector &dst,
                                const mfem::Vector &src)
 {
@@ -182,7 +182,7 @@ void Simulation::LoadConfig(const std::string &config_file_path)
         runtime.value("R_gas", 287.05),
         runtime.value("mu", 0.02));
 
-
+    
     if (runtime.contains("lifting_scheme"))
     {
         if (runtime["lifting_scheme"].get<std::string>() == "BR1")
@@ -347,7 +347,7 @@ void Simulation::LoadConfig(const std::string &config_file_path)
     mesh->FinalizeMesh(0, true);
     pmesh = std::make_shared<ParMesh>(MPI_COMM_WORLD, *mesh);
     mesh->Clear();
-    if(myRank == 0){
+    if(myRank == 0 && debug_simulation){
       std::cout << "Mesh distributed" << std::endl;
     }
     if (runtime.contains("par_ref_levels"))
@@ -377,7 +377,7 @@ void Simulation::LoadConfig(const std::string &config_file_path)
     num_dofs_scalar = fes->GetNDofs();
     num_dofs_system = vfes->GetVSize();
 
-    if(myRank == 0){
+    if(myRank == 0 && debug_simulation){
       std::cout << "Initial exchanges complete." << std::endl;
     }
 
@@ -392,6 +392,10 @@ void Simulation::LoadConfig(const std::string &config_file_path)
       return;
     }
 
+    if(myRank == 0 && debug_simulation){
+      std::cout << "StateLayout and GasModel created." << std::endl;
+    }
+ 
     if (checkpoint_load)
     {
         real_t root_t = 0.0;
@@ -430,6 +434,10 @@ void Simulation::LoadConfig(const std::string &config_file_path)
 
         MPI_Barrier(pmesh->GetComm());
 
+        if(myRank == 0 && debug_simulation){
+          std::cout << "Checkpoint loaded @ (" << ti << ", " << t << ")"
+                    << std::endl;
+        }
     }
     else 
     {
@@ -438,6 +446,10 @@ void Simulation::LoadConfig(const std::string &config_file_path)
 
         t = 0.0;
         ti = 0;
+
+        if(myRank == 0 && debug_simulation){
+          std::cout << "Starting from time 0." << std::endl;
+        }
     }
 
 #ifdef AXISYMMETRIC
@@ -539,6 +551,11 @@ void Simulation::LoadConfig(const std::string &config_file_path)
 
     NS = std::make_unique<DGSEMOperator>(vfes, fes0, pmesh, eta, alpha, grad_u, std::move(integrator),
                                          std::move(indicator), *gasModel, r_gf, alpha_max);
+
+    if(myRank == 0 && debug_simulation){
+      std::cout << "DGSEMOperator created." << std::endl;
+    }
+
     mfem::Vector bc_vector_data;
     mfem::Vector bc_scalar_data;
     mfem::Array<Prandtl::BCDescriptor> bc_descriptors;
@@ -883,9 +900,18 @@ void Simulation::LoadConfig(const std::string &config_file_path)
         }
     }
 
+    if(myRank == 0 && debug_simulation){
+      std::cout << "Boundary conditions configured." << std::endl;
+    }
+
     // Set up the operator cache
     NS->SetBCDescriptorData(bc_descriptors, bc_scalar_data, bc_vector_data);
-    NS->Finalize();
+    //    NS->SetTime(t); // Finalize does this.
+    NS->Finalize(t);
+
+    if(myRank == 0 && debug_simulation){
+      std::cout << "DGSEMOperator finalized." << std::endl;
+    }
 
     if (Mpi::Root())
     {
@@ -893,7 +919,6 @@ void Simulation::LoadConfig(const std::string &config_file_path)
         std::cout << "The Number of Degrees of Freedom (System) per Rank: " << num_dofs_system << std::endl;
     }
 
-    NS->SetTime(t);
     ode_solver->Init(*NS);
 
     rho.MakeRef(fes.get(), *sol, offset_mass(*stateLayout));
@@ -982,22 +1007,60 @@ void Simulation::Run()
         std::cout << "================================================" << std::endl;
     }
 
+    IntegralMeasures diag;
+    diag.mass = 0.0;
+    diag.ke = 0.0;
+    diag.en = 0.0;
+    diag.max_press = 0.0;
+    diag.min_press = 0.0;
+    diag.max_dens = 0.0;
+    diag.min_dens = 0.0;
+    diag.max_temp = 0.0;
+    diag.min_temp = 0.0;
+
+    // print the first node:
+#ifdef AXISYMMETRIC
+    Vector U_cons(sol->Size());
+    NS->RecoverStateFromWeighted(*sol, U_cons);
+    ConservativeToPrimitive(U_cons, *rho_axi, *u, *v, *p);
+    NS->ComputeIntegralMeasures(U_cons, diag);
+#else
+    NS->ComputeIntegralMeasures(*sol, diag);
+#endif
+
+    IntegralMeasures diag0 = NS->GetIntegralMeasuresBaseline();
+
     // Get the minimum characteristic element size and compute the initial time step if time step is variable
- 
+    real_t heff = infinity();
+    hmin = infinity();
+    for (int i = 0; i < pmesh->GetNE(); i++)
+      {
+        hmin = std::min(pmesh->GetElementSize(i, 1), hmin);
+      }
+    MPI_Allreduce(MPI_IN_PLACE, &hmin, 1, MPITypeMap<real_t>::mpi_type, MPI_MIN, pmesh->GetComm());
+    heff = hmin / ((order+1)*(order+1));
     if (variable_dt && cfl > 0.0)
-    {
-        
-        hmin = infinity();
-        for (int i = 0; i < pmesh->GetNE(); i++)
-        {
-            hmin = std::min(pmesh->GetElementSize(i, 1), hmin);
-        }
-        MPI_Allreduce(MPI_IN_PLACE, &hmin, 1, MPITypeMap<real_t>::mpi_type, MPI_MIN, pmesh->GetComm());
+    {        
         Vector z(sol->Size());
         NS->Mult(*sol, z);
         real_t max_char_speed = NS->GetMaxCharSpeed();
         MPI_Allreduce(MPI_IN_PLACE, &max_char_speed, 1,  MPITypeMap<real_t>::mpi_type, MPI_MAX, pmesh->GetComm());
-        dt = cfl * hmin / (max_char_speed * std::pow(order + 1, 2));
+        real_t dt_adv = heff / max_char_speed;
+#ifdef PARABOLIC
+        real_t nu_eff = \
+          std::max(1.0, physicsConstants->gamma/physicsConstants->Pr) * physicsConstants->mu / diag0.min_dens;
+        real_t dt_diff = heff * heff / nu_eff;
+        real_t dt_m1 = 1.0 / (1.0/dt_adv + 1.0/dt_diff);
+        dt = cfl / dim / (1.0/dt_adv + 1.0/dt_diff);
+#else
+        dt = cfl / dim * dt_adv;
+#endif
+        std::cout << "Fixed CFL: " << cfl << std::endl
+                  << "Initial Timestep DT: " << dt << std::endl;
+    } else {
+      if(Mpi::Root()){
+        std::cout << "Fixed Timestep DT: " << dt << std::endl;
+      }
     }
 
     // Clock the simulation?
@@ -1007,12 +1070,6 @@ void Simulation::Run()
         tic_toc.Start();
     }
 
-    // print the first node:
-#ifdef AXISYMMETRIC
-        Vector U_cons(sol->Size());
-        NS->RecoverStateFromWeighted(*sol, U_cons);
-        ConservativeToPrimitive(U_cons, *rho_axi, *u, *v, *p);
-#endif
     if (Mpi::Root())
         {
           int i = 0;
@@ -1044,6 +1101,9 @@ void Simulation::Run()
             }
           }
           std::cout << ">, p = " << std::round(pi*100)/100 << std::endl;
+          std::cout << "Total Mass:           " << diag0.mass << std::endl 
+                    << "Total Energy:         " << diag0.en << std::endl
+                    << "Total Kinetic Energy: " << diag0.ke << std::endl;
         }
     // Visualize the initial condition?
     if (visualize)
@@ -1119,15 +1179,42 @@ void Simulation::Run()
 
         // Perform the time step
         ode_solver->Step(*sol, t, dt_real);
-
-        // Update the time step size with CFL?
-        if (variable_dt && cfl > 0)
-        {
-            real_t max_char_speed = NS->GetMaxCharSpeed();
-            MPI_Allreduce(MPI_IN_PLACE, &max_char_speed, 1, MPITypeMap<real_t>::mpi_type, MPI_MAX, pmesh->GetComm());
-            dt = cfl * hmin / (max_char_speed * std::pow(order + 1, 2));
-        }
         ti++;
+
+        real_t cfl_rep = 0.0;
+        if (ti % print_interval == 0 || (variable_dt && cfl > 0) || debug_simulation){
+#ifdef AXISYMMETRIC
+          Vector U_cons(sol->Size());
+          NS->RecoverStateFromWeighted(*sol, U_cons);
+          NS->ComputeIntegralMeasures(U_cons, diag);
+#else
+          NS->ComputeIntegralMeasures(*sol, diag);
+#endif
+        }
+        // Update the time step size with CFL?
+        if ((variable_dt && cfl > 0) || (ti%print_interval == 0) || debug_simulation)
+        {
+          real_t max_char_speed = NS->GetMaxCharSpeed();
+          MPI_Allreduce(MPI_IN_PLACE, &max_char_speed, 1, MPITypeMap<real_t>::mpi_type, MPI_MAX, pmesh->GetComm());
+          real_t dt_adv = heff / max_char_speed;
+#ifdef PARABOLIC
+          real_t nu_eff =                                               \
+            std::max(1.0, physicsConstants->gamma/physicsConstants->Pr) * physicsConstants->mu / diag.min_dens;
+          real_t dt_diff = heff * heff / nu_eff;
+          real_t dt_m1 = 1.0 / (1.0/dt_adv + 1.0/dt_diff);
+          if(variable_dt){
+            dt = cfl / dim / (1.0/dt_adv + 1.0/dt_diff);
+          } else {
+            cfl_rep = dim * dt * (1.0/dt_adv + 1.0/dt_diff);
+          }
+#else
+          if(variable_dt){
+            dt = cfl / dim * dt_adv;
+          } else {
+            cfl_rep = dt * dim  / dt_adv;
+          }
+#endif
+        }
 
         // Check for completion
         done = (t >= t_final - 1e-8 * dt);
@@ -1225,11 +1312,27 @@ void Simulation::Run()
             next_checkpoint_t += checkpoint_dt;
         }
 
-        if (ti % print_interval == 0)
+        if (ti % print_interval == 0 || debug_simulation)
         {
+          real_t ke0 = diag0.ke;
+          if(ke0 == 0.0){ ke0 = 1.0; };
             if (Mpi::Root())
             {
-                std::cout << "time step: " << ti << ", time: " << t << ", dt: " << dt << "\n";
+              std::ostringstream Ostr;
+              Ostr << "time step: " << ti << ", time: " << t;
+              if(variable_dt){
+                Ostr << ", dt: " << dt;
+              } else {
+                Ostr << ", cfl: " << cfl_rep;
+              }
+              Ostr << std::endl
+                   << "rho(" << diag.min_dens << "," << diag.max_dens << "), "
+                   << "p(" << diag.min_press << "," << diag.max_press << "), "
+                   << "T(" << diag.min_temp << "," << diag.max_temp << ")" << std::endl
+                   << "TotalChange: Mass: " << (diag.mass - diag0.mass) / diag0.mass
+                   << ", Energy: " <<  (diag.en - diag0.en) / diag0.en
+                   << ", K.E.: " << (diag.ke - diag0.ke) / ke0 << std::endl;
+              std::cout << Ostr.str();
             }
         }
     }

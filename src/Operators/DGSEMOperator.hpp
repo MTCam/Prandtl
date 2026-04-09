@@ -12,6 +12,17 @@
 
 namespace Prandtl
 {
+  struct IntegralMeasures {
+    real_t mass = 0.0;
+    real_t ke = 0.0;
+    real_t en = 0.0;
+    real_t max_press = 0.0;
+    real_t min_press = 0.0;
+    real_t max_temp = 0.0;
+    real_t min_temp = 0.0;
+    real_t max_dens = 0.0;
+    real_t min_dens = 0.0;
+  };
 
 using namespace mfem;
   
@@ -60,12 +71,13 @@ private:
     
     std::vector<BdrFaceIntegrator*> bfnfi;
     std::vector<Array<int>> bdr_marker;
-  mfem::Array<Prandtl::BCDescriptor> bc_descriptors;
-  mfem::Vector bc_vector_data;
-  mfem::Vector bc_scalar_data;
+    mfem::Array<Prandtl::BCDescriptor> bc_descriptors;
+    mfem::Vector bc_vector_data;
+    mfem::Vector bc_scalar_data;
     mutable Array<int> ind_indx;
     mutable Vector ind_dof;
     mutable real_t alpha_dof;
+    mutable IntegralMeasures diag0;
     mutable DGSEMOperatorCache operator_cache;
     mutable DGSEMDeviceCache device_cache;
 
@@ -73,9 +85,13 @@ private:
     void ComputeGlobalPrimitiveGradVector(const Vector &u, Vector &dudx) const;
     void ComputeGlobalPrimitiveGradVector(const Vector &u, Vector &dudx, Vector &dudy) const;
     void ComputeGlobalPrimitiveGradVector(const Vector &u, Vector &dudx, Vector &dudy, Vector &dudz) const;
+
+#ifdef SUBCELL_FV_BLENDING
     void ComputeBlendingCoefficient(const Vector &u) const;
     void ComputeBlendingCoefficientFromIndicator(const Vector &indicator_field) const;
     void ComputeIndicatorField(const Vector &u, Vector &indicator_field) const;
+#endif
+
 #ifdef AXISYMMETRIC
     void BuildAxisIndexFromMarker();
     void ZeroAxisRadialMom(Vector &v) const;
@@ -104,6 +120,9 @@ public:
     
     ~DGSEMOperator();
     
+  
+  void ComputeIntegralMeasures(const Vector &u, IntegralMeasures &diag) const;
+  IntegralMeasures GetIntegralMeasuresBaseline() const { return diag0; }
   void SetBCDescriptorData(const mfem::Array<Prandtl::BCDescriptor> &bc_descr, const mfem::Vector &bc_scalar_dat,
                            const mfem::Vector &bc_vector_dat)
   {
@@ -149,7 +168,7 @@ public:
         p_floor_abs = std::max(p_floor_abs, p_fac * p_inf);
     }
 #endif
-    void Finalize();
+    void Finalize(real_t time=0);
 };
 
 }

@@ -43,6 +43,7 @@ namespace Prandtl
       mfem::Array<int> domain_attr_marker;  // size nattr, 0/1
       mfem::Vector elJac;
       mfem::Vector elMetric;
+      mfem::Vector elQuadratureWeights;
       mfem::Vector D;
       mfem::Vector Dhat;
       mfem::Vector Dhat2;
@@ -104,6 +105,7 @@ namespace Prandtl
     int Np = 0;
     int num_attr = 0;
     int num_bcs = 0;
+
     // Volume elements
     const int *elem_attr_d = nullptr;    // size ne, values are 1-based attributes
     const int *attr_marker_d = nullptr;  // size nattr, 0/1
@@ -112,6 +114,8 @@ namespace Prandtl
     const real_t *D_d = nullptr;
     const real_t *Dhat_d = nullptr;
     const real_t *Dhat2_d = nullptr;
+    const real_t *elQWgts_d = nullptr;
+
     // Internal faces
     const real_t *nor_d = nullptr;
     const real_t *fw_minus_d = nullptr;

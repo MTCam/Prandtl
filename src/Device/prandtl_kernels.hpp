@@ -24,6 +24,7 @@ namespace Prandtl
 
   namespace Kernels {
     MFEM_HOST_DEVICE inline real_t rmax(real_t a, real_t b) { return a > b ? a : b; }
+    MFEM_HOST_DEVICE inline real_t rmin(real_t a, real_t b) { return a < b ? a : b; }
     MFEM_HOST_DEVICE inline real_t rsqrt(real_t x) { return std::sqrt(x); }  // mfem::sqrt?
     MFEM_HOST_DEVICE inline real_t rlog(real_t x)  { return std::log(x); }   // mfem::log?
     MFEM_HOST_DEVICE inline real_t rpow(real_t x, real_t y) { return std::pow(x, y); };

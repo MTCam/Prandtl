@@ -101,6 +101,7 @@ namespace Prandtl {
     // Populate element Jacobian determinant and metric terms
     cache->elJac.SetSize(Np_x*Np_y*Np_z*nelem);
     cache->elMetric.SetSize(dim*dim*Np_x*Np_y*Np_z*nelem);
+    cache->elQuadratureWeights.SetSize(Np_x*Np_y*Np_z*nelem);
     for (int i = 0; i < nelem; i++)
       {
         mfem::ElementTransformation *T = fes->GetElementTransformation(i);
@@ -428,6 +429,8 @@ namespace Prandtl {
     
     real_t *Jinv_h = cache->elJac.HostWrite();
     real_t *Met_h  = cache->elMetric.HostWrite();
+    real_t *qWgts_h = cache->elQuadratureWeights.HostWrite();
+
     int dim = cache->dim;
     mfem::Vector metric1(dim);
     const int e = Tr.ElementNo;
@@ -439,7 +442,7 @@ namespace Prandtl {
         Tr.SetIntPoint(&ip);
         const real_t J = Tr.Weight();
         Jinv_h[e*nq + q] = J;
-        
+        qWgts_h[e*nq + q] = J * ip.weight;
         const mfem::DenseMatrix &adj = Tr.AdjugateJacobian();              
         for (int dir = 0; dir < dim; ++dir)
           {
@@ -797,12 +800,15 @@ namespace Prandtl {
     device_cache.Np_z = cache.Np_z;
     device_cache.num_elements = cache.num_elements;
     device_cache.num_equations = cache.num_equations;
+
     // - Volume element data
     device_cache.elJac_d = cache.elJac.Read();
     device_cache.elMetric_d = cache.elMetric.Read();
     device_cache.D_d = cache.D.Read();
     device_cache.Dhat_d = cache.Dhat.Read();
     device_cache.Dhat2_d = cache.Dhat2.Read();
+    device_cache.elQWgts_d = cache.elQuadratureWeights.Read();
+
     // - Interior faces (including remote)
     device_cache.nor_d = cache.face_normals.Read();
     device_cache.fw_minus_d = cache.face_wt_minus.Read();
