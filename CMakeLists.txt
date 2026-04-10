@@ -83,6 +83,12 @@ endif()
 # -------------------------------------------------------------------------------
 
 option(ENABLE_ASAN_UBSAN "Enable ASan+UBSan for the main executable" OFF)
+option(NO_OPT "Disable optimizations for testing" OFF)
+
+
+target_compile_definitions(${PROJECT_NAME} PRIVATE
+  "$<$<OR:$<CONFIG:Debug>,$<BOOL:${NO_OPT}>,$<BOOL:${ENABLE_ASAN_UBSAN}>>:MFEM_DEBUG>"
+)
 
 if (ENABLE_ASAN_UBSAN AND CMAKE_CXX_COMPILER_ID MATCHES "Clang|AppleClang|GNU")
   message(STATUS "Enabling ASan+UBSan on target: ${PROJECT_NAME}")
@@ -111,8 +117,6 @@ if (ENABLE_ASAN_UBSAN AND CMAKE_CXX_COMPILER_ID MATCHES "Clang|AppleClang|GNU")
     target_compile_options(${PROJECT_NAME} PRIVATE -fno-sanitize-recover=all)
   endif()
 endif()
-
-option(NO_OPT "Disable optimizations for testing" OFF)
 
 if (NO_OPT AND CMAKE_CXX_COMPILER_ID MATCHES "Clang|AppleClang|GNU")
   message(STATUS "Disabling all optimizations on target: ${PROJECT_NAME}")
@@ -183,6 +187,7 @@ target_include_directories(${PROJECT_NAME}
     PUBLIC ${CMAKE_SOURCE_DIR}/src/Include
     PUBLIC ${CMAKE_SOURCE_DIR}/src/Fluxes
     PUBLIC ${CMAKE_SOURCE_DIR}/TestCases/NavierStokes/2D/LidDrivenCavity
+    PUBLIC ${CMAKE_SOURCE_DIR}/TestCases/NavierStokes/2D/TaylorGreenVortex
     PUBLIC ${CMAKE_SOURCE_DIR}/TestCases/NavierStokes/3D/TaylorGreenVortex
     PUBLIC ${CMAKE_SOURCE_DIR}/TestCases/Euler/1D/SodShockTube
     PUBLIC ${CMAKE_SOURCE_DIR}/TestCases/Euler/1D/ModifiedSodShockTube
@@ -215,5 +220,7 @@ target_link_libraries(${PROJECT_NAME}
 
 if (BUILD_TESTING)
   include(CTest)
-  add_subdirectory(tests)
+  if (EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tests/CMakeLists.txt")
+    add_subdirectory(tests)
+  endif()
 endif()

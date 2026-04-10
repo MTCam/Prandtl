@@ -876,9 +876,11 @@ void DGSEMIntegrator::AssembleElementVector(const FiniteElement &el, ElementTran
     const DenseMatrix el_u_mat(el_u.GetData(), dof, num_equations);
     const DenseMatrix el_dudx_mat(el_dudx.GetData(), dof, num_equations);
     DenseMatrix el_dudt_mat(el_dudt.GetData(), dof, num_equations);
+
 #ifdef SUBCELL_FV_BLENDING
     ComputeFVFluxes(el_u_mat, el_alpha(0), Tr, el_dudt_mat);
 #endif
+
     for (int i = 0; i < ir_vol->GetNPoints(); i++)
     {
         const IntegrationPoint &ip1 = ir_vol->IntPoint(i);
@@ -938,7 +940,7 @@ void DGSEMIntegrator::AssembleElementVector(const FiniteElement &el, ElementTran
         add(dU_inviscid, dU_viscous, dU_volume);
         dU_volume /= J;
         AddRow(el_dudt_mat, dU_volume, i);
-    }   
+    }
 }
 
 void DGSEMIntegrator::AssembleLiftingFaceVector(const FiniteElement &el1, const FiniteElement &el2, FaceElementTransformations &Tr, const Vector &el_u, Vector &el_dudx, Vector &el_dudy, Vector &el_dudz)
