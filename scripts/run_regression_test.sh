@@ -66,7 +66,7 @@ while getopts ":n:t:d:b:e:o:p:r:c:l:H:h" opt; do
   case $opt in
       n) NSTEPS="${OPTARG}"; NSTEPS_OVERRIDE=1;;
       t) DT="${OPTARG}"; DT_OVERRIDE=1;;
-      d) CFL="${OPTARG}"; echo "Fixed CFL mode not yet implemented!";;
+      d) echo "ERROR: Fixed CFL mode (-d) is not yet implemented." >&2; exit 2;;
       b) BUILDDIR="${OPTARG}"; EXE="${BUILDDIR}/Prandtl";;
       e) EXE="${OPTARG}";;
       o) RUNDIR="${OPTARG}";;
@@ -176,14 +176,14 @@ else
       )
   ' "${cfg_abs}" > "${patched}"
 fi
-MPI_LAUNCHER="mpiexec -n \"${NMPIRANKS}\""
-# Override MPI_LAUNCHER if required for this platform:
-case "${HOST_SHORT}" in
+  local -a MPI_LAUNCHER=(mpiexec -n "${NMPIRANKS}")
+  # Override MPI_LAUNCHER if required for this platform:
+  case "${HOST_SHORT}" in
     tuo*)
         # Tuolumne@LC
-        MPI_LAUNCHER="flux run --exclusive -N \"${NHOSTS}\" -n \"${NMPIRANKS}\""
+        MPI_LAUNCHER=(flux run --exclusive -N "${NHOSTS}" -n "${NMPIRANKS}")
         ;;
-esac
+  esac
   # Run from the per-example dir; keep your “two levels down” invariant
   # Run example (isolate failures; do NOT exit on first error)
   # mpiexec -n "${NMPIRANKS}" 

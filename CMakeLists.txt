@@ -6,7 +6,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 project(Prandtl)
 
-option(BUILD_TESTING "Build unit tests" ON)
+set(BUILD_TESTING OFF CACHE BOOL "Build unit tests (currently disabled: no test wiring is configured)")
 option(PARABOLIC "Enable Compressible Navier-Stokes Solver" OFF)
 option(SUBCELL_FV_BLENDING "Enable subcell blending" ON)
 option(AXISYMMETRIC "Enable Axisymmetric domain solver" OFF)
@@ -213,7 +213,9 @@ target_link_libraries(${PROJECT_NAME}
     MPI::MPI_CXX
 )
 
-#if (BUILD_TESTING)
-#  include(CTest)
-#  add_subdirectory(tests)
-#endif()
+if (BUILD_TESTING)
+  include(CTest)
+  if (EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tests/CMakeLists.txt")
+    add_subdirectory(tests)
+  endif()
+endif()
