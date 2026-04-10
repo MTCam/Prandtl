@@ -113,7 +113,6 @@ TEST(LTEGasEOS_Tablelookup_test)
     // Data arrays for table lookup for LTE properties
     mfem::Vector lte_table( (num_properties) * (nx*ny) ); // LTE-Tables
     mfem::Vector rho_grid(nx), rhoe_grid(ny); // 1-D grids of rho and rhoE
-    mfem::Array<int> hunt_arr( ndofs * 2 );   // Array of hunted indices
 
     StateLayout L(dim, ndofs, nx, ny);
     const int num_eq = L.eq_energy + 1;
@@ -136,8 +135,7 @@ TEST(LTEGasEOS_Tablelookup_test)
 
     // Setup the LTE EOS
     std::shared_ptr<PhysicsConstants> phys =
-      std::make_shared<PhysicsConstants>(lte_table.Read(), hunt_arr.ReadWrite(), 
-                                         rho_grid.Read(), rhoe_grid.Read());
+      std::make_shared<PhysicsConstants>(lte_table.Read(), rho_grid.Read(), rhoe_grid.Read());
 
     // ------------------------------------------------------------------------------------
 
@@ -152,13 +150,11 @@ TEST(LTEGasEOS_Tablelookup_test)
     DofStateView S1(U.data(), 0);
 
     // Populate the hunt array with initial guesses for the hunt algorithm
-    phys->hunt[0] = hunt(rho_grid.Read(), nx, rho, 0);
-    phys->hunt[1] = hunt(rhoe_grid.Read(), ny, rhoe, 0);
-    EXPECT_CLOSE(phys->hunt[0], 2, 0);
-    EXPECT_CLOSE(phys->hunt[1], 4, 0);
-
-    int l_x = phys->hunt[0]; int l_y = phys->hunt[1];
+    int l_x = hunt(rho_grid.Read(), nx, rho, 0);
+    int l_y = hunt(rhoe_grid.Read(), ny, rhoe, 0);
     int u_x = l_x + 1      ; int u_y = l_y + 1;
+    EXPECT_CLOSE(l_x, 2, 0);
+    EXPECT_CLOSE(l_y, 4, 0);
 
     int P_idx = L.P_idx, T_idx = L.T_idx;
 
@@ -200,7 +196,6 @@ TEST(LTEGasEOS_BilinearInterpolation_test)
     // Data arrays for table lookup for LTE properties
     mfem::Vector lte_table( (num_properties) * (nx*ny) ); // LTE-Tables
     mfem::Vector rho_grid(nx), rhoe_grid(ny); // 1-D grids of rho and rhoE
-    mfem::Array<int> hunt_arr( ndofs * 2 );   // Array of hunted indices
 
     StateLayout L(dim, ndofs, nx, ny);
     const int num_eq = L.eq_energy + 1;
@@ -223,8 +218,7 @@ TEST(LTEGasEOS_BilinearInterpolation_test)
 
     // Setup the LTE EOS
     std::shared_ptr<PhysicsConstants> phys =
-      std::make_shared<PhysicsConstants>(lte_table.Read(), hunt_arr.ReadWrite(), 
-                                         rho_grid.Read(), rhoe_grid.Read());
+      std::make_shared<PhysicsConstants>(lte_table.Read(), rho_grid.Read(), rhoe_grid.Read());
 
     // Testing Bi-linear Interpolation 
     // A (Choosing one corner)
@@ -236,10 +230,8 @@ TEST(LTEGasEOS_BilinearInterpolation_test)
     fill_single_dof_state(L, U, dim, rho, u1, rhoe);
     DofStateView S1(U.data(), 0);
     
-    phys->hunt[0] = hunt(rho_grid.Read(), nx, rho, 0);
-    phys->hunt[1] = hunt(rhoe_grid.Read(), ny, rhoe, 0);
-    real_t P_interpolated = eos.pressure(*phys, L, S1, 0);
-    real_t T_interpolated = eos.temperature(*phys, L, S1, 0);
+    real_t P_interpolated = eos.pressure(*phys, L, S1);
+    real_t T_interpolated = eos.temperature(*phys, L, S1);
 
     mix.setState(&rho, &rhoe, 0);
     real_t P_true = mix.P();
@@ -256,14 +248,11 @@ TEST(LTEGasEOS_BilinearInterpolation_test)
     
     fill_single_dof_state(L, U, dim, rho, u1, rhoe);
     DofStateView S2(U.data(), 0);
-    
-    phys->hunt[0] = hunt(rho_grid.Read(), nx, rho, 0);
-    phys->hunt[1] = hunt(rhoe_grid.Read(), ny, rhoe, 0);
 
-    P_interpolated = eos.pressure(*phys, L, S2, 0);
-    T_interpolated = eos.temperature(*phys, L, S2, 0);
+    P_interpolated = eos.pressure(*phys, L, S2);
+    T_interpolated = eos.temperature(*phys, L, S2);
 
-    int l_x = phys->hunt[0], l_y = phys->hunt[1];
+    int l_x = hunt(rho_grid.Read(), nx, rho, 0), l_y = hunt(rhoe_grid.Read(), ny, rhoe, 0);
 
     P_true = 0;
     T_true = 0;
@@ -315,7 +304,6 @@ TEST(InverseLTETable_test)
     // Data arrays for table lookup for LTE properties
     mfem::Vector lte_table( (num_properties) * (nx*ny) ); // LTE-Tables
     mfem::Vector rho_grid(nx), rhoe_grid(ny); // 1-D grids of rho and rhoE
-    mfem::Array<int> hunt_arr( ndofs * 2 );   // Array of hunted indices
 
     StateLayout L(dim, ndofs, nx, ny);
     const int num_eq = L.eq_energy + 1;
@@ -337,8 +325,7 @@ TEST(InverseLTETable_test)
     }
 
     std::shared_ptr<PhysicsConstants> phys =
-      std::make_shared<PhysicsConstants>(lte_table.Read(), hunt_arr.ReadWrite(),
-                                         rho_grid.Read(), rhoe_grid.Read());
+      std::make_shared<PhysicsConstants>(lte_table.Read(), rho_grid.Read(), rhoe_grid.Read());
 
     // -------------------------------- LTE TABLE Look-up --------------------------
 
@@ -354,10 +341,8 @@ TEST(InverseLTETable_test)
     real_t P_true = mix1.P();
     real_t T_true = mix1.T();
 
-    phys->hunt[0] = hunt(rho_grid.Read(), nx, rho_true, 0);
-    phys->hunt[1] = hunt(rhoe_grid.Read(), ny, rhoe_true, 0);
-    real_t P_interpolated = eos.pressure(*phys, L, S1, 0);
-    real_t T_interpolated = eos.temperature(*phys, L, S1, 0);
+    real_t P_interpolated = eos.pressure(*phys, L, S1);
+    real_t T_interpolated = eos.temperature(*phys, L, S1);
 
 
     // ------------------------------------ TESTS ----------------------------------
@@ -376,7 +361,7 @@ TEST(InverseLTETable_test)
     real_t rhoe_new = 700000.0;
     fill_single_dof_state(L, U, dim, rho_true, u1, rhoe_new);
     PointStateView S(U.data());
-    real_t rhoe_inverse = eos.internal_energy_from_pressure(*phys, L, S, P_interpolated, 0);
+    real_t rhoe_inverse = eos.internal_energy_from_pressure(*phys, L, S, P_interpolated);
     EXPECT_CLOSE(rhoe_true, rhoe_inverse, 1e-8);
 
     return 0;

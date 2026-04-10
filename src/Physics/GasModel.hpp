@@ -3,7 +3,9 @@
 #include "Physics.hpp"
 #include "GasState.hpp"
 #include "EOS.hpp"
+#include "LteEOS.hpp"
 #include "Transport.hpp"
+#include "LteTransport.hpp"
 
 namespace Prandtl
 {
@@ -201,8 +203,11 @@ namespace Prandtl
     }
   };
 
-  // Current concrete choice: ideal single-species gas + constant transport
+  // ideal single-species gas + constant transport
   using IdealGasModel = GasModel<IdealSingleGasEOS, Transport>;
+
+  // LTE mixture with table lookup
+  using LteGasModel = GasModel<LTEGasEOS, LTETransport>;
   
   // Bridge helper so old call-sites that only have PhysicsConstants can move over
   // inline IdealGasModel make_ideal_gas_model(std::shared_ptr<const PhysicsConstants> phys)
