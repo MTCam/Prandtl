@@ -176,43 +176,46 @@ else
       )
   ' "${cfg_abs}" > "${patched}"
 fi
-MPI_LAUNCHER="mpiexec -n \"${NMPIRANKS}\""
+local -a MPI_LAUNCHER="mpiexec -n ${NMPIRANKS}"
+echo "mpi launcher: ${MPI_LAUNCHER}"
+
 # Override MPI_LAUNCHER if required for this platform:
 case "${HOST_SHORT}" in
     tuo*)
         # Tuolumne@LC
-        MPI_LAUNCHER="flux run --exclusive -N \"${NHOSTS}\" -n \"${NMPIRANKS}\""
+        MPI_LAUNCHER="flux run --exclusive -N ${NHOSTS} -n ${NMPIRANKS}"
         ;;
 esac
-  # Run from the per-example dir; keep your “two levels down” invariant
-  # Run example (isolate failures; do NOT exit on first error)
-  # mpiexec -n "${NMPIRANKS}" 
-  set +e
-  ( cd "${work}" && eval ${MPI_LAUNCHER} ../Prandtl -d "${DEVICE}" -c "${patched}" )
-  local run_rc=$?
-  set -e
+# Run from the per-example dir; keep your “two levels down” invariant
+# Run example (isolate failures; do NOT exit on first error)
+# mpiexec -n "${NMPIRANKS}" 
+set +e
+( cd "${work}" && eval ${MPI_LAUNCHER} ../Prandtl -d "${DEVICE}" -c "${patched}" )
+local run_rc=$?
+set -e
 
-  # Basic regression: require ParaView.pvd + Cycle000000 + Cycle00NNNN
-  if [[ ${run_rc} -eq 0 ]] && check_outputs "${outdir}" "${NSTEPS}"; then
+# Basic regression: require ParaView.pvd + Cycle000000 + Cycle00NNNN
+if [[ ${run_rc} -eq 0 ]] && check_outputs "${outdir}" "${NSTEPS}"; then
+
     echo "✓ Regression Test OK: ${exname} (outputs in ${outdir})"
     SUCCEEDED+=("${cfg_rel}")
     return 0
-  else
+else
     echo "✗ Regression Test FAILED: ${exname}"
     [[ ${run_rc} -ne 0 ]] && echo "  - runtime exit code: ${run_rc}"
     if [[ ! -f "${outdir}/ParaView/ParaView.pvd" ]]; then
-      echo "  - missing: ${outdir}/ParaView/ParaView.pvd"
+        echo "  - missing: ${outdir}/ParaView/ParaView.pvd"
     fi
     FAILED+=("${cfg_rel}")
     return 1
-  fi
+fi
 
 }
 
 # ---- Iterate
 rc=0
 for cfg in "${CFGS[@]}"; do
-  run_one "${cfg}" || rc=1
+    run_one "${cfg}" || rc=1
 done
 
 # ---- Summary
@@ -220,10 +223,10 @@ echo
 echo "===== Regression Runtime Summary ====="
 echo "Total: ${#CFGS[@]} | Succeeded: ${#SUCCEEDED[@]} | Failed: ${#FAILED[@]}"
 if (( ${#SUCCEEDED[@]} > 0 )); then
-  printf '  ✓ %s\n' "${SUCCEEDED[@]}"
+    printf '  ✓ %s\n' "${SUCCEEDED[@]}"
 fi
 if (( ${#FAILED[@]} > 0 )); then
-  printf '  ✗ %s\n' "${FAILED[@]}"
+    printf '  ✗ %s\n' "${FAILED[@]}"
 fi
 
 exit ${rc}
