@@ -209,7 +209,7 @@ void Prim2Conserv(const Vector &state, Vector &conserv_state, real_t gammaM1Inve
 
 void Cross(const Vector &vec1, const Vector &vec2, Vector &cross)
 {
-    MFEM_ASSERT(vec1.Size() == 3 && vec2.Size() = 3, "Apply cross product only to 3D vectors");
+    MFEM_ASSERT(vec1.Size() == 3 && vec2.Size() == 3, "Apply cross product only to 3D vectors");
     cross.SetSize(3);
 
     cross(0) = vec1(1) * vec2(2) - vec1(2) * vec2(1);
