@@ -21,7 +21,5 @@
 </PCellData>
 <Piece Source="proc000000.vtu"/>
 <Piece Source="proc000001.vtu"/>
-<Piece Source="proc000002.vtu"/>
-<Piece Source="proc000003.vtu"/>
 </PUnstructuredGrid>
 </VTKFile>
