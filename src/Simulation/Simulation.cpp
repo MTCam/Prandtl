@@ -3,6 +3,7 @@
 
 #include "LidDrivenCavity.hpp"
 #include "TaylorGreenVortex.hpp"
+#include "TaylorGreenVortex2D.hpp"
 
 #include "SodShockTube.hpp"
 #include "ModifiedSodShockTube.hpp"
@@ -1086,7 +1087,7 @@ void Simulation::Run()
         }
         // Visualize the solution?
         // if (visualize && (done || ti % vis_steps == 0))
-        if (visualize && (done || t >= next_save_t))
+        if (visualize && (done || t >= next_save_t || ti%vis_steps == 0))
         {
         
 #ifdef AXISYMMETRIC
