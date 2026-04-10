@@ -828,42 +828,52 @@ void DGSEMOperator::Mult(const Vector &u, Vector &dudt) const
     alpha_h[e] = (*alpha)(e);
   }
 #endif
+  bool use_device_path = false;
   
 #ifdef PARABOLIC
-  ComputeGlobalEntropyVector(Ustate, global_entropy);
-  
-  if (dim == 1)
-    {
-      nonlinearForm->MultLifting(global_entropy, *grad_u[0]);
-      ComputeGlobalPrimitiveGradVector(Ustate, *grad_u[0]);
-      nonlinearForm->Mult(Ustate, *grad_u[0], dudt);
-    }
-  else if (dim == 2)
-    {
-      nonlinearForm->MultLifting(global_entropy, *grad_u[0], *grad_u[1]);
-      ComputeGlobalPrimitiveGradVector(Ustate, *grad_u[0], *grad_u[1]);
-      nonlinearForm->Mult(Ustate, *grad_u[0], *grad_u[1], dudt);    
-    }
-  else
-    {
-      nonlinearForm->MultLifting(global_entropy, *grad_u[0], *grad_u[1], *grad_u[2]);
-      ComputeGlobalPrimitiveGradVector(Ustate, *grad_u[0], *grad_u[1], *grad_u[2]);
-      nonlinearForm->Mult(Ustate, *grad_u[0], *grad_u[1], *grad_u[2], dudt);
-    }
-  
+
+  if(!use_device_path){
+    ComputeGlobalEntropyVector(Ustate, global_entropy);
+    
+    if (dim == 1)
+      {
+        nonlinearForm->MultLifting(global_entropy, *grad_u[0]);
+        ComputeGlobalPrimitiveGradVector(Ustate, *grad_u[0]);
+        nonlinearForm->Mult(Ustate, *grad_u[0], dudt);
+      }
+    else if (dim == 2)
+      {
+        nonlinearForm->MultLifting(global_entropy, *grad_u[0], *grad_u[1]);
+        ComputeGlobalPrimitiveGradVector(Ustate, *grad_u[0], *grad_u[1]);
+        nonlinearForm->Mult(Ustate, *grad_u[0], *grad_u[1], dudt);    
+      }
+    else
+      {
+        nonlinearForm->MultLifting(global_entropy, *grad_u[0], *grad_u[1], *grad_u[2]);
+        ComputeGlobalPrimitiveGradVector(Ustate, *grad_u[0], *grad_u[1], *grad_u[2]);
+        nonlinearForm->Mult(Ustate, *grad_u[0], *grad_u[1], *grad_u[2], dudt);
+      }
+    max_char_speed = integrator->GetMaxCharSpeed();
+    for (int b = 0; b < bfnfi.size(); b++)
+      {
+        max_char_speed = std::max(bfnfi[b]->GetMaxCharSpeed(), max_char_speed);
+      }
+  } else {
+    std::cout << "NO DEVICE PATH FOR CNS." << std::endl;
+  }
+
 #else
 
-  bool use_device_path = true;
   if(use_device_path){
     max_char_speed = nonlinearForm->MultInviscid(Ustate, dudt);
   } else {
     nonlinearForm->Mult(Ustate, dudt);
     max_char_speed = integrator->GetMaxCharSpeed();
+    for (int b = 0; b < bfnfi.size(); b++)
+      {
+        max_char_speed = std::max(bfnfi[b]->GetMaxCharSpeed(), max_char_speed);
+      }
   }
-  for (int b = 0; b < bfnfi.size(); b++)
-    {
-      max_char_speed = std::max(bfnfi[b]->GetMaxCharSpeed(), max_char_speed);
-    }
 
 #endif
   

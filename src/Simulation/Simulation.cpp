@@ -1039,6 +1039,9 @@ void Simulation::Run()
       }
     MPI_Allreduce(MPI_IN_PLACE, &hmin, 1, MPITypeMap<real_t>::mpi_type, MPI_MIN, pmesh->GetComm());
     heff = hmin / ((order+1)*(order+1));
+    if (debug_simulation && Mpi::Root()){
+      std::cout << "Mesh h_min: " << heff << std::endl;
+    }
     if (variable_dt && cfl > 0.0)
     {        
         Vector z(sol->Size());
@@ -1198,14 +1201,20 @@ void Simulation::Run()
           MPI_Allreduce(MPI_IN_PLACE, &max_char_speed, 1, MPITypeMap<real_t>::mpi_type, MPI_MAX, pmesh->GetComm());
           real_t dt_adv = heff / max_char_speed;
 #ifdef PARABOLIC
-          real_t nu_eff =                                               \
+          real_t nu_eff = \
             std::max(1.0, physicsConstants->gamma/physicsConstants->Pr) * physicsConstants->mu / diag.min_dens;
           real_t dt_diff = heff * heff / nu_eff;
           real_t dt_m1 = 1.0 / (1.0/dt_adv + 1.0/dt_diff);
+          if(debug_simulation && Mpi::Root()){
+            std::cout << "DTs: " << dt_adv << ", " << dt_diff << std::endl;
+            std::cout << "Max specific volume: " << 1.0 / diag.min_dens << std::endl;
+            std::cout << "Effective viscosity: " << nu_eff << std::endl;
+            std::cout << "Max wavespeed: " << max_char_speed << std::endl;
+          }
           if(variable_dt){
-            dt = cfl / dim / (1.0/dt_adv + 1.0/dt_diff);
+            dt = cfl / dim * dt_m1;
           } else {
-            cfl_rep = dim * dt * (1.0/dt_adv + 1.0/dt_diff);
+            cfl_rep = dim * dt / dt_m1;
           }
 #else
           if(variable_dt){
