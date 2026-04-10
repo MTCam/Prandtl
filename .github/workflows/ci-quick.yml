@@ -10,7 +10,8 @@ jobs:
     name: Ubuntu/GCC
     runs-on: ubuntu-22.04
     env:
-      CMAKE_BUILD_TYPE: RelWithDebInfo
+#      CMAKE_BUILD_TYPE: RelWithDebInfo
+      CMAKE_BUILD_TYPE: Debug
       INSTALL_PREFIX: ${{ github.workspace }}/deps
       PYVISTA_OFF_SCREEN: "true"
       QT_QPA_PLATFORM: "offscreen"
@@ -96,7 +97,9 @@ jobs:
             -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE} \
             -DBUILD_TESTING=ON \
             -DCMAKE_PREFIX_PATH=${MFEM_DIR} \
-            -DSUBCELL_FV_BLENDING=ON
+            -DSUBCELL_FV_BLENDING=ON \
+            -DNO_OPT=ON -DENABLE_ASAN_UBSAN=ON
+
 
       - name: Build Prandtl (Euler)
         run: cmake --build build-euler -- -k 0
@@ -126,7 +129,8 @@ jobs:
             -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE} \
             -DBUILD_TESTING=ON \
             -DCMAKE_PREFIX_PATH=${MFEM_DIR} \
-            -DPARABOLIC=ON -DSUBCELL_FV_BLENDING=ON
+            -DPARABOLIC=ON -DSUBCELL_FV_BLENDING=ON \
+            -DNO_OPT=ON -DENABLE_ASAN_UBSAN=ON
 
       - name: Build Prandtl (CNS)
         run: cmake --build build-cns -- -k 0
