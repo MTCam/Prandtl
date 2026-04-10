@@ -331,9 +331,9 @@ namespace Prandtl
                   const real_t *nor = el_metric_xi + id2*dim;
 
                   max_char_speed = \
-                    std::max(max_char_speed,
-                             ctx.iflux.ComputeFaceFlux(ctx.gas, state1_local,
-                                                       state2_local, nor, flux_num));
+                    Kernels::rmax(max_char_speed,
+                                  ctx.iflux.ComputeFaceFlux(ctx.gas, state1_local,
+                                                            state2_local, nor, flux_num));
                   for(int q = 0; q < neq;q++){
                     du_subcell[q] -= flux_num[q];
                   }
@@ -375,11 +375,11 @@ namespace Prandtl
                                                state2_local);
                       const real_t *nor = el_metric_eta + id2*dim;
                       max_char_speed = \
-                        std::max(max_char_speed,
-                                 ctx.iflux.ComputeFaceFlux(ctx.gas,
-                                                           state1_local,
-                                                           state2_local,
-                                                           nor, flux_num));
+                        Kernels::rmax(max_char_speed,
+                                      ctx.iflux.ComputeFaceFlux(ctx.gas,
+                                                                state1_local,
+                                                                state2_local,
+                                                                nor, flux_num));
                       for(int q = 0;q < neq;q++){
                         du_subcell[q] -= flux_num[q];
                       }
@@ -418,9 +418,9 @@ namespace Prandtl
                                                    state2_local);
                           const real_t *nor = el_metric_zeta + id2*dim;
                           max_char_speed = \
-                            std::max(max_char_speed,
-                                     ctx.iflux.ComputeFaceFlux(ctx.gas, state1_local,
-                                                               state2_local, nor, flux_num));
+                            Kernels::rmax(max_char_speed,
+                                          ctx.iflux.ComputeFaceFlux(ctx.gas, state1_local,
+                                                                    state2_local, nor, flux_num));
                           for(int q = 0;q < neq;q++){
                             du_subcell[q] -= flux_num[q];
                           }
