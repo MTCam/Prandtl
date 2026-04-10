@@ -28,16 +28,31 @@ EXE="${BUILDDIR}/Prandtl"
 RUNDIR="${TOP}/RegressionTests"
 LISTFILE=""
 ONECFG=""
+CFL=""
+DT=0.0001
+NSTEPS_OVERRIDE=0
+DT_OVERRIDE=0
+NMPIRANKS=2
+DEVICE="cpu"
+NHOSTS="1"
+
+HOST_SHORT="$(hostname -s)"
 
 usage() {
   cat <<EOF
-Usage: $0 [-n STEPS] [-b BUILDDIR] [-e EXECUTABLE] [-o RUNDIR] (-c CONFIG.json | -l LIST.txt)
+Usage: $0 [-n STEPS] [-b BUILDDIR] [-e EXECUTABLE] [-H NUMHOSTS] [-o RUNDIR] [-p NUMPROC] [-r DEVICE] (-c CONFIG.json | -l LIST.txt)
 
-  -n STEPS      Number of steps to run (default: ${NSTEPS})
+  -n STEPS      Number of steps to run (default: None, use case default)
+  -t TIMESTEP   Fixed timestep size (default: None, use case default)
+  -d CFL        Fixed CFL (default: None, use case default)
   -b BUILDDIR   Build directory (default: ${BUILDDIR})
   -e EXECUTABLE Path to Prandtl executable (default: ${EXE})
   -o RUNDIR     Directory to run in (default: ${RUNDIR})
   -c CONFIG     Single example config.json to run
+  -H NHOSTS     Number of compute nodes to use (default: 1)
+  -h            Show this help message
+  -p NUMPROC    Number of MPI processes to run
+  -r DEVICE     Compute device to run on (e.g. cpu or hip, default: cpu)
   -l LIST       List file with one config.json path per line (comments (#) allowed)
 
 Examples:
@@ -47,17 +62,22 @@ EOF
 }
 
 # ---- Parse args
-while getopts ":n:b:e:o:c:l:h" opt; do
+while getopts ":n:t:d:b:e:o:p:r:c:l:H:h" opt; do
   case $opt in
-    n) NSTEPS="${OPTARG}";;
-    b) BUILDDIR="${OPTARG}"; EXE="${BUILDDIR}/Prandtl";;
-    e) EXE="${OPTARG}";;
-    o) RUNDIR="${OPTARG}";;
-    c) ONECFG="${OPTARG}";;
-    l) LISTFILE="${OPTARG}";;
-    h) usage; exit 0;;
-    \?) echo "Unknown option -$OPTARG" >&2; usage; exit 2;;
-    :)  echo "Option -$OPTARG requires an argument." >&2; usage; exit 2;;
+      n) NSTEPS="${OPTARG}"; NSTEPS_OVERRIDE=1;;
+      t) DT="${OPTARG}"; DT_OVERRIDE=1;;
+      d) CFL="${OPTARG}"; echo "Fixed CFL mode not yet implemented!";;
+      b) BUILDDIR="${OPTARG}"; EXE="${BUILDDIR}/Prandtl";;
+      e) EXE="${OPTARG}";;
+      o) RUNDIR="${OPTARG}";;
+      p) NMPIRANKS="${OPTARG}";;
+      H) NHOSTS="${OPTARG}";;
+      r) DEVICE="${OPTARG}";;
+      c) ONECFG="${OPTARG}";;
+      l) LISTFILE="${OPTARG}";;
+      h) usage; exit 0;;
+      \?) echo "Unknown option -$OPTARG" >&2; usage; exit 2;;
+      :)  echo "Option -$OPTARG requires an argument." >&2; usage; exit 2;;
   esac
 done
 
@@ -102,8 +122,9 @@ run_one() {
     return 1
   fi
 
-  echo "==> Running example: ${cfg_rel}"
+  echo "==> Running example: ${cfg_rel} with ${NMPIRANKS} MPI procs."
   echo "    Working dir: ${RUNDIR}"
+  echo "    Compute device: ${DEVICE}"
 
   # Prepare per-example working area
   local exname
@@ -119,7 +140,28 @@ run_one() {
   if [[ "${nsteps}" == "0" ]]; then
       nsteps=100
   fi
-  jq --argjson N "${nsteps}" '
+if [[ "${NSTEPS_OVERRIDE}" -eq 1 && "${DT_OVERRIDE}" -eq 1 ]]; then
+  jq --argjson N "${nsteps}" \
+     --argjson DT "${DT}" '
+    def isnum: type=="number";
+    . as $root
+    | ($root.runTime // {}) as $rt
+    | .runTime = (
+        $rt
+        | .visualize = true
+        | .paraview  = true
+        | .visit     = false
+        | .nancheck  = true
+        | .output_file_path = "./"
+        | .checkpoint_load = false
+        | .variable_dt = false
+        | .dt = $DT
+        | .final_time = ($N * $DT)
+      )
+  ' "${cfg_abs}" > "${patched}"
+else
+  jq --argjson N "${nsteps}" \
+     --argjson DT "${DT}" '
     def isnum: type=="number";
     . as $root
     | ($root.runTime // {}) as $rt
@@ -133,11 +175,20 @@ run_one() {
         | .checkpoint_load = false
       )
   ' "${cfg_abs}" > "${patched}"
-
+fi
+MPI_LAUNCHER="mpiexec -n \"${NMPIRANKS}\""
+# Override MPI_LAUNCHER if required for this platform:
+case "${HOST_SHORT}" in
+    tuo*)
+        # Tuolumne@LC
+        MPI_LAUNCHER="flux run --exclusive -N \"${NHOSTS}\" -n \"${NMPIRANKS}\""
+        ;;
+esac
   # Run from the per-example dir; keep your “two levels down” invariant
   # Run example (isolate failures; do NOT exit on first error)
+  # mpiexec -n "${NMPIRANKS}" 
   set +e
-  ( cd "${work}" && mpiexec -n 2 ../Prandtl -c "${patched}" )
+  ( cd "${work}" && eval ${MPI_LAUNCHER} ../Prandtl -d "${DEVICE}" -c "${patched}" )
   local run_rc=$?
   set -e
 
