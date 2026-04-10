@@ -403,7 +403,18 @@ def main():
 
     # Parse field selection
     fields = [f.strip() for f in args.fields.split(",") if f.strip()]
-    excludes = [f.strip() for f in args.exclude_fields.split(",") if f.strip()]
+
+    # Exclude common VTK-generated internal arrays by default so comparisons
+    # remain stable across different VTK writers/readers and when comparing
+    # cell data.
+    default_excludes = [
+        "vtkGhostType",
+        "vtkProcessId",
+        "vtkOriginalPointIds",
+        "vtkOriginalCellIds",
+    ]
+    user_excludes = [f.strip() for f in args.exclude_fields.split(",") if f.strip()]
+    excludes = list(dict.fromkeys(default_excludes + user_excludes))
 
     overall_ok = True
     all_results: List[Dict] = []
@@ -412,16 +423,31 @@ def main():
         if not args.quiet and len(pairs) > 1:
             print(f"\n=== Comparison {i}: {f0}  vs  {f1} ===")
 
-        ok, results = compare_files(
-            f0,
-            f1,
-            fields=fields,
-            exclude=excludes,
-            rtol=args.rtol,
-            atol=args.atol,
-            compare_cells=args.compare_cells,
-            quiet=args.quiet,
-        )
+        if not os.path.exists(f0):
+            print(f"ERROR: Referenced file does not exist: {f0}", file=sys.stderr)
+            return 2
+        if not os.path.exists(f1):
+            print(f"ERROR: Referenced file does not exist: {f1}", file=sys.stderr)
+            return 2
+
+        try:
+            ok, results = compare_files(
+                f0,
+                f1,
+                fields=fields,
+                exclude=excludes,
+                rtol=args.rtol,
+                atol=args.atol,
+                compare_cells=args.compare_cells,
+                quiet=args.quiet,
+            )
+        except Exception as e:
+            print(
+                f"ERROR comparing files '{f0}' and '{f1}': {e}",
+                file=sys.stderr,
+            )
+            return 2
+
         overall_ok = overall_ok and ok
         all_results.append({"file0": f0, "file1": f1, "results": results})
 
