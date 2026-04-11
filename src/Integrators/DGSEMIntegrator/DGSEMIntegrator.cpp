@@ -887,6 +887,7 @@ void DGSEMIntegrator::AssembleElementVector(const mfem::FiniteElement &el, mfem:
 #ifdef SUBCELL_FV_BLENDING
     ComputeFVFluxes(el_u_mat, el_alpha(0), Tr, el_dudt_mat);
 #endif
+
     for (int i = 0; i < ir_vol->GetNPoints(); i++)
     {
         const mfem::IntegrationPoint &ip1 = ir_vol->IntPoint(i);
