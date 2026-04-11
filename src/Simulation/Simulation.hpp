@@ -37,7 +37,11 @@ private:
   
   std::shared_ptr<PhysicsConstants> physicsConstants;
   std::shared_ptr<StateLayout> stateLayout;
+#ifdef LTE_EOS
+  std::shared_ptr<LTEGasModel> gasModel;
+#else
   std::shared_ptr<IdealGasModel> gasModel;
+#endif
 
   std::string output_file_path;
   std::string paraview_folder;
@@ -109,6 +113,16 @@ private:
   int max_bdr_attr;
   void InitDevice(std::string);
   std::unique_ptr<mfem::Device> device_;
+
+#ifdef LTE_EOS
+  std::string gas_mixture;
+  int N_rho, N_rhoe;
+  real_t rho_min, rho_max, rhoe_min, rhoe_max;
+  mfem::Vector rho_grid, rhoe_grid, lte_table;
+
+  void fill_lte_table(Mutation::Mixture& mix, const StateLayout& L, const real_t* rho_grid,
+                      const real_t* rhoe_grid, real_t* lte_table) const;
+#endif
 
 #ifdef AXISYMMETRIC
   void ConservativeToPrimitive(const Vector &U_cons,

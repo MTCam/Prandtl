@@ -7,6 +7,7 @@
 #include <functional>
 #include <string>
 #include "mfem.hpp"
+#include <mutation++.h>
 
 #include "BdrFaceIntegrator.hpp"
 #include "DGSEMOperator.hpp"

@@ -205,9 +205,8 @@ namespace Prandtl
 
   // ideal single-species gas + constant transport
   using IdealGasModel = GasModel<IdealSingleGasEOS, Transport>;
-
-  // LTE mixture with table lookup
-  using LteGasModel = GasModel<LTEGasEOS, LTETransport>;
+  // LTE gas mixture (table-based)
+  using LTEGasModel = GasModel<LTEGasEOS, LTETransport>;
   
   // Bridge helper so old call-sites that only have PhysicsConstants can move over
   // inline IdealGasModel make_ideal_gas_model(std::shared_ptr<const PhysicsConstants> phys)

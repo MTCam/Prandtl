@@ -161,13 +161,6 @@ void Simulation::LoadConfig(const std::string &config_file_path)
     }
     t_final = runtime["final_time"].get<real_t>();
 
-    physicsConstants = std::make_shared<PhysicsConstants>(
-        runtime.value("gamma", 1.4),
-        runtime.value("Pr", 0.72),
-        runtime.value("R_gas", 287.05),
-        runtime.value("mu", 0.02));
-
-
     if (runtime.contains("lifting_scheme"))
     {
         if (runtime["lifting_scheme"].get<std::string>() == "BR1")
@@ -355,8 +348,56 @@ void Simulation::LoadConfig(const std::string &config_file_path)
     num_dofs_scalar = fes->GetNDofs();
     num_dofs_system = vfes->GetVSize();
 
+#ifdef LTE_EOS
+    int num_properties = 9; // Check LTE EOS
+    N_rho = runtime.value("N_rho", 100);
+    N_rhoe = runtime.value("N_rhoe", 100);
+    rho_min = runtime.value("rho_min", 0.1);
+    rho_max = runtime.value("rho_max", 1.0);
+    rhoe_min = runtime.value("rhoe_min", 100000.0);
+    rhoe_max = runtime.value("rhoe_max", 1000000.0);
+
+    if(myRank==0)
+    {
+        rho_grid.SetSize(N_rho);
+        rhoe_grid.SetSize(N_rhoe);
+        lte_table.SetSize(N_rho * N_rhoe * num_properties);
+
+        real_t rho_step = (rho_max - rho_min) / (N_rho - 1);
+        real_t rhoe_step = (rhoe_max - rhoe_min) / (N_rhoe - 1);
+
+        for(int ind_x=0; ind_x < N_rho; ind_x++) rho_grid[ind_x] = rho_min + ind_x * rho_step;
+        for(int ind_y=0; ind_y < N_rhoe; ind_y++) rhoe_grid[ind_y] = rhoe_min + ind_y * rhoe_step;
+
+        // Generate LTE table using Mutation++
+        Mutation::MixtureOptions opts(gas_mixture);
+        opts.setStateModel("Equil");
+        opts.setThermodynamicDatabase("RRHO");              // Default thermodynamic data base
+        opts.setViscosityAlgorithm("Chapmann-Enskog_LDLT"); // Viscosity algorithm
+        Mutation::Mixture mix(opts);                        // Initializing mixture object
+        mix.addComposition("N:0.8, O:0.2", true);           // composition
+
+        StateLayout L(dim, num_dofs_scalar, N_rho, N_rhoe);
+        fill_lte_table(mix, L, rho_grid.GetData(), rhoe_grid.GetData(), lte_table.GetData());
+    }
+
+    MPI_Bcast(rho_grid.GetData(), N_rho, MPI_DOUBLE, 0, pmesh->GetComm());
+    MPI_Bcast(rhoe_grid.GetData(), N_rhoe, MPI_DOUBLE, 0, pmesh->GetComm());
+    MPI_Bcast(lte_table.GetData(), N_rho * N_rhoe * num_properties, MPI_DOUBLE, 0, pmesh->GetComm());
+
+    physicsConstants = std::make_shared<PhysicsConstants>(lte_table.Read(), rho_grid.Read(), rhoe_grid.Read());
+    stateLayout = std::make_shared<StateLayout>(dim, num_dofs_scalar, N_rho, N_rhoe);
+    gasModel = std::make_shared<LTEGasModel>(*physicsConstants, *stateLayout, LTEGasEOS{}, LTETransport{});
+#else
+    physicsConstants = std::make_shared<PhysicsConstants>(
+        runtime.value("gamma", 1.4),
+        runtime.value("Pr", 0.72),
+        runtime.value("R_gas", 287.05),
+        runtime.value("mu", 0.02));
+
     stateLayout = std::make_shared<StateLayout>(dim, num_dofs_scalar);
     gasModel = std::make_shared<IdealGasModel>(*physicsConstants, *stateLayout);
+#endif
 
     flux = std::make_shared<NavierStokesFlux>(*gasModel);
     if (runtime["numerical_flux"].get<std::string>() == "Chandrashekar"){
@@ -1260,5 +1301,31 @@ void Simulation::ConservativeToPrimitive(const Vector &U_cons,
 }
 #endif
 
+#ifdef LTE_EOS
+void Simulation::fill_lte_table(Mutation::Mixture& mix, const StateLayout& L, const real_t* rho_grid, 
+                    const real_t* rhoe_grid, real_t* lte_table) const
+{
+    const real_t RU = Mutation::RU;
+    // Loop over the grid and fill the LTE table
+    for (int i = 0; i < L.nx; i++)
+    {
+        for (int j = 0; j < L.ny; j++)
+        {
+            mix.setState(&rho_grid[i], &rhoe_grid[j], 0);
+            real_t rho = rho_grid[i];
+            real_t rhoe = rhoe_grid[j];
+            lte_table[L.lte_property_index(L.P_idx, i, j)] = mix.P();
+            lte_table[L.lte_property_index(L.T_idx, i, j)] = mix.T();
+            lte_table[L.lte_property_index(L.s_idx, i, j)] = mix.mixtureSMass();
+            lte_table[L.lte_property_index(L.c_idx, i, j)] = mix.equilibriumSoundSpeed();
+            lte_table[L.lte_property_index(L.cv_idx, i, j)] = mix.mixtureEquilibriumCvMass();
+            lte_table[L.lte_property_index(L.R_eq_idx, i, j)] = RU / mix.mixtureMw();
+            lte_table[L.lte_property_index(L.gamma_eq_idx, i, j)] = mix.mixtureEquilibriumGamma();
+            lte_table[L.lte_property_index(L.mu_idx, i, j)] = mix.viscosity();
+            lte_table[L.lte_property_index(L.lambda_idx, i, j)] = mix.equilibriumThermalConductivity();
+        }
+    }
+}
+#endif
 
 }
