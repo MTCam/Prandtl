@@ -184,6 +184,7 @@ target_include_directories(${PROJECT_NAME}
     PUBLIC ${CMAKE_SOURCE_DIR}/src/Include
     PUBLIC ${CMAKE_SOURCE_DIR}/src/Fluxes
     PUBLIC ${CMAKE_SOURCE_DIR}/TestCases/NavierStokes/2D/LidDrivenCavity
+    PUBLIC ${CMAKE_SOURCE_DIR}/TestCases/NavierStokes/2D/TaylorGreenVortex
     PUBLIC ${CMAKE_SOURCE_DIR}/TestCases/NavierStokes/3D/TaylorGreenVortex
     PUBLIC ${CMAKE_SOURCE_DIR}/TestCases/Euler/1D/SodShockTube
     PUBLIC ${CMAKE_SOURCE_DIR}/TestCases/Euler/1D/ModifiedSodShockTube
@@ -214,5 +215,7 @@ target_link_libraries(${PROJECT_NAME}
 
 if (BUILD_TESTING)
   include(CTest)
-  add_subdirectory(tests)
+  if (EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tests/CMakeLists.txt")
+    add_subdirectory(tests)
+  endif()
 endif()

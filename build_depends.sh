@@ -34,9 +34,10 @@ cd ../../
 # --- Step 3: Build Parallel MFEM ---
 echo "--- Building Parallel MFEM ---"
 cd libs/mfem/
-mkdir build
+rm -rf build
+mkdir -p build
 export METIS_DIR="$(cd ../metis-5.1.0/ && pwd)"
-export HYPRE_DIR="$(cd ../metis-5.1.0/ && pwd)"
+export HYPRE_DIR="$(cd ../hypre/src/hypre/ && pwd)"
 cd build
 cmake ../ -DMFEM_USE_METIS_5=YES -DMFEM_USE_MPI=YES
 make -j 4
