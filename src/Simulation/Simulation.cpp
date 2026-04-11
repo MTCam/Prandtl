@@ -1241,10 +1241,9 @@ void Simulation::Run()
             }
         }
         // Visualize the solution?
-        // if (visualize && (done || ti % vis_steps == 0))
-        if (visualize && (done || t >= next_save_t || ti%vis_steps == 0))
+        if (visualize && (done || t >= next_save_t || ti % vis_steps == 0))
         {
-        
+
 #ifdef AXISYMMETRIC
         Vector U_cons(sol->Size());
         NS->RecoverStateFromWeighted(*sol, U_cons);

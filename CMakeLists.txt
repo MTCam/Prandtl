@@ -215,5 +215,7 @@ target_link_libraries(${PROJECT_NAME}
 
 if (BUILD_TESTING)
   include(CTest)
-  add_subdirectory(tests)
+  if (EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tests/CMakeLists.txt")
+    add_subdirectory(tests)
+  endif()
 endif()
