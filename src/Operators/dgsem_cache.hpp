@@ -69,6 +69,14 @@ namespace Prandtl
       Prandtl::IdealGasModel gas;
       Prandtl::ChandrashekarFlux::InviscidFlux iflux;
 
+#ifdef SUBCELL_FV_BLENDING
+      mfem::Vector subcellMetricXi;
+      mfem::Vector subcellMetricEta;
+      mfem::Vector subcellMetricZeta;
+      mfem::Vector subcellWeights;
+      mfem::Vector alpha;
+#endif
+
       // Grab the face dof from the restriction (face,point) index
       // This answers: what is the facial dof that corresponds to
       // the facial point index for a given face in the restriction?
@@ -125,6 +133,12 @@ namespace Prandtl
     Prandtl::IdealGasModel gas;
     Prandtl::ChandrashekarFlux::InviscidFlux iflux;
 
+#ifdef SUBCELL_FV_BLENDING
+    const real_t *subcell_metric_xi_d = nullptr;
+    const real_t *subcell_metric_eta_d = nullptr;
+    const real_t *subcell_metric_zeta_d = nullptr;
+    const real_t *subcell_weights_d = nullptr;
+#endif
 
     MFEM_HOST_DEVICE inline int iface_idx(int side, int fp, int eq) const
     {

@@ -164,7 +164,7 @@ void Simulation::LoadConfig(const std::string &config_file_path)
     nancheck = runtime["nancheck"].get<bool>();
     if (nancheck)
     {
-        nancheck_steps = runtime.value("nancheck_steps", 1000);
+        nancheck_steps = runtime.value("nancheck_steps", 1);
     }
 
     clock_simulation = runtime["clock_simulation"].get<bool>();
@@ -1129,7 +1129,7 @@ void Simulation::Run()
             }
         }
         // Visualize the solution?
-        if (visualize && (done || ti % vis_steps == 0 || t >= next_save_t))
+        if (visualize && (done || t >= next_save_t || ti % vis_steps == 0))
         {
         
 #ifdef AXISYMMETRIC

@@ -51,6 +51,9 @@ namespace Prandtl
   {    
     GetOperatorCache(vfes.get(), &operator_cache);
     AssembleBoundaryFaceGeometryTerms(vfes.get(), bdr_marker, &operator_cache);
+#ifdef SUBCELL_FV_BLENDING
+    ComputeSubcellMetrics(vfes.get(), &operator_cache);
+#endif
     // GetDiscretizationInfo(vfes.get(), &operator_cache);
     // SetupRestrictions(vfes.get(), &operator_cache);
     // SetupVolumeMarkers(vfes.get(), &operator_cache);
@@ -61,6 +64,9 @@ namespace Prandtl
     operator_cache.bc_descriptors = bc_descriptors;
     operator_cache.bc_scalar_data = bc_scalar_data;
     operator_cache.bc_vector_data = bc_vector_data;
+
+    GetDeviceCache(operator_cache, device_cache);
+
     nonlinearForm->SetOperatorCache(&operator_cache);
     integrator->SetOperatorCache(&operator_cache); 
   }
@@ -77,6 +83,72 @@ namespace Prandtl
   void DGSEMOperator::ComputeBlendingCoefficient(const Vector &x) const
   {
     indicator->CheckSmoothness(x);
+    for (int el = 0; el < num_elements; el++)
+      {
+        fes0->GetElementDofs(el, ind_indx);
+        eta->GetSubVector(ind_indx, ind_dof);
+        alpha_dof = 1.0 / (1.0 + std::exp(-sharpness_fac * (ind_dof(0) - modalThreshold) / modalThreshold));
+        if (alpha_dof < alpha_min)
+          {
+            alpha_dof = 0.0;
+          }
+        else if (alpha_dof > (1.0 - alpha_min))
+          {
+            alpha_dof = 1.0;
+          }
+        alpha_dof = std::min(alpha_dof, alpha_max);
+        alpha->SetSubVector(ind_indx, alpha_dof);
+      }
+    
+  }
+
+  void DGSEMOperator::ComputeIndicatorField(const Vector &u, Vector &indicator_field) const
+  {
+    // ScopedTimer timer("MultVolumeInviscidDevice");
+    
+    // This block is executed by the host
+    const int nval_restr = operator_cache.restr_v->Height();
+    // Copy the device cache so that it is not member data
+    auto dc = device_cache;
+    
+    // Device cache parameters
+    const int dim = dc.dim;
+    const int ne = dc.num_elements;
+    const int ndof = dc.ndof_scalar_el;
+    const int neq = dc.num_equations;
+    const int Np_x = dc.Np_x;
+    const int Np_y = dc.Np_y;
+    const int Np_z = dc.Np_z;
+
+    MFEM_ASSERT(nval_restr == ne*ndof*neq, "Unexpected size for volume restriction in indicator calc.");
+    const int nval_ind = nval_restr / neq;
+    mfem::Vector Ue(nval_restr);
+    indicator_field.SetSize(nval_ind);
+    Ue.UseDevice();
+    indicator_field.UseDevice();
+
+    real_t *ifield_d = indicator_field.Write();
+
+    operator_cache.restr_v->Mult(u, Ue);
+    const real_t *Ue_d = Ue.Read();
+    const int estride = ndof*neq;
+    
+    // Inside the FORALL below, executed on device
+    mfem::forall(nval_ind, [=] MFEM_HOST_DEVICE (int vind)
+    {
+      const int e = vind / ndof;
+      const int evind = vind - e * ndof;
+      const real_t *u_el = Ue_d + e * estride;
+      real_t elstate[Prandtl::MAXEQ];
+      Kernels::el_gather_state(u_el, ndof, neq, evind, elstate);
+      Prandtl::PointStateView S{elstate};
+      ifield_d[vind] = dc.gas.pressure(S) * dc.gas.density(S);
+    });
+  }
+
+  void DGSEMOperator::ComputeBlendingCoefficientFromIndicator(const Vector &indicator_field) const
+  {
+    indicator->CheckIndicatorSmoothness(indicator_field);
     for (int el = 0; el < num_elements; el++)
       {
         fes0->GetElementDofs(el, ind_indx);
@@ -561,7 +633,18 @@ void DGSEMOperator::Mult(const Vector &u, Vector &dudt) const
 #endif
   
 #ifdef SUBCELL_FV_BLENDING
-  ComputeBlendingCoefficient(Ustate);
+  mfem::Vector indicator_field;
+  ComputeIndicatorField(Ustate, indicator_field);
+  // MFEM_ASSERT(indicator_field.Size() == vfes->GetNE() * Ndofs,
+  //             "indicator field size mismatch");
+  // MFEM_ASSERT(operator_cache.alpha.Size() == vfes->GetNE(),
+  //             "alpha size mismatch");
+  ComputeBlendingCoefficientFromIndicator(indicator_field);
+  // ComputeBlendingCoefficient(Ustate);
+  real_t *alpha_h = operator_cache.alpha.HostWrite();
+  for(int e = 0;e < operator_cache.num_elements;e++){
+    alpha_h[e] = (*alpha)(e);
+  }
 #endif
   
 #ifdef PARABOLIC

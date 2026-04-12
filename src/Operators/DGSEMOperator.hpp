@@ -66,14 +66,16 @@ private:
     mutable Array<int> ind_indx;
     mutable Vector ind_dof;
     mutable real_t alpha_dof;
-    DGSEMOperatorCache operator_cache;
+    mutable DGSEMOperatorCache operator_cache;
+    mutable DGSEMDeviceCache device_cache;
 
     void ComputeGlobalEntropyVector(const Vector &u, Vector &global_entropy) const;
     void ComputeGlobalPrimitiveGradVector(const Vector &u, Vector &dudx) const;
     void ComputeGlobalPrimitiveGradVector(const Vector &u, Vector &dudx, Vector &dudy) const;
     void ComputeGlobalPrimitiveGradVector(const Vector &u, Vector &dudx, Vector &dudy, Vector &dudz) const;
     void ComputeBlendingCoefficient(const Vector &u) const;
-
+    void ComputeBlendingCoefficientFromIndicator(const Vector &indicator_field) const;
+    void ComputeIndicatorField(const Vector &u, Vector &indicator_field) const;
 #ifdef AXISYMMETRIC
     void BuildAxisIndexFromMarker();
     void ZeroAxisRadialMom(Vector &v) const;

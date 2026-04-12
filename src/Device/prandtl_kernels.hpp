@@ -141,6 +141,7 @@ namespace Prandtl
     MFEM_HOST_DEVICE inline
     void el_gather_state(const real_t *u, const int dof, const int num_eq, const int id, real_t *dst)
     {
+      MFEM_ASSERT(id >= 0 && id < dof, "element index out of bounds");
       for (int q = 0; q < num_eq; ++q)
         dst[q] = u[q*dof + id];
     }
@@ -153,11 +154,29 @@ namespace Prandtl
                         const real_t scale,
                         real_t *du)
     {
+      MFEM_ASSERT(id >= 0 && id < dof, "element index out of bounds");
       // Element storage is component-major (byVDIM):
       // du[q*dof + id] corresponds to "row id, component q" in DenseMatrix(dof, num_eq)
       for (int q = 0; q < num_eq; ++q)
         {
           du[id + q*dof] += scale * f[q];
+        }
+    }
+
+    MFEM_HOST_DEVICE inline
+    void el_scatter_assign(const real_t *f,
+                           const int dof,
+                           const int num_eq,
+                           const int id,
+                           const real_t scale,
+                           real_t *du)
+    {
+      MFEM_ASSERT(id >= 0 && id < dof, "element index out of bounds");
+      // Element storage is component-major (byVDIM):
+      // du[q*dof + id] corresponds to "row id, component q" in DenseMatrix(dof, num_eq)
+      for (int q = 0; q < num_eq; ++q)
+        {
+          du[id + q*dof] = scale * f[q];
         }
     }
 

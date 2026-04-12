@@ -21,6 +21,7 @@ protected:
 public:
     Indicator(std::shared_ptr<ParFiniteElementSpace> vfes, std::shared_ptr<ParFiniteElementSpace> fes0, std::shared_ptr<ParGridFunction> eta);
     virtual void CheckSmoothness(const Vector &x) = 0;
+    virtual void CheckIndicatorSmoothness(const Vector &indicator) = 0;
     virtual ~Indicator() = default;
 };
 }

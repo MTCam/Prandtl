@@ -230,18 +230,29 @@ void DGSEMIntegrator::AssembleFaceVector(const mfem::FiniteElement &el1, const m
       }
     
     fes0->GetElementDofs(Tr.ElementNo, alpha_indx);
+    // This passes:
+    MFEM_ASSERT(alpha_indx[0] == Tr.ElementNo,"alpha / elno skew");
     alpha->GetSubVector(alpha_indx, el_alpha);
-    
+
     el_dudt.SetSize(dof * num_equations);
     el_dudt = 0.0;
     
     const mfem::DenseMatrix el_u_mat(el_u.GetData(), dof, num_equations);
     mfem::DenseMatrix el_dudt_mat(el_dudt.GetData(), dof, num_equations);
-
-#ifdef SUBCELL_FV_BLENDING    
-    ComputeFVFluxes(el_u_mat, el_alpha(0), Tr, el_dudt_mat);
-#endif
     
+#ifdef SUBCELL_FV_BLENDING
+    const real_t *elalpha = operator_cache->alpha.HostRead();
+    real_t alpha0 = elalpha[Tr.ElementNo];
+    // alpha0 = el_alpha(0);
+    MFEM_ASSERT(alpha0 == el_alpha(0), "Alphas mismatch");
+    ComputeFVFluxesFromCache(el_u_mat, Tr, el_dudt_mat);
+    el_dudt *= alpha0;
+#endif
+
+// #ifdef SUBCELL_FV_BLENDING    
+//     ComputeFVFluxes(el_u_mat, el_alpha(0), Tr, el_dudt_mat);
+// #endif
+
     for (int k = 0; k < Np_z; k++)
     {
         for (int j = 0; j < Np_y; j++)
@@ -393,11 +404,11 @@ void DGSEMIntegrator::AssembleFaceVector(const mfem::FiniteElement &el1, const m
                  dU_inviscid.Neg();
                 
 #ifdef SUBCELL_FV_BLENDING
-                dU_inviscid *= (1.0 - el_alpha(0));
+                dU_inviscid *= (1.0 - alpha0);
 
                  if (debug_integrator)
                 {
-                    std::cout << "[AssembleElement]" << " alpha = " << el_alpha(0) << "\n";
+                    std::cout << "[AssembleElement]" << " alpha = " << alpha0 << "\n";
                     std::cout << "[AssembleElement]" << " -rdU_inviscid *= 1-a    = [" << dU_inviscid[0] << ", " << dU_inviscid[1] << ", " << dU_inviscid[2] << ", " << dU_inviscid[3] << "]\n";
                 }
 #endif
@@ -759,9 +770,6 @@ void DGSEMIntegrator::AssembleElementVector(const mfem::FiniteElement &el, mfem:
                                             const mfem::Vector &el_u, const mfem::Vector &el_dudx,
                                             const mfem::Vector &el_dudy, mfem::Vector &el_dudt)
 {
-    fes0->GetElementDofs(Tr.ElementNo, alpha_indx);
-    alpha->GetSubVector(alpha_indx, el_alpha);
-
     el_dudt.SetSize(dof * num_equations);
     el_dudt = 0.0;
 
@@ -769,9 +777,20 @@ void DGSEMIntegrator::AssembleElementVector(const mfem::FiniteElement &el, mfem:
     const mfem::DenseMatrix el_dudx_mat(el_dudx.GetData(), dof, num_equations);
     const mfem::DenseMatrix el_dudy_mat(el_dudy.GetData(), dof, num_equations);
     mfem::DenseMatrix el_dudt_mat(el_dudt.GetData(), dof, num_equations);
+
 #ifdef SUBCELL_FV_BLENDING
-    ComputeFVFluxes(el_u_mat, el_alpha(0), Tr, el_dudt_mat);
+    int e = Tr.ElementNo;
+    fes0->GetElementDofs(e, alpha_indx);
+    alpha->GetSubVector(alpha_indx, el_alpha);
+    const real_t alpha_fv = el_alpha(0);
+    MFEM_ASSERT(alpha_fv == operator_cache->alpha(e), "Alphas dont match");
+    const real_t alpha_inv = 1.0 - alpha_fv;
+    ComputeFVFluxes(el_u_mat, alpha_fv, Tr, el_dudt_mat);
+    el_dudt *= 0.0;
+    ComputeFVFluxesFromCache(el_u_mat, Tr, el_dudt_mat);
+    el_dudt *= alpha_fv;
 #endif
+
     for (int i = 0; i < ir_vol->GetNPoints(); i++)
     {
         const mfem::IntegrationPoint &ip1 = ir_vol->IntPoint(i);
@@ -862,7 +881,7 @@ void DGSEMIntegrator::AssembleElementVector(const mfem::FiniteElement &el, mfem:
         
             dU_inviscid.Neg();
 #ifdef SUBCELL_FV_BLENDING
-            dU_inviscid *= (1.0 - el_alpha(0));
+            dU_inviscid *= alpha_inv;
 #endif
             add(dU_inviscid, dU_viscous, dU_volume);
             dU_volume /= J;
@@ -990,6 +1009,7 @@ void DGSEMIntegrator::AssembleLiftingElementVector(const mfem::FiniteElement &el
     liftingScheme->AssembleLiftingElementVector(el, Tr, el_u, el_dudx);
 }
 
+#ifdef SUBCELL_FV_BLENDING
 void DGSEMIntegrator::ComputeFVFluxes(const mfem::DenseMatrix &el_u_mat, real_t alpha_value,
                                       mfem::ElementTransformation &Tr, mfem::DenseMatrix &el_dudt_mat)
 {
@@ -1217,6 +1237,32 @@ void DGSEMIntegrator::ComputeFVFluxes(const mfem::DenseMatrix &el_u_mat, real_t 
     el_dudt_mat *= alpha_value;
 }
 
+void DGSEMIntegrator::ComputeFVFluxesFromCache(const mfem::DenseMatrix &el_u_mat, mfem::ElementTransformation &Tr,
+                                               mfem::DenseMatrix &el_dudt_mat)
+{
+  const int e = Tr.ElementNo;
+  real_t *el_dudt = el_dudt_mat.GetData();
+  const real_t *el_u = el_u_mat.GetData();
+  const int dim = device_cache.dim;
+  const int Np_x = device_cache.Np_x;
+  const int Np_y = device_cache.Np_y;
+  const int Np_z = device_cache.Np_z;
+  const int neq = device_cache.num_equations;
+  const int npe = Np_x * Np_y * Np_z;
+  const int ndofe = npe * neq;
+  const int npe_metric_xi = (Np_x + 1)*Np_y*Np_z;
+  const int npe_metric_eta = Np_x*(Np_y + 1)*Np_z;
+  const int npe_metric_zeta = Np_x * Np_y * (Np_z + 1);
+
+  const real_t *el_metric_xi = device_cache.subcell_metric_xi_d + e*npe_metric_xi*dim;
+  const real_t *el_metric_eta = (dim > 1 ? device_cache.subcell_metric_eta_d + e*npe_metric_eta*dim :
+                                 nullptr);
+  const real_t *el_metric_zeta = (dim > 2 ? device_cache.subcell_metric_zeta_d + e*npe_metric_zeta*dim :
+                                  nullptr);
+  const real_t *elJac = device_cache.elJac_d + e*npe;
+
+  max_char_speed = ComputeFVFluxesKernel(device_cache, el_u, elJac, el_metric_xi, el_metric_eta, el_metric_zeta, el_dudt);
+}
 
 void DGSEMIntegrator::ComputeSubcellMetrics()
 {
@@ -1322,7 +1368,7 @@ void DGSEMIntegrator::ComputeSubcellMetrics()
                 }
             }
         }
-    }   
+    }
 }
-
+#endif
 }
