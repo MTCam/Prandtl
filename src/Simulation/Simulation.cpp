@@ -3,6 +3,7 @@
 
 #include "LidDrivenCavity.hpp"
 #include "TaylorGreenVortex.hpp"
+#include "TaylorGreenVortex2D.hpp"
 
 #include "SodShockTube.hpp"
 #include "ModifiedSodShockTube.hpp"

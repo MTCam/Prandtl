@@ -26,7 +26,6 @@ private:
     real_t max_char_speed;
     real_t J, J1, J2;
     int dof, dof1, dof2;
-    int id1, id2;
     int IntegrationOrder;
     real_t gammaM1;
 
