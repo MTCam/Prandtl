@@ -105,7 +105,7 @@ jobs:
             -b "$(pwd)/build-euler" \
             -t "0.002" \
             -c TestCases/Euler/2D/IsentropicVortex/config.json \
-            -n 100
+            -t "0.002" -n 100
 
       - name: Configure Prandtl (CNS)
         env:
@@ -133,8 +133,7 @@ jobs:
           scripts/run_example.sh \
             -b "$(pwd)/build-cns" \
             -c TestCases/NavierStokes/2D/LidDrivenCavity/config.json \
-            -t ".0001" \
-            -n 100
+            -t "0.0001" -n 100
 
       - name: Example regression test (Cyclic - IsentropicVortex)
         run: |

@@ -78,6 +78,7 @@ private:
     mutable Vector ind_dof;
     mutable real_t alpha_dof;
     mutable IntegralMeasures diag0;
+
     mutable DGSEMOperatorCache operator_cache;
     mutable DGSEMDeviceCache device_cache;
 
