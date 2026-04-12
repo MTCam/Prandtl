@@ -6,6 +6,7 @@
 #include "timer.hpp"
 #include "general/forall.hpp"
 #include "dgsem_cache_utilities.hpp"
+#include "bc_kernels.hpp"
 
 namespace Prandtl
 {
@@ -36,6 +37,8 @@ namespace Prandtl
     void Mult(const mfem::Vector &u, const mfem::Vector &dudx,
               const mfem::Vector &dudy, mfem::Vector &dudt) const;
     void Mult(const mfem::Vector &u, const mfem::Vector &dudx, mfem::Vector &dudt) const;
+    real_t MultBndFacesInviscidDevice(const Vector &pu, Vector &pdudt) const;
+    real_t MultBndFacesInviscidHost(const Vector &pu, Vector &pdudt) const;
     void Mult(const mfem::Vector &u, mfem::Vector &dudt) const;
   
     real_t MultVolumeInviscidDevice(const mfem::Vector &pu, mfem::Vector &pdudt) const;

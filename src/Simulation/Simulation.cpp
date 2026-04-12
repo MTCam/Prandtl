@@ -91,6 +91,21 @@ Simulation::~Simulation()
 }
 
 constexpr bool debug_simulation = false;
+inline int AppendVectorPayload(mfem::Vector &dst,
+                               const mfem::Vector &src)
+{
+    const int offset = dst.Size();
+    const int n = src.Size();
+
+    dst.SetSize(offset + n);
+
+    for (int i = 0; i < n; ++i)
+    {
+        dst[offset + i] = src[i];
+    }
+
+    return offset;
+}
 
 void Simulation::LoadConfig(const std::string &config_file_path)
 {
@@ -149,7 +164,7 @@ void Simulation::LoadConfig(const std::string &config_file_path)
     nancheck = runtime["nancheck"].get<bool>();
     if (nancheck)
     {
-        nancheck_steps = runtime.value("nancheck_steps", 1000);
+        nancheck_steps = runtime.value("nancheck_steps", 1);
     }
 
     clock_simulation = runtime["clock_simulation"].get<bool>();
@@ -513,6 +528,9 @@ void Simulation::LoadConfig(const std::string &config_file_path)
 
     NS = std::make_unique<DGSEMOperator>(vfes, fes0, pmesh, eta, alpha, grad_u, std::move(integrator),
                                          std::move(indicator), *gasModel, r_gf, alpha_max);
+    mfem::Vector bc_vector_data;
+    mfem::Vector bc_scalar_data;
+    mfem::Array<Prandtl::BCDescriptor> bc_descriptors;
 
     if (runtime["conditions"].contains("boundary_conditions"))
     {
@@ -541,51 +559,67 @@ void Simulation::LoadConfig(const std::string &config_file_path)
             }
             bdr_marker_vector.push_back(marker);
 
+            Prandtl::BCDescriptor bc_descr{};
+            bc_descr.flags = 0;
+            bc_descr.data_index = -1;
+            bc_descr.bdr_attr = -1;
+            bc_descr.data_kind = int(Prandtl::BCDataKind::None);
+            bc_descr.type = int(Prandtl::BCType::Invalid);
+            
             auto bc_props = boundary.value();  // This is a JSON object.
             std::string type = bc_props["type"].get<std::string>();
-
-            if (type == "symmetry" || type == "axis")
-            {
-              auto symmetry = std::make_unique<SymmetryBdrFaceIntegrator>(liftingScheme, *gasModel, *numericalFlux,
-                                                                          order + 1, NS->GetTimeRef(), true, false);
-              
-              NS->AddBdrFaceIntegrator(symmetry.release(), bdr_marker_vector.back());
-
-#ifdef AXISYMMETRIC
-                if (type == "axis")
-                {
-                   NS->SetAxisBoundaryMarker(bdr_marker_vector.back());
-                   NS->SetLowOrderAxis(true);
-                }
+            
+            if (type == "symmetry")
+              {
+                auto symmetry = std::make_unique<SymmetryBdrFaceIntegrator>(liftingScheme, *gasModel, *numericalFlux,
+                                                                            order + 1, NS->GetTimeRef(), true, false);
+                
+                NS->AddBdrFaceIntegrator(symmetry.release(), bdr_marker_vector.back());
+                bc_descr.type = int(Prandtl::BCType::Symmetry);
+                bc_descr.data_kind = int(Prandtl::BCDataKind::None);
+              }
+            else if (type == "axis")
+              {
+#ifndef AXISYMMETRIC
+                MFEM_ABORT("AXIS BC requires axisymmetry build.");
+#else
+                // bc_descr.type = int(Prandtl::BCType::Axis);
+                auto symmetry = std::make_unique<SymmetryBdrFaceIntegrator>(liftingScheme, *gasModel, *numericalFlux,
+                                                                            order + 1, NS->GetTimeRef(), true, false);
+                
+                NS->AddBdrFaceIntegrator(symmetry.release(), bdr_marker_vector.back());
+                NS->SetAxisBoundaryMarker(bdr_marker_vector.back());
+                NS->SetLowOrderAxis(true);
 #endif
-            }
+              }
             else if (type == "slip")
-            {
-              auto slip = std::make_unique<SlipWallBdrFaceIntegrator>(liftingScheme, *gasModel, *numericalFlux,
-                                                                      order + 1, NS->GetTimeRef(), true, false);
-
+              {
+                auto slip = std::make_unique<SlipWallBdrFaceIntegrator>(liftingScheme, *gasModel, *numericalFlux,
+                                                                        order + 1, NS->GetTimeRef(), true, false);
+                
                 NS->AddBdrFaceIntegrator(slip.release(), bdr_marker_vector.back());
-
-            }
+                bc_descr.type = int(Prandtl::BCType::SlipWall);
+                bc_descr.data_kind = int(Prandtl::BCDataKind::None);
+              }
             else if (type == "no-slip-adiabatic")
-            {   
+              {   
                 if (bc_props["velocity"].contains("vector"))
-                {
+                  {
                     std::string velBC_key = bc_props["velocity"]["vector"].get<std::string>();
                     std::string heatBC_key = bc_props["heat"]["scalar"].get<std::string>();
                     NS->AddBdrFaceIntegrator(
-           new NoSlipAdiabWallBdrFaceIntegrator(liftingScheme, *gasModel, *numericalFlux, order + 1, NS->GetTimeRef(),
-                                                ConditionFactory::Instance().GetScalarBoundaryCondition(heatBC_key),
-                                                ConditionFactory::Instance().GetVectorBoundaryCondition(velBC_key)), bdr_marker_vector.back());
-                }
+                                             new NoSlipAdiabWallBdrFaceIntegrator(liftingScheme, *gasModel, *numericalFlux, order + 1, NS->GetTimeRef(),
+                                                                                  ConditionFactory::Instance().GetScalarBoundaryCondition(heatBC_key),
+                                                                                  ConditionFactory::Instance().GetVectorBoundaryCondition(velBC_key)), bdr_marker_vector.back());
+                  }
                 else if (bc_props["velocity"].contains("function"))
-                {
+                  {
                     std::shared_ptr<VectorFunctionCoefficient> velBC;
                     std::shared_ptr<FunctionCoefficient> heatBC;
-
+                    
                     std::string velBC_key = bc_props["velocity"]["function"].get<std::string>();
                     std::string heatBC_key = bc_props["heat"]["function"].get<std::string>();
-
+                    
                     bool td;
                     if (bc_props["velocity"].contains("time_dependent"))
                     {
@@ -679,19 +713,23 @@ void Simulation::LoadConfig(const std::string &config_file_path)
                                                                                  *numericalFlux, order + 1, NS->GetTimeRef());
 
                 NS->AddBdrFaceIntegrator(outlet.release(), bdr_marker_vector.back());
-
+                bc_descr.type = int(Prandtl::BCType::SupersonicOutflow);
+                bc_descr.data_kind = int(Prandtl::BCDataKind::None);
             }
             else if (type == "supersonic-inflow")
             {
                 if (bc_props.contains("vector"))
                 {
                 std::string state_key = bc_props["vector"].get<std::string>();
+                mfem::Vector bc_state = ConditionFactory::Instance().GetVectorBoundaryCondition(state_key);
                 auto inlet = std::make_unique<SupersonicInflowBdrFaceIntegrator>(
                                                               liftingScheme, *gasModel, 
-                                                              *numericalFlux, order + 1, NS->GetTimeRef(),
-                                                              ConditionFactory::Instance().GetVectorBoundaryCondition(state_key));
+                                                              *numericalFlux, order + 1, NS->GetTimeRef(), bc_state);
                 NS->AddBdrFaceIntegrator(inlet.release(), bdr_marker_vector.back());
-                
+                const int data_offset = AppendVectorPayload(bc_vector_data, bc_state);
+                bc_descr.type = int(Prandtl::BCType::SupersonicInflow);
+                bc_descr.data_kind = int(Prandtl::BCDataKind::VectorConstant);
+                bc_descr.data_index = data_offset;
                 }
                 else
                 {
@@ -830,8 +868,13 @@ void Simulation::LoadConfig(const std::string &config_file_path)
                 std::cerr << "Error: Invalid boundary condition type specified." << std::endl;
                 return;
             }
+            bc_descriptors.Append(bc_descr);
         }
     }
+
+    // Set up the operator cache
+    NS->SetBCDescriptorData(bc_descriptors, bc_scalar_data, bc_vector_data);
+    NS->Finalize();
 
     if (Mpi::Root())
     {
@@ -1086,7 +1129,7 @@ void Simulation::Run()
             }
         }
         // Visualize the solution?
-        if (visualize && (done || ti % vis_steps == 0 || t >= next_save_t))
+        if (visualize && (done || t >= next_save_t || ti % vis_steps == 0))
         {
         
 #ifdef AXISYMMETRIC

@@ -862,12 +862,13 @@ real_t DGSEMNonlinearForm::MultVolumeInviscidDevice(const Vector &pu, Vector &pd
   // This block is executed by the host
   mfem::Vector Ue(cache->restr_v->Height());
   mfem::Vector dUe(cache->restr_v->Height());
+
   Ue.UseDevice();
   dUe.UseDevice();
 
   cache->restr_v->Mult(pu, Ue);
   
-  // If you want dUe zeroed before accumulation, do it explicitly on device:
+  // Zero the array on-device
   {
     real_t *d = dUe.Write();
     mfem::forall(dUe.Size(), [=] MFEM_HOST_DEVICE (int i) { d[i] = real_t(0); });
@@ -885,6 +886,31 @@ real_t DGSEMNonlinearForm::MultVolumeInviscidDevice(const Vector &pu, Vector &pd
   const int ndof = dc.ndof_scalar_el;
   const int neq = dc.num_equations;
 
+#ifdef SUBCELL_FV_BLENDING
+  const int Np_x = dc.Np_x;
+  const int Np_y = dc.Np_y;
+  const int Np_z = dc.Np_z;
+  const int npe = Np_x * Np_y * Np_z;
+  const int ndofe = npe * neq;
+  const int npe_metric_xi = (Np_x + 1)*Np_y*Np_z;
+  const int npe_metric_eta = Np_x*(Np_y + 1)*Np_z;
+  const int npe_metric_zeta = Np_x * Np_y * (Np_z + 1);
+  const real_t *metric_xi_d = dc.subcell_metric_xi_d;
+  const real_t *metric_eta_d = (dim > 1 ? dc.subcell_metric_eta_d : nullptr);
+  const real_t *metric_zeta_d = (dim > 2 ? dc.subcell_metric_zeta_d : nullptr);
+
+  mfem::Vector dUfv(cache->restr_v->Height());
+  dUfv.UseDevice();
+  real_t *dUfv_d = dUfv.Write();
+  // zero the array on-device
+  {
+    real_t *d = dUfv_d;
+    mfem::forall(dUfv.Size(), [=] MFEM_HOST_DEVICE (int i) { d[i] = real_t(0); });
+  }
+
+  const real_t *alpha_d = cache->alpha.Read();
+#endif
+
   // Derived parameters
   const int metric_stride = ndof * dim * dim;
   const int jac_stride    = ndof;
@@ -895,6 +921,7 @@ real_t DGSEMNonlinearForm::MultVolumeInviscidDevice(const Vector &pu, Vector &pd
   const int *attr_marker_d = dc.attr_marker_d;
   const real_t *elJac_d = dc.elJac_d;
   const real_t *elMetric_d = dc.elMetric_d;
+
   real_t *ws_d = dc.elWaveSpeed_d;
 
   // Inside the FORALL below, executed on device
@@ -909,15 +936,37 @@ real_t DGSEMNonlinearForm::MultVolumeInviscidDevice(const Vector &pu, Vector &pd
        ws_d[e] = 0.0;
        return;
     }
-    
+
     const int eoff = e * estride;
     const real_t *u_el = Ue_d + eoff;
     real_t *du_el = dUe_d + eoff;
 
-    const real_t cs_el = \
+    real_t cs_el = \
       DGSEMIntegrator::AssembleElementVolumeKernel(dc, u_el,
                                                    jac_el, metric_el, du_el);
+#ifdef SUBCELL_FV_BLENDING
+    real_t alpha_fv = alpha_d[e];
+    if(alpha_fv > 1e-16){
+      real_t alpha_inv = (1.0 - alpha_fv);
+      real_t *du_fv = dUfv_d + eoff;
+      const real_t *el_metric_xi = metric_xi_d + e * npe_metric_xi * dim;
+      const real_t *el_metric_eta = (dim > 1 ? metric_eta_d + e * npe_metric_eta * dim :
+                                     nullptr);
+      const real_t *el_metric_zeta = (dim > 2 ? metric_zeta_d + e * npe_metric_zeta * dim :
+                                      nullptr);
+      const real_t cs_fv =                                              \
+        DGSEMIntegrator::ComputeFVFluxesKernel(dc, u_el, jac_el, el_metric_xi, el_metric_eta, el_metric_zeta, du_fv);
+      
+      for(int ipt = 0;ipt < estride;ipt++){
+        du_el[ipt] = alpha_inv * du_el[ipt] + alpha_fv * du_fv[ipt];
+      }
+
+      cs_el = Kernels::rmax(cs_el, cs_fv);
+    }
+#endif
+
     ws_d[e] = cs_el;
+
   });
 
   // Scatter RHS back to storage
@@ -1006,6 +1055,178 @@ real_t DGSEMNonlinearForm::MultInteriorFacesInviscidDevice(const Vector &pu, Vec
   return max_char_speed_facial;
 }
 
+
+real_t DGSEMNonlinearForm::MultBndFacesInviscidDevice(const Vector &pu, Vector &pdudt) const
+{
+  //  ScopedTimer timer("MultBndFacesInviscidDevice");
+  auto dc = device_cache;
+  const int dim = dc.dim;
+  const int neq = dc.num_equations;
+  const int nfp = dc.num_face_points;
+  const int face_size = nfp * neq;
+  const int nfaces_restr = cache->restr_b->Height() / face_size;
+  const int norm_size = nfp * dc.dim;
+  const int npoints_bnd = nfaces_restr * nfp;
+
+  mfem::Vector u_faces(cache->restr_b->Height());
+  mfem::Vector rhs_faces(cache->restr_b->Height());
+  mfem::Vector faces_dudt(pdudt.Size());
+
+  faces_dudt.UseDevice();
+  rhs_faces.UseDevice();
+  u_faces.UseDevice();
+
+  // If zeroed before accumulation, do it explicitly on device:
+  // Potentially, this is not needed at all since I think we overwrite everything
+  {
+    real_t *rd = rhs_faces.Write();
+    mfem::forall(rhs_faces.Size(), [=] MFEM_HOST_DEVICE (int i)
+    { rd[i] = real_t(0);});
+    real_t *fd = faces_dudt.Write();
+    mfem::forall(faces_dudt.Size(), [=] MFEM_HOST_DEVICE (int i)
+    { fd[i] = real_t(0);});
+  }
+
+  cache->restr_b->Mult(pu, u_faces);
+
+  const real_t *u_d = u_faces.Read();
+  real_t *rhs_d = rhs_faces.Write();
+
+  const real_t *nor_d   = dc.bnd_nor_d;      // size nfaces*nfp*dim
+  const real_t *inv1_d  = dc.bnd_wt_d; // size nfaces*nfp
+  const int *bnd_marker_index_d = dc.bnd_marker_index_d;
+  // const int *bnd_attr = dc.bnd_attr_d;
+  // const int *bnd_marker_to_bc_descr_d = dc.bnd_marker_to_bc_descr_d;
+  real_t *ws_d = dc.bndWaveSpeed_d;
+
+  mfem::forall(npoints_bnd, [=] MFEM_HOST_DEVICE (int p)
+  {
+    const int f = p / nfp;
+    const int fp = p % nfp;
+
+    int bnd_face_marker_index = bnd_marker_index_d[f];
+    if(bnd_face_marker_index < 0){
+      ws_d[p] = 0.0;
+      return;
+    }
+    //    int bc_index = bnd_marker_to_bc_descr_d[bnd_face_marker_index];
+    int bc_index = bnd_face_marker_index; // no mapping atm
+    if(bc_index < 0){
+      ws_d[p] = 0.0;
+      return;
+    }
+    const Prandtl::BCDescriptor &bc = dc.bc_descr_d[bc_index];
+    if (bc.type == int(Prandtl::BCType::Invalid))
+      {
+        ws_d[p] = 0.0;
+        return;
+      }
+
+    const int face_offset = f * face_size;
+    const int n_offset = f * norm_size;
+    const int w_offset = f * nfp;
+
+    const real_t *u_face_d = u_d + face_offset;
+    real_t *rhs_face_d = rhs_d + face_offset;
+    const real_t *nor_face_d = nor_d + n_offset;
+    const real_t *w_minus_d = inv1_d + w_offset;
+    const real_t *nor_point = nor_face_d + fp*dim;
+    real_t scale = -w_minus_d[fp];
+    // #ifdef AXISYMMETRIC
+    // NOTE: axisymmetric not ready for device yet
+    // scale *= rad_face[fp];
+    // #else
+    // #error "Axisymmetric boundary device path not implemented yet."
+    // #endif
+    real_t state1[Prandtl::MAXEQ];
+    real_t fluxN[Prandtl::MAXEQ];
+
+    Prandtl::Kernels::el_gather_state(u_face_d, nfp, neq, fp, state1);
+    const real_t ws = \
+      Prandtl::BC::ApplyBoundaryConditionInviscid(dc, bc, state1,
+                                                  nor_point, fluxN);
+    Prandtl::Kernels::el_scatter_add(fluxN, nfp, neq, fp, scale, rhs_face_d);
+    ws_d[p] = ws;
+
+  });
+
+  cache->restr_b->MultTranspose(rhs_faces, faces_dudt);
+  pdudt += faces_dudt; // on device? (likely yes) 
+
+  // Finish up on the host:
+  //  - Reduce for rank-local max_char_speed
+  const real_t *ws = cache->bndWaveSpeed.HostRead();
+  real_t max_char_speed_facial = 0.0;
+  for(int p = 0;p < npoints_bnd;p++)
+    {
+      max_char_speed_facial = std::max(max_char_speed_facial, ws[p]);
+    }
+
+  return max_char_speed_facial;
+}
+
+real_t DGSEMNonlinearForm::MultBndFacesInviscidHost(const Vector &pu, Vector &pdudt) const {
+  Array<int> vdofs;
+  Vector el_u, el_dudt;
+  const FiniteElement *fe;
+  ElementTransformation *T;
+  Mesh *mesh = fes->GetMesh();
+  
+  
+  if (bfnfi.Size())
+    {
+      FaceElementTransformations *tr;
+      const FiniteElement *fe1, *fe2;
+      
+      // Which boundary attributes need to be processed?
+      Array<int> bdr_attr_marker(mesh->bdr_attributes.Size() ?
+                                 mesh->bdr_attributes.Max() : 0);
+      bdr_attr_marker = 0;
+      for (int k = 0; k < bfnfi.Size(); k++)
+        {
+          if (bfnfi_marker[k] == NULL)
+            {
+              bdr_attr_marker = 1;
+              break;
+            }
+          Array<int> &bdr_marker = *bfnfi_marker[k];
+          MFEM_ASSERT(bdr_marker.Size() == bdr_attr_marker.Size(),
+                      "invalid boundary marker for boundary face integrator #"
+                      << k << ", counting from zero");
+          for (int i = 0; i < bdr_attr_marker.Size(); i++)
+            {
+              bdr_attr_marker[i] |= bdr_marker[i];
+            }
+        }
+      
+      for (int i = 0; i < fes->GetNBE(); i++)
+        {
+          const int bdr_attr = mesh->GetBdrAttribute(i);
+          if (bdr_attr_marker[bdr_attr-1] == 0) { continue; }
+          
+          tr = mesh->GetBdrFaceTransformations(i);
+          if (tr != NULL)
+            {
+              fes->GetElementVDofs(tr->Elem1No, vdofs);
+              
+              pu.GetSubVector(vdofs, el_u);
+              
+              fe1 = fes->GetFE(tr->Elem1No);
+              fe2 = fe1;
+              for (int k = 0; k < bfnfi.Size(); k++)
+                {
+                  if (bfnfi_marker[k] &&
+                      (*bfnfi_marker[k])[bdr_attr-1] == 0) { continue; }
+                  
+                  bfnfi[k]->AssembleFaceVector(*fe1, *fe2, *tr, el_u, el_dudt);
+                  pdudt.AddElementVector(vdofs, el_dudt);
+                }
+            }
+        }
+    }
+  return 0.0;
+}
+
 // Top level MULT for inviscid cases, called from DGSEMOperator
 real_t DGSEMNonlinearForm::MultInviscid(const Vector &u, Vector &dudt) const
 {
@@ -1013,7 +1234,7 @@ real_t DGSEMNonlinearForm::MultInviscid(const Vector &u, Vector &dudt) const
     const Vector &pu = Prolongate(u);
     if (P)
     {
-        aux2.SetSize(P->Height());
+      aux2.SetSize(P->Height());
     }
 
     Vector &pdudt = P ? aux2 : dudt;
@@ -1029,86 +1250,26 @@ real_t DGSEMNonlinearForm::MultInviscid(const Vector &u, Vector &dudt) const
     // std::cout << "Facial wavespeed: " << max_char_speed_facial << std::endl;
     max_char_speed = std::max(max_char_speed, max_char_speed_facial);
 
-    Array<int> vdofs;
-    Vector el_u, el_dudt;
-    const FiniteElement *fe;
-    ElementTransformation *T;
-    Mesh *mesh = fes->GetMesh();
-
-
-    if (bfnfi.Size())
-    {
-        FaceElementTransformations *tr;
-        const FiniteElement *fe1, *fe2;
-
-        // Which boundary attributes need to be processed?
-        Array<int> bdr_attr_marker(mesh->bdr_attributes.Size() ?
-                                    mesh->bdr_attributes.Max() : 0);
-        bdr_attr_marker = 0;
-        for (int k = 0; k < bfnfi.Size(); k++)
-        {
-            if (bfnfi_marker[k] == NULL)
-            {
-                bdr_attr_marker = 1;
-                break;
-            }
-            Array<int> &bdr_marker = *bfnfi_marker[k];
-            MFEM_ASSERT(bdr_marker.Size() == bdr_attr_marker.Size(),
-                        "invalid boundary marker for boundary face integrator #"
-                        << k << ", counting from zero");
-            for (int i = 0; i < bdr_attr_marker.Size(); i++)
-            {
-                bdr_attr_marker[i] |= bdr_marker[i];
-            }
-        }
-
-        for (int i = 0; i < fes->GetNBE(); i++)
-        {
-            const int bdr_attr = mesh->GetBdrAttribute(i);
-            if (bdr_attr_marker[bdr_attr-1] == 0) { continue; }
-
-            tr = mesh->GetBdrFaceTransformations(i);
-            if (tr != NULL)
-            {
-                fes->GetElementVDofs(tr->Elem1No, vdofs);
-
-                pu.GetSubVector(vdofs, el_u);
-
-                fe1 = fes->GetFE(tr->Elem1No);
-                fe2 = fe1;
-                for (int k = 0; k < bfnfi.Size(); k++)
-                {
-                    if (bfnfi_marker[k] &&
-                        (*bfnfi_marker[k])[bdr_attr-1] == 0) { continue; }
-
-                    bfnfi[k]->AssembleFaceVector(*fe1, *fe2, *tr, el_u, el_dudt);
-                    pdudt.AddElementVector(vdofs, el_dudt);
-                }
-            }
-        }
-    }
+    real_t max_char_speed_bnd = 0.0;
+    max_char_speed_bnd = MultBndFacesInviscidDevice(pu, pdudt);
+    // max_char_speed_bnd = MultBndFacesInviscidHost(pu, pdudt);
+    // std::cout << "Boundary wavespeed: " << max_char_speed_bnd << std::endl;
+    max_char_speed = std::max(max_char_speed, max_char_speed_bnd);
 
     if (Serial())
     {
-        if (cP)
-        {
-            cP->MultTranspose(pdudt, dudt);
-        }
-
-        for (int i = 0; i < ess_tdof_list.Size(); i++)
-        {
-            dudt(ess_tdof_list[i]) = 0.0;
-        }
+        if(cP) cP->MultTranspose(pdudt, dudt);
     }
     else
     {
-        P->MultTranspose(aux2, dudt);
-
-        const int N = ess_tdof_list.Size();
-        const auto idx = ess_tdof_list.Read();
-        auto DU_RW = dudt.ReadWrite();
-        mfem::forall(N, [=] MFEM_HOST_DEVICE (int i) { DU_RW[idx[i]] = 0.0; });
+      if(P) P->MultTranspose(aux2, dudt);
     }
+
+    const int N = ess_tdof_list.Size();
+    const auto idx = ess_tdof_list.Read();
+    auto DU_RW = dudt.ReadWrite();
+    mfem::forall(N, [=] MFEM_HOST_DEVICE (int i) { DU_RW[idx[i]] = 0.0; });
+
     return max_char_speed;
 }
 
@@ -1810,4 +1971,3 @@ void DGSEMNonlinearForm::Mult(const Vector &u, const Vector &dudx, const Vector 
 }
 
 }
-
