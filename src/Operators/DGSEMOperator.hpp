@@ -83,7 +83,9 @@ private:
     mutable DGSEMDeviceCache device_cache;
 
     void ComputeGlobalEntropyVector(const Vector &u, Vector &global_entropy) const;
+    void ComputeEntropyState(const Vector &u, Vector &e) const;
     void ComputeGlobalPrimitiveGradVector(const Vector &u, Vector &dudx) const;
+    void ComputeGradPrimFromGradEntropy(const Vector &u, std::vector<mfem::Vector> &gradState) const;
     void ComputeGlobalPrimitiveGradVector(const Vector &u, Vector &dudx, Vector &dudy) const;
     void ComputeGlobalPrimitiveGradVector(const Vector &u, Vector &dudx, Vector &dudy, Vector &dudz) const;
 
