@@ -235,16 +235,13 @@ namespace Prandtl
 
       const real_t T    = temperature(phys, L, S);
 
-      dPrim.set_mass(L, 0.0); // CL NOTE : won't be using density gradient in LTE (if W = [rho, u, v, w , T])
-
+      dPrim.set_mass(L, 0.0); // CL NOTE : won't be using density gradient (if W = [rho, u, v, w , T])
       int dim = L.dim;
       for(int i=0; i < dim; i++)
       {
         dPrim.set_momentum(L, i, dE.momentum(L, i)*T + T*S.velocity(L, i)*dE.energy(L));
       }
-
       dPrim.set_energy(L, T*T*dE.energy(L));
-
     }
 
     template<typename InStateView, typename OutStateView>
@@ -253,6 +250,24 @@ namespace Prandtl
                                      const InStateView &Se, OutStateView &Sc) const
     {
       std::cerr<< " CL ALERT : Not functional in LTE yet "<<std::endl;
+    }
+
+    template<typename InStateView, typename OutStateView>
+    inline void primitive_to_conserved(const PhysicsConstants &phys, const StateLayout &L,
+                                       const InStateView &prim, OutStateView &cons) const
+    {
+      const real_t rho = prim.mass(L);
+      const int dim    = L.dim;
+      real_t v2        = 0.0;
+
+      cons.set_mass(L, rho);
+      for(int d = 0; d < dim; d++)
+      {
+        cons.set_momentum(L, d, rho*prim.velocity(L, d));
+        v2 += prim.velocity(L,d)*prim.velocity(L,d);
+      }
+      real_t rhoe = internal_energy_from_pressure(phys, L, cons, prim.pressure(L));
+      cons.set_energy(L, rhoe + 0.5 * rho * v2);
     }
 
     // TODO: Consider whether this is needed/convenient

@@ -20,6 +20,10 @@ namespace Prandtl {
     MFEM_HOST_DEVICE
     inline real_t slipwall_pstar(const StateView &S, const GasModelT &gasModel)
     {
+#ifdef LTE_EOS
+      std::cerr << "CL ALERT : No LTE version as of now" << std::endl;
+      std::exit(1);
+#endif
       const real_t rho = gasModel.density(S);
       const real_t c = gasModel.sound_speed(S);
       const real_t p = gasModel.pressure(S);
@@ -38,19 +42,12 @@ namespace Prandtl {
       return 0.0;
     }
 
-    // This interface uses the internal entropy state (Se), and the wall temp (Tw) to get a "wall beta"
-    // It *requires specialization* for any gas other than ideal single component gas
-    // Ideal Gas: beta = 1/(RTwall)
-    // Ideal Mixtures / LTE beta = 1/(Rmix*Twall), where Rmix is depending on the mixture Rmix(Y)
-    // NLTE: Potentially this will be OK, but EOS-dependent
+    // CL NOTE : Dimensional entropy variables for all gas models have the same beta = 1/T
     template<typename StateView, typename GasModelT>
     MFEM_HOST_DEVICE
     inline real_t isothermal_wall_beta(const StateView &Se, real_t Tw, const GasModelT &gasModel)
     {
-      // In gas models where R_gas is not constant (e.g. a mixture), we need to pass the *conserved*
-      // state to the gasModel.R_gas function. Since we only have ideal atm with fixed R_gas, I am
-      // skipping the unnecessary Entropy2Conservative conversion.  
-      return (1.0 / (gasModel.R_gas(Se)*Tw));
+      return (1.0 / Tw);
     }
 
     struct TotalConditions {
@@ -69,6 +66,10 @@ namespace Prandtl {
     inline StaticKinematics isentropic_total_to_static(const ConservedStateView &S, const TotalConditions &Ct,
                                                        const GasModelT &gasModel)
     {
+#ifdef LTE_EOS
+      std::cerr << "CL ALERT : Need to extend or decide if this works for LTE as well" << std::endl;
+      std::exit(1);
+#endif
       StaticKinematics out{};
       const real_t p = gasModel.pressure(S);
       const real_t gamma = gasModel.gamma(S);
@@ -89,6 +90,10 @@ namespace Prandtl {
     inline void riemann_invariant_outer_state(const StateView &Si, const StateView &So, StateViewRW &S2, const real_t *n,
                                               const GasModelT &gasModel)
     {
+#ifdef LTE_EOS
+      std::cerr << "CL ALERT : Need to extend or decide if this works for LTE as well" << std::endl;
+      std::exit(1);
+#endif
       const int dim = gasModel.dim();
       const real_t rho_i = gasModel.density(Si);
       const real_t rho_o = gasModel.density(So);
@@ -154,27 +159,6 @@ namespace Prandtl {
         S2.set_momentum(gasModel.L, idim, rho_b*vb[idim]);
       }
       S2.set_energy(gasModel.L, p_b * gm1i + 0.5 * rho_b * vb2);
-    }
-
-    template<typename PrimStateView, typename ConsStateView, typename GasModelT>
-    MFEM_HOST_DEVICE inline void PrimitiveToConserved(const PrimStateView &prim, ConsStateView &cons, const GasModelT &gasModel){
-      const real_t rho = prim.mass(gasModel.L);
-      const int dim = gasModel.dim();
-      // NOTE: This call *should* fail for gas models other than ideal single component
-      // const real_t gamma = gasModel.gamma(prim);
-      real_t v2 = prim.velocity(gasModel.L, 0)*prim.velocity(gasModel.L, 0);
-      cons.set_mass(gasModel.L, rho);
-      cons.set_momentum(gasModel.L, 0, rho*prim.velocity(gasModel.L, 0));
-      if (dim > 1){
-        cons.set_momentum(gasModel.L, 1, rho*prim.velocity(gasModel.L, 1));
-        v2 += prim.velocity(gasModel.L, 1)*prim.velocity(gasModel.L, 1);
-      }
-      if (dim > 2){
-        cons.set_momentum(gasModel.L, 2, rho*prim.velocity(gasModel.L, 2));
-        v2 += prim.velocity(gasModel.L, 2)*prim.velocity(gasModel.L,2);
-      }
-      // cons.set_energy(gasModel.L, prim.pressure(gasModel.L) / (gamma-1.) + 0.5 * rho * v2); 
-      cons.set_energy(gasModel.L, gasModel.internal_energy_from_pressure(cons, prim.pressure(gasModel.L)) + 0.5 * rho * v2);
     }
   }
 }

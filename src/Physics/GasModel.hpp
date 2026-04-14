@@ -179,6 +179,12 @@ namespace Prandtl
       return eos.entropy_to_conserved(phys, L, Se, Sc);
     }
 
+    template<typename InStateView, typename OutStateView>
+    inline void primitive_to_conserved(const InStateView &prim, OutStateView &cons) const
+    {
+      return eos.primitive_to_conserved(phys, L, prim, cons);
+    }
+
     // --- Transport -----------------------------------------------------------
 
     template<typename StateView>

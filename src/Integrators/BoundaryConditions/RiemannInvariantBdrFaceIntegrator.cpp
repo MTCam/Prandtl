@@ -37,7 +37,7 @@ namespace Prandtl
     if (dim > 2) prim_o(voff+2) = prim_state(voff+2);
     Prandtl::PointPrimitiveView P{prim_o.GetData()};
     Prandtl::PointStateViewRW S{state_o.GetData()};
-    Prandtl::Flow::PrimitiveToConserved(P, S, gasModel);
+    gasModel.primitive_to_conserved(P, S);
 }
 
 void RiemannInvariantBdrFaceIntegrator::ComputeOuterInviscidState(const Vector &state1, Vector &state2, FaceElementTransformations &Tr, const IntegrationPoint &ip)
@@ -53,7 +53,7 @@ void RiemannInvariantBdrFaceIntegrator::ComputeOuterInviscidState(const Vector &
         prim_state_fun.Eval(prim_o, Tr, ip);
         Prandtl::PointPrimitiveView P{prim_o.GetData()};
         Prandtl::PointStateViewRW S{state_o.GetData()};
-        Prandtl::Flow::PrimitiveToConserved(P, S, gasModel);
+        gasModel.primitive_to_conserved(P, S);
     }
     Prandtl::PointStateView So{state_o.GetData()};
     Prandtl::PointStateView Si{state1.GetData()};

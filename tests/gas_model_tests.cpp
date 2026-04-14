@@ -193,6 +193,15 @@ legacy_entropy_grad_to_prim_grad(const real_t* Q,
                                  real_t gamma)
 {
     const real_t rho = Q[0];
+    const real_t R_gas = 287.0;
+
+    real_t dE_mass = dE[0]/R_gas;
+    real_t dE_mom[dim];
+    for (int i =0; i < dim; ++i)
+    {
+        dE_mom[i] = dE[1+i]/R_gas;
+    }
+    real_t dE_energy = dE[dim + 1]/R_gas;
 
     // Velocity
     real_t u[3] = {0, 0, 0};
@@ -210,23 +219,21 @@ legacy_entropy_grad_to_prim_grad(const real_t* Q,
     const real_t gammaM1Inv = real_t(1) / (gamma - real_t(1));
     const real_t ie = p * gammaM1Inv;                  // internal energy density
 
-    const real_t dE_last = dE[dim + 1];
-
     // out_mom[i]
     real_t mom_dot = 0;
     for (int i = 0; i < dim; ++i)
     {
-        const real_t out_i = (p / rho) * (dE[1 + i] + u[i] * dE_last);
+        const real_t out_i = (p / rho) * (dE_mom[i] + u[i] * dE_energy);
         out[1 + i] = out_i;
         mom_dot += Q[1 + i] * out_i; // (rho*u_i) * out_i
     }
 
     // out_mass
-    const real_t out_mass = rho * dE[0] - dE_last * (KE - ie) + (rho / p) * mom_dot;
+    const real_t out_mass = rho * dE_mass - dE_energy * (KE - ie) + (rho / p) * mom_dot;
     out[0] = out_mass;
 
     // out_last
-    out[dim + 1] = (p / rho) * (out_mass + p * dE_last);
+    out[dim + 1] = (p / rho) * (out_mass + p * dE_energy);
 }
 
 TEST(GasModel_IdealGas_GradEntropyToGradPrim_MatchesLegacy)
