@@ -15,11 +15,11 @@ private:
     FunctionCoefficient qn_wall;
     VectorFunctionCoefficient V_wall;
 public:
-  NoSlipAdiabWallBdrFaceIntegrator(std::shared_ptr<LiftingScheme> liftingScheme, const IdealGasModel &gasModel_,
+  NoSlipAdiabWallBdrFaceIntegrator(std::shared_ptr<LiftingScheme> liftingScheme, const ActiveGasModel &gasModel_,
                                    const NumericalFlux &rsolver, const int Np, const real_t &time,
                                    FunctionCoefficient &qn_wall, VectorFunctionCoefficient &V_wall,
                                    bool t_dependent = false);
-  NoSlipAdiabWallBdrFaceIntegrator(std::shared_ptr<LiftingScheme> liftingScheme, const IdealGasModel &gasModel_,
+  NoSlipAdiabWallBdrFaceIntegrator(std::shared_ptr<LiftingScheme> liftingScheme, const ActiveGasModel &gasModel_,
                                    const NumericalFlux &rsolver, const int Np, const real_t &time, real_t qn,
                                    const Vector &V);
     virtual void ComputeBdrFaceViscousFlux(const Vector &state1, const Vector &state2, const Vector &dqdx,

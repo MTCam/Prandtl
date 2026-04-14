@@ -161,7 +161,7 @@ namespace Prandtl {
       const real_t rho = prim.mass(gasModel.L);
       const int dim = gasModel.dim();
       // NOTE: This call *should* fail for gas models other than ideal single component
-      const real_t gamma = gasModel.gamma(prim);
+      // const real_t gamma = gasModel.gamma(prim);
       real_t v2 = prim.velocity(gasModel.L, 0)*prim.velocity(gasModel.L, 0);
       cons.set_mass(gasModel.L, rho);
       cons.set_momentum(gasModel.L, 0, rho*prim.velocity(gasModel.L, 0));
@@ -173,7 +173,8 @@ namespace Prandtl {
         cons.set_momentum(gasModel.L, 2, rho*prim.velocity(gasModel.L, 2));
         v2 += prim.velocity(gasModel.L, 2)*prim.velocity(gasModel.L,2);
       }
-      cons.set_energy(gasModel.L, prim.pressure(gasModel.L) / (gamma-1.) + 0.5 * rho * v2); 
+      // cons.set_energy(gasModel.L, prim.pressure(gasModel.L) / (gamma-1.) + 0.5 * rho * v2); 
+      cons.set_energy(gasModel.L, gasModel.internal_energy_from_pressure(cons, prim.pressure(gasModel.L)) + 0.5 * rho * v2);
     }
   }
 }

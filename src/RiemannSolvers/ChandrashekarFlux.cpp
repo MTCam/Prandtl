@@ -5,7 +5,7 @@
 namespace Prandtl
 {
 
-  ChandrashekarFlux::ChandrashekarFlux(const NavierStokesFlux &fluxFunction, const IdealGasModel &gasModel_)
+  ChandrashekarFlux::ChandrashekarFlux(const NavierStokesFlux &fluxFunction, const ActiveGasModel &gasModel_)
     : NumericalFlux(fluxFunction), gasModel(gasModel_)
   {
     metric.SetSize(dim);

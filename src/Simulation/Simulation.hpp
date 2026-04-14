@@ -38,9 +38,9 @@ private:
   std::shared_ptr<PhysicsConstants> physicsConstants;
   std::shared_ptr<StateLayout> stateLayout;
 #ifdef LTE_EOS
-  std::shared_ptr<LTEGasModel> gasModel;
+  std::shared_ptr<ActiveGasModel> gasModel;
 #else
-  std::shared_ptr<IdealGasModel> gasModel;
+  std::shared_ptr<ActiveGasModel> gasModel;
 #endif
 
   std::string output_file_path;
@@ -50,7 +50,7 @@ private:
   real_t t, t_final, dt, dt_real;
   real_t cfl;
   real_t hmin;
-  real_t Re, Ma;
+  // real_t Re, Ma;
   real_t next_save_t;
   real_t save_dt1;
   real_t save_dt2;
@@ -115,9 +115,9 @@ private:
   std::unique_ptr<mfem::Device> device_;
 
 #ifdef LTE_EOS
-  std::string gas_mixture;
-  int N_rho, N_rhoe;
+  int    N_rho, N_rhoe;
   real_t rho_min, rho_max, rhoe_min, rhoe_max;
+  std::string gas_mixture, gas_composition;
   mfem::Vector rho_grid, rhoe_grid, lte_table;
 
   void fill_lte_table(Mutation::Mixture& mix, const StateLayout& L, const real_t* rho_grid,

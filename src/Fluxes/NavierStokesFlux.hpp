@@ -11,9 +11,9 @@ using namespace mfem;
 class NavierStokesFlux : public FluxFunction
 {
 private:
-  const IdealGasModel gasModel;
+  const ActiveGasModel gasModel;
 public:
-  explicit NavierStokesFlux(const IdealGasModel &gasModel_)
+  explicit NavierStokesFlux(const ActiveGasModel &gasModel_)
     : FluxFunction(gasModel_.num_equations(), gasModel_.dim()), gasModel(gasModel_){};
   void ComputeViscousFlux(const Vector &state, const Vector &dqdx, const Vector &dqdy, const Vector &dqdz, DenseMatrix &flux) const;
   void ComputeViscousFlux(const Vector &state, const Vector &dqdx, const Vector &dqdy, DenseMatrix &flux) const;

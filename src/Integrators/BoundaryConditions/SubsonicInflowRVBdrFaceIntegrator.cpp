@@ -4,7 +4,7 @@ namespace Prandtl
 {
 
   SubsonicInflowRVBdrFaceIntegrator::SubsonicInflowRVBdrFaceIntegrator(std::shared_ptr<LiftingScheme> liftingScheme,
-                                                                       const IdealGasModel &gasModel_,
+                                                                       const ActiveGasModel &gasModel_,
                                                                        const NumericalFlux &rsolver, const int Np,
                                                                        const real_t &time, FunctionCoefficient &rho_,
                                                                        VectorFunctionCoefficient &V_, bool t_dependent)
@@ -12,7 +12,7 @@ namespace Prandtl
     rho(rho_), V(V_) {}
   
   SubsonicInflowRVBdrFaceIntegrator::SubsonicInflowRVBdrFaceIntegrator(std::shared_ptr<LiftingScheme> liftingScheme,
-                                                                       const IdealGasModel &gasModel_,
+                                                                       const ActiveGasModel &gasModel_,
                                                                        const NumericalFlux &rsolver, const int Np,
                                                                        const real_t &time, real_t rho, const Vector &V)
   : BdrFaceIntegrator(liftingScheme, gasModel_, rsolver, Np, time, true, false),

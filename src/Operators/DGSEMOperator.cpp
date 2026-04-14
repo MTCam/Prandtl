@@ -10,7 +10,7 @@ namespace Prandtl
                                std::vector<std::shared_ptr<ParGridFunction> > &grad_u_,
                                std::unique_ptr<DGSEMIntegrator> integrator_,
                                std::unique_ptr<Indicator> indicator_,
-                               const IdealGasModel &gasModel_,
+                               const ActiveGasModel &gasModel_,
                                std::shared_ptr<ParGridFunction> r_gf_,
                                const real_t alpha_max, const real_t alpha_min)
   : TimeDependentOperator(vfes_->GetTrueVSize()),

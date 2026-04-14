@@ -349,11 +349,15 @@ void Simulation::LoadConfig(const std::string &config_file_path)
     num_dofs_system = vfes->GetVSize();
 
 #ifdef LTE_EOS
-    int num_properties = 9; // Check LTE EOS
-    N_rho = runtime.value("N_rho", 100);
-    N_rhoe = runtime.value("N_rhoe", 100);
-    rho_min = runtime.value("rho_min", 0.1);
-    rho_max = runtime.value("rho_max", 1.0);
+    int num_properties = 9; // CL NOTE : Check LTE EOS
+
+    gas_mixture = runtime.value("gas_mixture", "air_5");
+    gas_composition = runtime.value("gas_composition", "N:0.8, O:0.2");
+
+    N_rho    = runtime.value("N_rho", 100);
+    N_rhoe   = runtime.value("N_rhoe", 100);
+    rho_min  = runtime.value("rho_min", 0.9);
+    rho_max  = runtime.value("rho_max", 1.1);
     rhoe_min = runtime.value("rhoe_min", 100000.0);
     rhoe_max = runtime.value("rhoe_max", 1000000.0);
 
@@ -375,7 +379,7 @@ void Simulation::LoadConfig(const std::string &config_file_path)
         opts.setThermodynamicDatabase("RRHO");              // Default thermodynamic data base
         opts.setViscosityAlgorithm("Chapmann-Enskog_LDLT"); // Viscosity algorithm
         Mutation::Mixture mix(opts);                        // Initializing mixture object
-        mix.addComposition("N:0.8, O:0.2", true);           // composition
+        mix.addComposition(gas_composition.c_str(), true);           // composition
 
         StateLayout L(dim, num_dofs_scalar, N_rho, N_rhoe);
         fill_lte_table(mix, L, rho_grid.GetData(), rhoe_grid.GetData(), lte_table.GetData());
@@ -385,9 +389,9 @@ void Simulation::LoadConfig(const std::string &config_file_path)
     MPI_Bcast(rhoe_grid.GetData(), N_rhoe, MPI_DOUBLE, 0, pmesh->GetComm());
     MPI_Bcast(lte_table.GetData(), N_rho * N_rhoe * num_properties, MPI_DOUBLE, 0, pmesh->GetComm());
 
-    physicsConstants = std::make_shared<PhysicsConstants>(lte_table.Read(), rho_grid.Read(), rhoe_grid.Read());
+    physicsConstants = std::make_shared<PhysicsConstants>(lte_table.HostRead(), rho_grid.HostRead(), rhoe_grid.HostRead());
     stateLayout = std::make_shared<StateLayout>(dim, num_dofs_scalar, N_rho, N_rhoe);
-    gasModel = std::make_shared<LTEGasModel>(*physicsConstants, *stateLayout, LTEGasEOS{}, LTETransport{});
+    gasModel = std::make_shared<ActiveGasModel>(*physicsConstants, *stateLayout, LTEGasEOS{}, LTETransport{});
 #else
     physicsConstants = std::make_shared<PhysicsConstants>(
         runtime.value("gamma", 1.4),
@@ -396,7 +400,7 @@ void Simulation::LoadConfig(const std::string &config_file_path)
         runtime.value("mu", 0.02));
 
     stateLayout = std::make_shared<StateLayout>(dim, num_dofs_scalar);
-    gasModel = std::make_shared<IdealGasModel>(*physicsConstants, *stateLayout);
+    gasModel = std::make_shared<ActiveGasModel>(*physicsConstants, *stateLayout);
 #endif
 
     flux = std::make_shared<NavierStokesFlux>(*gasModel);

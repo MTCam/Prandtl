@@ -10,7 +10,7 @@ class SupersonicOutflowBdrFaceIntegrator : public BdrFaceIntegrator
 {
 public:
     SupersonicOutflowBdrFaceIntegrator(std::shared_ptr<LiftingScheme> liftingScheme,
-                                       const IdealGasModel &gasModel_,
+                                       const ActiveGasModel &gasModel_,
                                        const NumericalFlux &rsolver, const int Np, const real_t &time);
     virtual void ComputeOuterInviscidState(const Vector &state1, Vector &state2, FaceElementTransformations &Tr, const IntegrationPoint &ip) override;
     

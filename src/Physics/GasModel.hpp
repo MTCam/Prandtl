@@ -203,11 +203,13 @@ namespace Prandtl
     }
   };
 
-  // ideal single-species gas + constant transport
-  using IdealGasModel = GasModel<IdealSingleGasEOS, Transport>;
+#ifdef LTE_EOS
   // LTE gas mixture (table-based)
-  using LTEGasModel = GasModel<LTEGasEOS, LTETransport>;
-  
+  using ActiveGasModel = GasModel<LTEGasEOS, LTETransport>;
+#else
+  // ideal single-species gas + constant transport
+  using ActiveGasModel = GasModel<IdealSingleGasEOS, Transport>;
+#endif
   // Bridge helper so old call-sites that only have PhysicsConstants can move over
   // inline IdealGasModel make_ideal_gas_model(std::shared_ptr<const PhysicsConstants> phys)
   // {

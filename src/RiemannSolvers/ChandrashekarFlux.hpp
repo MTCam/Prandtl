@@ -10,9 +10,9 @@ namespace Prandtl
   {
   private:
     mutable Vector metric;
-    const IdealGasModel gasModel;
+    const ActiveGasModel gasModel;
   public:
-    ChandrashekarFlux(const NavierStokesFlux &fluxFunction, const IdealGasModel &gasModel_);
+    ChandrashekarFlux(const NavierStokesFlux &fluxFunction, const ActiveGasModel &gasModel_);
     real_t ComputeFaceFlux(const Vector &state1, const Vector &state2,
                            const Vector &nor, Vector &flux) const override;
     real_t ComputeVolumeFlux(const Vector &state1, const Vector &state2, const Vector &metric1,

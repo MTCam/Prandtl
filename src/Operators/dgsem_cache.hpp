@@ -50,7 +50,7 @@ namespace Prandtl
       mutable mfem::Vector elWaveSpeed; // size nelements
       mutable mfem::Vector ifWaveSpeed; // size ninterior faces
       mutable mfem::Vector bndWaveSpeed; // size nbnd faces
-      Prandtl::IdealGasModel gas;
+      Prandtl::ActiveGasModel gas;
       Prandtl::ChandrashekarFlux::InviscidFlux iflux;
 
       // Grab the face dof from the restriction (face,point) index
@@ -94,7 +94,7 @@ namespace Prandtl
     real_t *elWaveSpeed_d = nullptr;
     real_t *ifWaveSpeed_d = nullptr;
     real_t *bndWaveSpeed_d = nullptr;
-    Prandtl::IdealGasModel gas;
+    Prandtl::ActiveGasModel gas;
     Prandtl::ChandrashekarFlux::InviscidFlux iflux;
 
 

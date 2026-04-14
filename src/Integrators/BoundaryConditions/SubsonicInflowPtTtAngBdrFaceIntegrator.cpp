@@ -6,7 +6,7 @@ namespace Prandtl
 {
 
 SubsonicInflowPtTtAngBdrFaceIntegrator::SubsonicInflowPtTtAngBdrFaceIntegrator(std::shared_ptr<LiftingScheme> liftingScheme,
-                                                                               const IdealGasModel &gasModel_,
+                                                                               const ActiveGasModel &gasModel_,
                                                                                const NumericalFlux &rsolver, const int Np,
                                                                                const real_t &time,
                                                                                FunctionCoefficient &pt, FunctionCoefficient &Tt,
@@ -30,7 +30,7 @@ SubsonicInflowPtTtAngBdrFaceIntegrator::SubsonicInflowPtTtAngBdrFaceIntegrator(s
 }
 
 SubsonicInflowPtTtAngBdrFaceIntegrator::SubsonicInflowPtTtAngBdrFaceIntegrator(std::shared_ptr<LiftingScheme> liftingScheme,
-                                                                               const IdealGasModel &gasModel_,
+                                                                               const ActiveGasModel &gasModel_,
                                                                                const NumericalFlux &rsolver, const int Np,
                                                                                const real_t &time, real_t pt,
                                                                                real_t Tt, real_t theta, real_t phi)

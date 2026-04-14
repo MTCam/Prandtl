@@ -43,7 +43,8 @@ TEST(GasModel_IdealGas_EOS)
     {
         const int ndofs = 1;
         StateLayout layout(dim, ndofs);  // no scalars
-        IdealGasModel gas(*phys, layout);
+        using ActiveGasModel = GasModel<IdealSingleGasEOS, Transport>;
+        ActiveGasModel gas(*phys, layout);
 
         const int num_eq = layout.eq_energy + 1; // dim+2
 
@@ -134,7 +135,8 @@ TEST(GasModel_IdealGas_Transport)
     const int dim   = 3;
     const int ndofs = 1;
     StateLayout layout(dim, ndofs);
-    IdealGasModel gas(*phys, layout);
+    using ActiveGasModel = GasModel<IdealSingleGasEOS, Transport>;
+    ActiveGasModel gas(*phys, layout);
 
     const int num_eq = layout.eq_energy + 1;
     std::vector<real_t> U(num_eq * ndofs);
@@ -243,7 +245,8 @@ TEST(GasModel_IdealGas_GradEntropyToGradPrim_MatchesLegacy)
     {
         const int ndofs = 1;
         StateLayout layout(dim, ndofs); // no scalars
-        IdealGasModel gas(*phys, layout);
+        using ActiveGasModel = GasModel<IdealSingleGasEOS, Transport>;
+        ActiveGasModel gas(*phys, layout);
         const int num_eq = layout.nequations();
 
         std::vector<real_t> Q(num_eq);
