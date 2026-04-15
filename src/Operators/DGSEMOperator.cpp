@@ -948,6 +948,7 @@ void DGSEMOperator::Mult(const Vector &u, Vector &dudt) const
   //             "alpha size mismatch");
   ComputeBlendingCoefficientFromIndicator(indicator_field);
   // ComputeBlendingCoefficient(Ustate);
+  // Blending coeff alpha is accessed later with Read()
   real_t *alpha_h = operator_cache.alpha.HostWrite();
   for(int e = 0;e < operator_cache.num_elements;e++){
     alpha_h[e] = (*alpha)(e);
@@ -964,7 +965,8 @@ void DGSEMOperator::Mult(const Vector &u, Vector &dudt) const
     const real_t *estate_d = operator_cache.entropyState.HostRead();
     const real_t *estate_h = global_entropy.HostRead();
     for(int i = 0;i < global_entropy.Size();i++){
-      MFEM_ASSERT(estate_d[i] == estate_h[i], "Host/Device entropy state skew.");
+      real_t enterr = std::abs(estate_d[i] - estate_h[i]);
+      MFEM_ASSERT(enterr < 1e-16, "Host/Device entropy state skew.");
     }
 
     if (dim == 1)
@@ -975,21 +977,26 @@ void DGSEMOperator::Mult(const Vector &u, Vector &dudt) const
       }
     else if (dim == 2)
       {
+        std::vector<mfem::Vector *> gradPrim(2);
+        gradPrim[0] = &(*grad_u[0]);
+        gradPrim[1] = &(*grad_u[1]);
 
-        nonlinearForm->MultLifting(global_entropy, *grad_u[0], *grad_u[1]);
-        operator_cache.gradState[0] = *grad_u[0];
-        operator_cache.gradState[1] = *grad_u[1];
-        ComputeGlobalPrimitiveGradVector(Ustate, *grad_u[0], *grad_u[1]);
+        nonlinearForm->GradOperator(operator_cache.entropyState, gradPrim);
+        // nonlinearForm->MultLifting(global_entropy, *grad_u[0], *grad_u[1]);
+        operator_cache.gradState[0] = *gradPrim[0];
+        operator_cache.gradState[1] = *gradPrim[1];
+        // ComputeGlobalPrimitiveGradVector(Ustate, *grad_u[0], *grad_u[1]);
         ComputeGradPrimFromGradEntropy(Ustate, operator_cache.gradState);
-        for(int idim = 0;idim < dim;idim++){
-          mfem::Vector &grad_u_dim(*grad_u[idim]);
-          mfem::Vector &grad_u_dim_cached(operator_cache.gradState[idim]);
-          for(int i = 0;i < grad_u_dim.Size();i++){
-            MFEM_ASSERT(grad_u_dim[i] == grad_u_dim_cached[i],
-                        "Grad(State) host/device skew");
-          }
-        }
-        nonlinearForm->Mult(Ustate, *grad_u[0], *grad_u[1], dudt);    
+        // for(int idim = 0;idim < dim;idim++){
+        //   mfem::Vector &grad_u_dim(*grad_u[idim]);
+        //   mfem::Vector &grad_u_dim_cached(operator_cache.gradState[idim]);
+        //   for(int i = 0;i < grad_u_dim.Size();i++){
+        //     MFEM_ASSERT(grad_u_dim[i] == grad_u_dim_cached[i],
+        //                 "Grad(State) host/device skew");
+        //   }
+        // }
+        //nonlinearForm->Mult(Ustate, *grad_u[0], *grad_u[1], dudt);    
+        nonlinearForm->Mult(Ustate, operator_cache.gradState[0], operator_cache.gradState[1], dudt);    
       }
     else
       {

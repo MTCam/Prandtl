@@ -15,6 +15,8 @@ namespace Prandtl
   {
   private:
     mutable mfem::Vector aux2_x, aux2_y, aux2_z;
+    mutable std::vector<mfem::Vector> grad_temp_;
+    mutable std::vector<mfem::Vector *> p_grad;
     mfem::Array<DGSEMIntegrator*> dnfi, fnfi;
     mfem::Array<BdrFaceIntegrator*> bfnfi;
     mutable mfem::ParGridFunction GRAD_X, GRAD_Y, GRAD_Z;
@@ -30,6 +32,14 @@ namespace Prandtl
     void MultLifting(const mfem::Vector &u, mfem::Vector &dudx,
                      mfem::Vector &dudy, mfem::Vector &dudz) const;
     void MultLifting(const mfem::Vector &u, mfem::Vector &dudx, mfem::Vector &dudy) const;
+    void GradOperator(const mfem::Vector &u, std::vector<mfem::Vector *> &grad_u) const;
+    void GradOperatorVolumeDevice(const Vector &pu, std::vector<mfem::Vector *> &p_grad_u) const;
+    void GradOperatorVolumeHost(const Vector &pu, std::vector<mfem::Vector *> &p_grad_u) const;
+    void GradOperatorInteriorFacesDevice(const Vector &pu, std::vector<mfem::Vector *> &p_grad_u) const;
+    void GradOperatorInteriorFacesHost(const Vector &pu, std::vector<mfem::Vector *> &p_grad_u) const;
+    void GradOperatorBoundaryFacesDevice(const mfem::Vector &pu, std::vector<mfem::Vector *> &p_grad_u) const;
+    void GradOperatorBoundaryFacesDeviceNOOP(const mfem::Vector &pu, std::vector<mfem::Vector *> &p_grad_u) const;
+    void GradOperatorBoundaryFacesHost(const Vector &pu, std::vector<mfem::Vector *> &p_grad_u) const;
     void MultLifting(const mfem::Vector &u, mfem::Vector &dudx) const;
 
     void Mult(const mfem::Vector &u, const mfem::Vector &dudx, const mfem::Vector &dudy,

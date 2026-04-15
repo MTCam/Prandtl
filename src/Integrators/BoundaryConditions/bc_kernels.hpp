@@ -7,6 +7,63 @@ namespace Prandtl {
 
   namespace BC {
 
+
+    template <typename DeviceCacheT>
+    MFEM_HOST_DEVICE inline
+    void ComputeBdrFaceGradFlux(const DeviceCacheT &dc,
+                                const Prandtl::BCDescriptor &bc,
+                                const real_t *state1,
+                                real_t *fluxN)
+    {
+      const auto &gas = dc.gas;
+      const int neq = dc.num_equations;
+      const int dim = dc.dim;
+      
+      for (int q = 0; q < neq; ++q)
+        {
+          fluxN[q] = real_t(0);
+        }
+
+      switch (static_cast<Prandtl::BCType>(bc.type))
+        {
+        case Prandtl::BCType::NoSlipAdiab:
+          {
+            const real_t *vector_data = dc.bc_vector_d;
+            const real_t *Vwall = vector_data + bc.data_index;
+            const real_t *wallHeat = vector_data + bc.data_index + dim;
+
+            // Note this must be entropy state
+            Prandtl::PointStateView S{state1};
+            Prandtl::PointStateViewRW F{fluxN};
+
+            const real_t v = -gas.energy(S);
+
+            // Build the same provisional "boundary" state as legacy, then subtract state1.
+            F.set_mass(gas.L, gas.mass(S));
+            for(int idim = 0;idim < dim;idim++){
+              F.set_momentum(gas.L, idim, Vwall[idim] * v);
+            }
+            F.set_energy(gas.L, -v);
+            for (int q = 0; q < neq; ++q)
+              {
+                fluxN[q] -= state1[q];
+              }
+            return;
+          }
+
+        default:
+          {
+            // Conservative placeholder for unsupported BCs.
+            for (int q = 0; q < neq; ++q)
+              {
+                fluxN[q] = real_t(0);
+              }
+            return;
+          }
+        }
+    }
+
+
     template<typename GasModelT>
     MFEM_HOST_DEVICE
     real_t SlipWallInviscidFluxKernel(const GasModelT &gasModel, const real_t *state1,

@@ -91,21 +91,6 @@ Simulation::~Simulation()
 }
 
 constexpr bool debug_simulation = true;
-inline int AppendVectorPayload(mfem::Vector &dst,
-                               const mfem::Vector &src)
-{
-    const int offset = dst.Size();
-    const int n = src.Size();
-
-    dst.SetSize(offset + n);
-
-    for (int i = 0; i < n; ++i)
-    {
-        dst[offset + i] = src[i];
-    }
-
-    return offset;
-}
 
 void Simulation::LoadConfig(const std::string &config_file_path)
 {
@@ -448,7 +433,7 @@ void Simulation::LoadConfig(const std::string &config_file_path)
         ti = 0;
 
         if(myRank == 0 && debug_simulation){
-          std::cout << "Starting from time 0." << std::endl;
+          std::cout << "Run is not a restart: (step=0, t=0)" << std::endl;
         }
     }
 
@@ -593,7 +578,7 @@ void Simulation::LoadConfig(const std::string &config_file_path)
             bc_descr.bdr_attr = -1;
             bc_descr.data_kind = int(Prandtl::BCDataKind::None);
             bc_descr.type = int(Prandtl::BCType::Invalid);
-            
+
             auto bc_props = boundary.value();  // This is a JSON object.
             std::string type = bc_props["type"].get<std::string>();
             
@@ -630,11 +615,41 @@ void Simulation::LoadConfig(const std::string &config_file_path)
                 bc_descr.data_kind = int(Prandtl::BCDataKind::None);
               }
             else if (type == "no-slip-adiabatic")
-              {   
+              {
+                // if(debug_simulation && Mpi::Root()){
+                //  std::cout << "Detected noslip boundary... configuring." << std::endl;
+                // }
+                bc_descr.type = int(Prandtl::BCType::NoSlipAdiab);
+                bc_descr.data_kind = int(Prandtl::BCDataKind::VectorAndScalarConstant);
                 if (bc_props["velocity"].contains("vector"))
                   {
                     std::string velBC_key = bc_props["velocity"]["vector"].get<std::string>();
                     std::string heatBC_key = bc_props["heat"]["scalar"].get<std::string>();
+                    std::cout << "VEL KEY: " << velBC_key << std::endl;
+                    std::cout << "HEAT KEY: " << heatBC_key << std::endl;
+                    // std::string state_key = bc_props["vector"].get<std::string>();
+                    auto vel_bc = ConditionFactory::Instance().GetVectorBoundaryCondition(velBC_key);
+                    auto heat_bc = ConditionFactory::Instance().GetScalarBoundaryCondition(heatBC_key);
+                    // std::cout << "Data is parsed: " << vel_bc.Size() << std::endl;
+                    // std::cout << "Heat: " << heat_bc << std::endl;
+                    mfem::Vector bc_data(vel_bc.Size() + 1);
+                    std::ostringstream Ostr;
+                    Ostr << "Wall velocity: < ";
+                    for(int ivec = 0;ivec < vel_bc.Size();ivec++){
+                      bc_data[ivec] = vel_bc[ivec];
+                      Ostr << vel_bc[ivec] << " ";
+                    }
+                    Ostr << ">" << std::endl;
+                    Ostr << "Heat: " << heat_bc << std::endl;
+                    bc_data[vel_bc.Size()] = heat_bc;
+                    bc_descr.data_index = Prandtl::AppendBCVectorPayload(bc_vector_data, bc_data);                    
+                    Ostr << "bc_vector_data index: " << bc_descr.data_index << std::endl
+                         << "BC Data So Far: [";
+                    for(int ivec=0;ivec < bc_vector_data.Size();ivec++){
+                      Ostr << bc_vector_data[ivec] << " ";
+                    }
+                    Ostr << "]" << std::endl;
+                    // std::cout << Ostr.str();
                     NS->AddBdrFaceIntegrator(
                                              new NoSlipAdiabWallBdrFaceIntegrator(liftingScheme, *gasModel, *numericalFlux, order + 1, NS->GetTimeRef(),
                                                                                   ConditionFactory::Instance().GetScalarBoundaryCondition(heatBC_key),
@@ -724,6 +739,7 @@ void Simulation::LoadConfig(const std::string &config_file_path)
                                                                                   *numericalFlux, order + 1, NS->GetTimeRef(),
                                                                                   *heatBC, *velBC, td),
                                              bdr_marker_vector.back());
+                    
                 }
                 else
                 {
@@ -754,7 +770,7 @@ void Simulation::LoadConfig(const std::string &config_file_path)
                                                               liftingScheme, *gasModel, 
                                                               *numericalFlux, order + 1, NS->GetTimeRef(), bc_state);
                 NS->AddBdrFaceIntegrator(inlet.release(), bdr_marker_vector.back());
-                const int data_offset = AppendVectorPayload(bc_vector_data, bc_state);
+                const int data_offset = Prandtl::AppendBCVectorPayload(bc_vector_data, bc_state);
                 bc_descr.type = int(Prandtl::BCType::SupersonicInflow);
                 bc_descr.data_kind = int(Prandtl::BCDataKind::VectorConstant);
                 bc_descr.data_index = data_offset;
@@ -1168,8 +1184,8 @@ void Simulation::Run()
     
     while (!done)
     {
-        
-        if (debug_simulation)
+      MPI_Barrier(pmesh->GetComm());   
+      if (debug_simulation && Mpi::Root())
         {
             std::cout << "################################################################################" << "\n";
             std::cout << "######################### [TIME STEP = " << ti << ", TIME = " << t << "] #########################" << "\n";
