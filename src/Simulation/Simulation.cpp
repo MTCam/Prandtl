@@ -26,6 +26,8 @@
 #include "Ramp.hpp"
 #include "Nagashima_Ramjet.hpp"
 
+#include "LTEVortex.hpp"
+
 #include "json.hpp"
 #include <filesystem>
 #include <mpi.h>
@@ -361,11 +363,12 @@ void Simulation::LoadConfig(const std::string &config_file_path)
     rhoe_min = runtime.value("rhoe_min", 100000.0);
     rhoe_max = runtime.value("rhoe_max", 1000000.0);
 
+    rho_grid.SetSize(N_rho);
+    rhoe_grid.SetSize(N_rhoe);
+    lte_table.SetSize(N_rho * N_rhoe * num_properties);
+
     if(myRank==0)
     {
-        rho_grid.SetSize(N_rho);
-        rhoe_grid.SetSize(N_rhoe);
-        lte_table.SetSize(N_rho * N_rhoe * num_properties);
 
         real_t rho_step = (rho_max - rho_min) / (N_rho - 1);
         real_t rhoe_step = (rhoe_max - rhoe_min) / (N_rhoe - 1);

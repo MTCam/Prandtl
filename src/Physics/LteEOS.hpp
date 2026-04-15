@@ -312,6 +312,15 @@ namespace Prandtl
       int l_x = hunt(phys.rho_grid, L.nx, rho, 0);
       int u_x = l_x + 1  , u_y = l_y + 1;
 
+      if(l_x < 0 || u_x >= L.nx || l_y < 0 || u_y >= L.ny)
+      {
+        std::cout << " CL ALERT : Out of bounds in LTE table lookup! "<<std::endl;
+        std::cout << "l_x : " << l_x << "l_y : " << l_y << std::endl;
+        std::cout << "rho : " << phys.rho_grid[0] << " < " << rho << " < " << phys.rho_grid[L.nx-1] << std::endl;
+        std::cout << "rhoe : " << phys.rhoe_grid[0] << " < " << rhoe << " < " << phys.rhoe_grid[L.ny-1] << std::endl;
+        std::exit(1);
+      }
+
       // Get the lower and upper x and y coordinates of the cell
       real_t rho_l  = phys.rho_grid[l_x] , rho_u = phys.rho_grid[u_x];
       real_t rhoe_l = phys.rhoe_grid[l_y], rhoe_u = phys.rhoe_grid[u_y];

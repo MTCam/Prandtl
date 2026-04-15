@@ -214,6 +214,7 @@ target_include_directories(${PROJECT_NAME}
     PUBLIC ${CMAKE_SOURCE_DIR}/TestCases/Euler/2D/IsentropicVortex
     PUBLIC ${CMAKE_SOURCE_DIR}/TestCases/Euler/2D/Ramp
     PUBLIC ${CMAKE_SOURCE_DIR}/TestCases/Euler/2D/Nagashima_Ramjet
+    PUBLIC ${CMAKE_SOURCE_DIR}/TestCases/LTE/Euler/LTEVortex
     )
 
 target_link_libraries(${PROJECT_NAME}
