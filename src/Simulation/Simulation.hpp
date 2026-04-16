@@ -120,8 +120,8 @@ private:
   std::string gas_mixture, gas_composition;
   mfem::Vector rho_grid, rhoe_grid, lte_table;
 
-  void fill_lte_table(Mutation::Mixture& mix, const StateLayout& L, const real_t* rho_grid,
-                      const real_t* rhoe_grid, real_t* lte_table) const;
+  void fill_lte_table(Mutation::Mixture& mix, const StateLayout& stateLayout, const real_t* rho_grid,
+                      const real_t* rhoe_grid, real_t* lte_table, MPI_Comm comm) const;
 #endif
 
 #ifdef AXISYMMETRIC
