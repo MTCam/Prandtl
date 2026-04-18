@@ -31,7 +31,8 @@ namespace Prandtl {
           {
             const real_t *vector_data = dc.bc_vector_d;
             const real_t *Vwall = vector_data + bc.data_index;
-            const real_t *wallHeat = vector_data + bc.data_index + dim;
+            // unused - but be aware
+            // const real_t *wallHeat = vector_data + bc.data_index + dim;
 
             // Note this must be entropy state
             Prandtl::PointStateView S{state1};

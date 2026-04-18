@@ -625,13 +625,10 @@ void Simulation::LoadConfig(const std::string &config_file_path)
                   {
                     std::string velBC_key = bc_props["velocity"]["vector"].get<std::string>();
                     std::string heatBC_key = bc_props["heat"]["scalar"].get<std::string>();
-                    std::cout << "VEL KEY: " << velBC_key << std::endl;
-                    std::cout << "HEAT KEY: " << heatBC_key << std::endl;
                     // std::string state_key = bc_props["vector"].get<std::string>();
                     auto vel_bc = ConditionFactory::Instance().GetVectorBoundaryCondition(velBC_key);
                     auto heat_bc = ConditionFactory::Instance().GetScalarBoundaryCondition(heatBC_key);
-                    // std::cout << "Data is parsed: " << vel_bc.Size() << std::endl;
-                    // std::cout << "Heat: " << heat_bc << std::endl;
+
                     mfem::Vector bc_data(vel_bc.Size() + 1);
                     std::ostringstream Ostr;
                     Ostr << "Wall velocity: < ";
@@ -1074,8 +1071,10 @@ void Simulation::Run()
 #else
         dt = cfl / dim * dt_adv;
 #endif
-        std::cout << "Fixed CFL: " << cfl << std::endl
-                  << "Initial Timestep DT: " << dt << std::endl;
+        if(Mpi::Root()){
+          std::cout << "Fixed CFL: " << cfl << std::endl
+                    << "Initial Timestep DT: " << dt << std::endl;
+        }
     } else {
       if(Mpi::Root()){
         std::cout << "Fixed Timestep DT: " << dt << std::endl;
@@ -1184,14 +1183,16 @@ void Simulation::Run()
     
     while (!done)
     {
-      MPI_Barrier(pmesh->GetComm());   
-      if (debug_simulation && Mpi::Root())
+ 
+      if (debug_simulation)
         {
+          MPI_Barrier(pmesh->GetComm());
+          if(Mpi::Root()){
             std::cout << "################################################################################" << "\n";
             std::cout << "######################### [TIME STEP = " << ti << ", TIME = " << t << "] #########################" << "\n";
             std::cout << "################################################################################" << "\n";
+          }
         }
-    
 
         // Compute the time step size
         dt_real = std::min(dt, t_final - t);
@@ -1222,7 +1223,7 @@ void Simulation::Run()
           real_t dt_diff = heff * heff / nu_eff;
           real_t dt_m1 = 1.0 / (1.0/dt_adv + 1.0/dt_diff);
           if(debug_simulation && Mpi::Root()){
-            std::cout << "DTs: " << dt_adv << ", " << dt_diff << std::endl;
+            std::cout << "DT(adv,diff): (" << dt_adv << ", " << dt_diff << ")" << std::endl;
             std::cout << "Max specific volume: " << 1.0 / diag.min_dens << std::endl;
             std::cout << "Effective viscosity: " << nu_eff << std::endl;
             std::cout << "Max wavespeed: " << max_char_speed << std::endl;

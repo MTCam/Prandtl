@@ -54,7 +54,7 @@ namespace Prandtl
 
   void DGSEMOperator::Finalize(real_t time)
   {    
-    this->SetTime(t);
+    this->SetTime(time);
     GetOperatorCache(vfes.get(), &operator_cache);
     AssembleBoundaryFaceGeometryTerms(vfes.get(), bdr_marker, &operator_cache);
 #ifdef SUBCELL_FV_BLENDING
