@@ -148,6 +148,16 @@ namespace Prandtl
     }
     
     MFEM_HOST_DEVICE inline
+    void el_gather_grad_state(const real_t *grad_state_x, const real_t *grad_state_y, const real_t *grad_state_z,
+                              const int dim, const int dof, const int neq, const int id,
+                              real_t *dqx, real_t *dqy, real_t *dqz)
+    {
+      el_gather_state(grad_state_x, dof, neq, id, dqx);
+      if (dim > 1) el_gather_state(grad_state_y, dof, neq, id, dqy);
+      if (dim > 2) el_gather_state(grad_state_z, dof, neq, id, dqz);
+    }
+
+    MFEM_HOST_DEVICE inline
     void el_scatter_add(const real_t *f,
                         const int dof,
                         const int num_eq,
