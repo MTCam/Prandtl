@@ -13,21 +13,12 @@ namespace Prandtl {
     SetupRestrictions(fes, cache);
     SetupVolumeMarkers(fes, cache);
     SetupGeometricTerms(fes, cache);
-#ifdef PARABOLIC
-    SetupGradState(fes, cache);
-#endif
     // AssembleBoundaryFaceGeometryTerms(fes, cache);
     // TODO: Move these to where the caches are created and validated
     // MFEM_VERIFY(nfaces == cache.num_interior_faces, "restriction faces != cached interior faces");
     // MFEM_VERIFY(cache.face_normals.Size() == nfaces*nfp*dim, "normals size mismatch");
     // MFEM_VERIFY(cache.face_wt_minus.Size() == nfaces*nfp, "w_minus size mismatch");
     // MFEM_VERIFY(cache.face_wt_plus.Size()  == nfaces*nfp, "w_plus size mismatch");
-  }
-
-  template<typename CacheT>
-  void SetupGradState(mfem::FiniteElementSpace *fes, CacheT *cache)
-  {
-    cache->gradState.resize(cache->dim);
   }
 
   template<typename GasModelT, typename DeviceCacheT>

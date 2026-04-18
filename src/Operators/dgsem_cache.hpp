@@ -51,11 +51,6 @@ namespace Prandtl
       mfem::Vector face_wt_minus;
       mfem::Vector face_wt_plus;
 
-#ifdef PARABOLIC
-      mutable mfem::Vector entropyState;
-      mutable std::vector<mfem::Vector> gradState;
-#endif
-
       // Domain boundary device arrays
       mfem::Vector bnd_normals;
       mfem::Vector bnd_wt;
