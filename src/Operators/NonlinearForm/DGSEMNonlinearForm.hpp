@@ -15,8 +15,14 @@ namespace Prandtl
   {
   private:
     mutable mfem::Vector aux2_x, aux2_y, aux2_z;
-    mutable std::vector<mfem::Vector> grad_temp_;
-    mutable std::vector<mfem::Vector *> p_grad;
+    mutable mfem::Vector rhs_aux_;
+    mutable std::vector<mfem::Vector> grad_aux_;
+    mutable std::vector<mfem::Vector> vol_grad_prim;
+    mutable std::vector<mfem::Vector> int_grad_prim;
+    mutable std::vector<mfem::Vector> bnd_grad_prim;
+    mutable mfem::Vector vol_u;
+    mutable mfem::Vector int_u;
+    mutable mfem::Vector bnd_u;
     mfem::Array<DGSEMIntegrator*> dnfi, fnfi;
     mfem::Array<BdrFaceIntegrator*> bfnfi;
     mutable mfem::ParGridFunction GRAD_X, GRAD_Y, GRAD_Z;
@@ -29,6 +35,14 @@ namespace Prandtl
       cache = cache_;
       GetDeviceCache(*cache, device_cache);
     }
+    real_t MultCNS(const mfem::Vector &u, const std::vector<mfem::Vector *> &grad_prim, mfem::Vector &dudt) const;
+    real_t MultCNS_Volume(const mfem::Vector &pu, const std::vector<mfem::Vector *> &p_grad_prim,
+                          mfem::Vector &pdudt) const;
+    real_t MultCNS_InteriorFaces(const mfem::Vector &pu,
+                                 const std::vector<mfem::Vector *> &p_grad_prim,
+                                 mfem::Vector &pdudt) const;
+    real_t MultCNS_BoundaryFaces(const mfem::Vector &pu, const std::vector<mfem::Vector *> &p_grad_prim,
+                                 mfem::Vector &pdudt) const;
     void MultLifting(const mfem::Vector &u, mfem::Vector &dudx,
                      mfem::Vector &dudy, mfem::Vector &dudz) const;
     void MultLifting(const mfem::Vector &u, mfem::Vector &dudx, mfem::Vector &dudy) const;
@@ -53,7 +67,7 @@ namespace Prandtl
   
     real_t MultVolumeInviscidDevice(const mfem::Vector &pu, mfem::Vector &pdudt) const;
     real_t MultInteriorFacesInviscidDevice(const mfem::Vector &pu, mfem::Vector &pdudt) const;
-    real_t MultInviscid(const mfem::Vector &pu, mfem::Vector &pdudt) const;
+    real_t MultEuler(const mfem::Vector &pu, mfem::Vector &pdudt) const;
     void AddDomainIntegrator(DGSEMIntegrator *nlfi)
     {
       dnfi.Append(nlfi);

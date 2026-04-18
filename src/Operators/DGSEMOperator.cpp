@@ -60,11 +60,6 @@ namespace Prandtl
 #ifdef SUBCELL_FV_BLENDING
     ComputeSubcellMetrics(vfes.get(), &operator_cache);
 #endif
-    // GetDiscretizationInfo(vfes.get(), &operator_cache);
-    // SetupRestrictions(vfes.get(), &operator_cache);
-    // SetupVolumeMarkers(vfes.get(), &operator_cache);
-    // SetupGeometricTerms(vfes.get(), &operator_cache);
-    // AssembleBoundaryFaceGeometryTerms(vfes.get(), &operator_cache);
     // Important that gasModel is POD for host<->device
     operator_cache.gas = gasModel;
     operator_cache.bc_descriptors = bc_descriptors;
@@ -439,7 +434,7 @@ void DGSEMOperator::ComputeGlobalPrimitiveGradVector(const Vector &u, Vector &du
 
 // This routine replaces the gradient of the entropy stored in gradState with the gradient
 // of the primitive variables so that all the data in gradState is replaced.
-void DGSEMOperator::ComputeGradPrimFromGradEntropy(const Vector &u, std::vector<mfem::Vector> &gradState) const
+void DGSEMOperator::ComputeGradPrimFromGradEntropy(const Vector &u, std::vector<mfem::Vector *> &gradState) const
 {
   
     // This block is executed by the host
@@ -470,7 +465,7 @@ void DGSEMOperator::ComputeGradPrimFromGradEntropy(const Vector &u, std::vector<
 
   for(int idim = 0;idim < dim;idim++){
 
-    mfem::Vector &grad_state_dir(gradState[idim]);
+    mfem::Vector &grad_state_dir(*gradState[idim]);
     operator_cache.restr_v->Mult(grad_state_dir, restr_grad_prim_dir);
     real_t *grad_prim_dir_d = restr_grad_prim_dir.Write();
 
@@ -931,6 +926,7 @@ void DGSEMOperator::ComputeGlobalPrimitiveGradVector(const Vector &u, Vector &du
 
 void DGSEMOperator::Mult(const Vector &u, Vector &dudt) const
 {
+
 #ifdef AXISYMMETRIC
   RecoverStateFromWeighted(u, U);
   
@@ -939,6 +935,7 @@ void DGSEMOperator::Mult(const Vector &u, Vector &dudt) const
   const Vector &Ustate = u;
 #endif
 
+  
 #ifdef SUBCELL_FV_BLENDING
   mfem::Vector indicator_field;
   ComputeIndicatorField(Ustate, indicator_field);
@@ -954,21 +951,28 @@ void DGSEMOperator::Mult(const Vector &u, Vector &dudt) const
     alpha_h[e] = (*alpha)(e);
   }
 #endif
-  bool use_device_path = false;
-  
-#ifdef PARABOLIC
 
-  if(!use_device_path){
+  bool use_device_path = true;
 
-    ComputeGlobalEntropyVector(Ustate, global_entropy);
-    ComputeEntropyState(Ustate, operator_cache.entropyState);
-    const real_t *estate_d = operator_cache.entropyState.HostRead();
-    const real_t *estate_h = global_entropy.HostRead();
-    for(int i = 0;i < global_entropy.Size();i++){
-      real_t enterr = std::abs(estate_d[i] - estate_h[i]);
-      MFEM_ASSERT(enterr < 1e-16, "Host/Device entropy state skew.");
+#ifdef PARABOLIC // VISCOUS
+
+  if(use_device_path){
+
+    mfem::Vector entropyState(Ustate.Size());
+    ComputeEntropyState(Ustate, entropyState);
+    std::vector<mfem::Vector *> gradPrim(dim);
+    // grad_u is a vector of parallel grid functions
+    // this bit grabs an mfem::Vector ref. 
+    for(int idim = 0;idim < dim;idim++){
+      gradPrim[idim] = &(*grad_u[idim]);
     }
+    nonlinearForm->GradOperator(entropyState, gradPrim);
+    ComputeGradPrimFromGradEntropy(Ustate, gradPrim);
+    max_char_speed = nonlinearForm->MultCNS(Ustate, gradPrim, dudt);
 
+  } else {
+ 
+    ComputeGlobalEntropyVector(Ustate, global_entropy);
     if (dim == 1)
       {
         nonlinearForm->MultLifting(global_entropy, *grad_u[0]);
@@ -977,26 +981,9 @@ void DGSEMOperator::Mult(const Vector &u, Vector &dudt) const
       }
     else if (dim == 2)
       {
-        std::vector<mfem::Vector *> gradPrim(2);
-        gradPrim[0] = &(*grad_u[0]);
-        gradPrim[1] = &(*grad_u[1]);
-
-        nonlinearForm->GradOperator(operator_cache.entropyState, gradPrim);
-        // nonlinearForm->MultLifting(global_entropy, *grad_u[0], *grad_u[1]);
-        operator_cache.gradState[0] = *gradPrim[0];
-        operator_cache.gradState[1] = *gradPrim[1];
-        // ComputeGlobalPrimitiveGradVector(Ustate, *grad_u[0], *grad_u[1]);
-        ComputeGradPrimFromGradEntropy(Ustate, operator_cache.gradState);
-        // for(int idim = 0;idim < dim;idim++){
-        //   mfem::Vector &grad_u_dim(*grad_u[idim]);
-        //   mfem::Vector &grad_u_dim_cached(operator_cache.gradState[idim]);
-        //   for(int i = 0;i < grad_u_dim.Size();i++){
-        //     MFEM_ASSERT(grad_u_dim[i] == grad_u_dim_cached[i],
-        //                 "Grad(State) host/device skew");
-        //   }
-        // }
-        //nonlinearForm->Mult(Ustate, *grad_u[0], *grad_u[1], dudt);    
-        nonlinearForm->Mult(Ustate, operator_cache.gradState[0], operator_cache.gradState[1], dudt);    
+        nonlinearForm->MultLifting(global_entropy, *grad_u[0], *grad_u[1]);
+        ComputeGlobalPrimitiveGradVector(Ustate, *grad_u[0], *grad_u[1]);
+        nonlinearForm->Mult(Ustate, *grad_u[0], *grad_u[1], dudt);
       }
     else
       {
@@ -1009,22 +996,23 @@ void DGSEMOperator::Mult(const Vector &u, Vector &dudt) const
       {
         max_char_speed = std::max(bfnfi[b]->GetMaxCharSpeed(), max_char_speed);
       }
-  } else {
-    std::cout << "NO DEVICE PATH FOR CNS." << std::endl;
   }
 
-#else
-  // Hard code device path for inviscid
-  use_device_path = true;
+#else   // INVISCID
+
   if(use_device_path){
-    max_char_speed = nonlinearForm->MultInviscid(Ustate, dudt);
+
+    max_char_speed = nonlinearForm->MultEuler(Ustate, dudt);
+ 
   } else {
+
     nonlinearForm->Mult(Ustate, dudt);
     max_char_speed = integrator->GetMaxCharSpeed();
     for (int b = 0; b < bfnfi.size(); b++)
       {
         max_char_speed = std::max(bfnfi[b]->GetMaxCharSpeed(), max_char_speed);
       }
+ 
   }
 
 #endif
