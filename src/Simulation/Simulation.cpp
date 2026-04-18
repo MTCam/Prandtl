@@ -268,7 +268,7 @@ void Simulation::LoadConfig(const std::string &config_file_path)
     std::string mesh_file_name(runtime["mesh_file"].get<std::string>());
     {
       ScopedTimer timer("ReadMesh");
-      mesh = new Mesh(runtime["mesh_file"].get<std::string>());
+      mesh = new Mesh(mesh_file_name);
     }
  
     bool periodic;
