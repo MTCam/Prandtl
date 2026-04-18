@@ -47,13 +47,9 @@ namespace Prandtl
                      mfem::Vector &dudy, mfem::Vector &dudz) const;
     void MultLifting(const mfem::Vector &u, mfem::Vector &dudx, mfem::Vector &dudy) const;
     void GradOperator(const mfem::Vector &u, std::vector<mfem::Vector *> &grad_u) const;
-    void GradOperatorVolumeDevice(const Vector &pu, std::vector<mfem::Vector *> &p_grad_u) const;
-    void GradOperatorVolumeHost(const Vector &pu, std::vector<mfem::Vector *> &p_grad_u) const;
-    void GradOperatorInteriorFacesDevice(const Vector &pu, std::vector<mfem::Vector *> &p_grad_u) const;
-    void GradOperatorInteriorFacesHost(const Vector &pu, std::vector<mfem::Vector *> &p_grad_u) const;
-    void GradOperatorBoundaryFacesDevice(const mfem::Vector &pu, std::vector<mfem::Vector *> &p_grad_u) const;
-    void GradOperatorBoundaryFacesDeviceNOOP(const mfem::Vector &pu, std::vector<mfem::Vector *> &p_grad_u) const;
-    void GradOperatorBoundaryFacesHost(const Vector &pu, std::vector<mfem::Vector *> &p_grad_u) const;
+    void GradOperatorVolume(const Vector &pu, std::vector<mfem::Vector *> &p_grad_u) const;
+    void GradOperatorInteriorFaces(const Vector &pu, std::vector<mfem::Vector *> &p_grad_u) const;
+    void GradOperatorBoundaryFaces(const mfem::Vector &pu, std::vector<mfem::Vector *> &p_grad_u) const;
     void MultLifting(const mfem::Vector &u, mfem::Vector &dudx) const;
 
     void Mult(const mfem::Vector &u, const mfem::Vector &dudx, const mfem::Vector &dudy,
@@ -61,12 +57,11 @@ namespace Prandtl
     void Mult(const mfem::Vector &u, const mfem::Vector &dudx,
               const mfem::Vector &dudy, mfem::Vector &dudt) const;
     void Mult(const mfem::Vector &u, const mfem::Vector &dudx, mfem::Vector &dudt) const;
-    real_t MultBndFacesInviscidDevice(const Vector &pu, Vector &pdudt) const;
-    real_t MultBndFacesInviscidHost(const Vector &pu, Vector &pdudt) const;
+    real_t MultBndFacesInviscid(const Vector &pu, Vector &pdudt) const;
     void Mult(const mfem::Vector &u, mfem::Vector &dudt) const;
   
-    real_t MultVolumeInviscidDevice(const mfem::Vector &pu, mfem::Vector &pdudt) const;
-    real_t MultInteriorFacesInviscidDevice(const mfem::Vector &pu, mfem::Vector &pdudt) const;
+    real_t MultVolumeInviscid(const mfem::Vector &pu, mfem::Vector &pdudt) const;
+    real_t MultInteriorFacesInviscid(const mfem::Vector &pu, mfem::Vector &pdudt) const;
     real_t MultEuler(const mfem::Vector &pu, mfem::Vector &pdudt) const;
     void AddDomainIntegrator(DGSEMIntegrator *nlfi)
     {
