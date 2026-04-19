@@ -952,8 +952,6 @@ void DGSEMOperator::Mult(const Vector &u, Vector &dudt) const
   }
 #endif
 
-  bool use_device_path = true;
-
 #ifdef PARABOLIC // VISCOUS
 
   if(use_device_path){
@@ -973,6 +971,7 @@ void DGSEMOperator::Mult(const Vector &u, Vector &dudt) const
   } else {
  
     ComputeGlobalEntropyVector(Ustate, global_entropy);
+
     if (dim == 1)
       {
         nonlinearForm->MultLifting(global_entropy, *grad_u[0]);

@@ -47,7 +47,7 @@ private:
     const int num_equations, dim, order, num_elements;
     const int num_dofs_scalar;
     const int Ndofs;
-
+   
     mutable Vector global_entropy;
     
 #ifdef AXISYMMETRIC
@@ -81,6 +81,7 @@ private:
 
     mutable DGSEMOperatorCache operator_cache;
     mutable DGSEMDeviceCache device_cache;
+    mutable bool use_device_path;
 
     void ComputeGlobalEntropyVector(const Vector &u, Vector &global_entropy) const;
     void ComputeEntropyState(const Vector &u, Vector &e) const;
@@ -123,7 +124,10 @@ public:
     
     ~DGSEMOperator();
     
-  
+  void UseDevice(bool use_device_path_) const {
+    use_device_path = use_device_path_;
+  }
+
   void ComputeIntegralMeasures(const Vector &u, IntegralMeasures &diag) const;
   IntegralMeasures GetIntegralMeasuresBaseline() const { return diag0; }
   void SetBCDescriptorData(const mfem::Array<Prandtl::BCDescriptor> &bc_descr, const mfem::Vector &bc_scalar_dat,

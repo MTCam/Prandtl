@@ -40,8 +40,17 @@ namespace Prandtl
 
   void Simulation::InitDevice(std::string device_cfg)
   {
-    if(device_cfg.empty()){
+    if(device_cfg.empty() || device_cfg == "off"){
       device_cfg = "cpu";
+      use_device_path = false;
+      if(myRank == 0){
+        std::cout << "HOST compute path enabled." << std::endl;
+      }
+    } else {
+      use_device_path = true;
+      if(myRank == 0){
+        std::cout << "DEVICE compute path enabled." << std::endl;
+      }
     }
     if(!device_){
       device_ = std::make_unique<mfem::Device>(device_cfg);
@@ -90,7 +99,7 @@ Simulation::~Simulation()
     }
 }
 
-constexpr bool debug_simulation = true;
+constexpr bool debug_simulation = false;
 
 void Simulation::LoadConfig(const std::string &config_file_path)
 {
@@ -536,6 +545,7 @@ void Simulation::LoadConfig(const std::string &config_file_path)
 
     NS = std::make_unique<DGSEMOperator>(vfes, fes0, pmesh, eta, alpha, grad_u, std::move(integrator),
                                          std::move(indicator), *gasModel, r_gf, alpha_max);
+    NS->UseDevice(use_device_path);
 
     if(myRank == 0 && debug_simulation){
       std::cout << "DGSEMOperator created." << std::endl;
