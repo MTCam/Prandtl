@@ -28,14 +28,11 @@ namespace Prandtl
     mutable mfem::ParGridFunction GRAD_X, GRAD_Y, GRAD_Z;
     Prandtl::DGSEMOperatorCache *cache = nullptr;
     Prandtl::DGSEMDeviceCache device_cache;
-    
-  public:
-    DGSEMNonlinearForm(mfem::ParFiniteElementSpace *pfes);
-    void SetOperatorCache(DGSEMOperatorCache *cache_){
-      cache = cache_;
-      GetDeviceCache(*cache, device_cache);
-    }
-    real_t MultCNS(const mfem::Vector &u, const std::vector<mfem::Vector *> &grad_prim, mfem::Vector &dudt) const;
+
+    // Device path helpers
+    real_t MultEuler_Volume(const mfem::Vector &pu, mfem::Vector &pdudt) const;
+    real_t MultEuler_InteriorFaces(const mfem::Vector &pu, mfem::Vector &pdudt) const;
+    real_t MultEuler_BoundaryFaces(const Vector &pu, Vector &pdudt) const;
     real_t MultCNS_Volume(const mfem::Vector &pu, const std::vector<mfem::Vector *> &p_grad_prim,
                           mfem::Vector &pdudt) const;
     real_t MultCNS_InteriorFaces(const mfem::Vector &pu,
@@ -43,13 +40,23 @@ namespace Prandtl
                                  mfem::Vector &pdudt) const;
     real_t MultCNS_BoundaryFaces(const mfem::Vector &pu, const std::vector<mfem::Vector *> &p_grad_prim,
                                  mfem::Vector &pdudt) const;
+    void GradOperator_Volume(const Vector &pu, std::vector<mfem::Vector *> &p_grad_u) const;
+    void GradOperator_InteriorFaces(const mfem::Vector &pu, std::vector<mfem::Vector *> &p_grad_u) const;
+    void GradOperator_BoundaryFaces(const mfem::Vector &pu, std::vector<mfem::Vector *> &p_grad_u) const;
+
+  public:
+
+    DGSEMNonlinearForm(mfem::ParFiniteElementSpace *pfes);
+
+    // Device path Interfaces
+    real_t MultEuler(const mfem::Vector &pu, mfem::Vector &pdudt) const;
+    real_t MultCNS(const mfem::Vector &u, const std::vector<mfem::Vector *> &grad_prim, mfem::Vector &dudt) const;
+    void GradOperator(const mfem::Vector &u, std::vector<mfem::Vector *> &grad_u) const;
+
+    // Host Path Interfaces
     void MultLifting(const mfem::Vector &u, mfem::Vector &dudx,
                      mfem::Vector &dudy, mfem::Vector &dudz) const;
     void MultLifting(const mfem::Vector &u, mfem::Vector &dudx, mfem::Vector &dudy) const;
-    void GradOperator(const mfem::Vector &u, std::vector<mfem::Vector *> &grad_u) const;
-    void GradOperatorVolume(const Vector &pu, std::vector<mfem::Vector *> &p_grad_u) const;
-    void GradOperatorInteriorFaces(const Vector &pu, std::vector<mfem::Vector *> &p_grad_u) const;
-    void GradOperatorBoundaryFaces(const mfem::Vector &pu, std::vector<mfem::Vector *> &p_grad_u) const;
     void MultLifting(const mfem::Vector &u, mfem::Vector &dudx) const;
 
     void Mult(const mfem::Vector &u, const mfem::Vector &dudx, const mfem::Vector &dudy,
@@ -57,12 +64,15 @@ namespace Prandtl
     void Mult(const mfem::Vector &u, const mfem::Vector &dudx,
               const mfem::Vector &dudy, mfem::Vector &dudt) const;
     void Mult(const mfem::Vector &u, const mfem::Vector &dudx, mfem::Vector &dudt) const;
-    real_t MultBndFacesInviscid(const Vector &pu, Vector &pdudt) const;
     void Mult(const mfem::Vector &u, mfem::Vector &dudt) const;
+
+    // Setup utilities
+    void SetOperatorCache(DGSEMOperatorCache *cache_){
+      cache = cache_;
+      GetDeviceCache(*cache, device_cache);
+    }
+
   
-    real_t MultVolumeInviscid(const mfem::Vector &pu, mfem::Vector &pdudt) const;
-    real_t MultInteriorFacesInviscid(const mfem::Vector &pu, mfem::Vector &pdudt) const;
-    real_t MultEuler(const mfem::Vector &pu, mfem::Vector &pdudt) const;
     void AddDomainIntegrator(DGSEMIntegrator *nlfi)
     {
       dnfi.Append(nlfi);

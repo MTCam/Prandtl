@@ -5,10 +5,11 @@
 #include "LiftingScheme.hpp"
 #include "ChandrashekarFlux.hpp"
 #include "dgsem_cache_utilities.hpp"
+#include "bc_kernels.hpp"
 
 namespace Prandtl
 {
-  
+
   class DGSEMIntegrator : public mfem::NonlinearFormIntegrator
   {
   private:
@@ -162,19 +163,19 @@ namespace Prandtl
                     int id2 = k * Np_y * Np_x + j * Np_x + m;
                     Kernels::el_gather_state(el_u, dof, neq, id2, state2);
                     const real_t *met2 = elMetric_d + id2*dim*dim;
-                  
+
                     const real_t cs = ctx.iflux.ComputeVolumeFlux(ctx.gas, state1, state2, met1, met2, f);
                     max_char_speed = Kernels::rmax(cs, max_char_speed);
-                  
+
                     const real_t c1 = Dhat2_d[m + Np_x*i];
                     const real_t c2 = Dhat2_d[i + Np_x*m];
                     Kernels::el_scatter_add(f, dof, neq, id1, c1, el_dudt);
                     Kernels::el_scatter_add(f, dof, neq, id2, c2, el_dudt);
-                  
+
                   }
               }
       } // X-direction block
-    
+
       // Y-direction (metric row 1)
       if(dim > 1) {
         for (int k = 0; k < Np_z; ++k)
@@ -184,7 +185,7 @@ namespace Prandtl
                 const int id1 = k*Np_y*Np_x + j*Np_x + i;
                 Kernels::el_gather_state(el_u, dof, neq, id1, state1);
                 const real_t *met1 = elMetric_d + id1*dim*dim + 1*dim;
-              
+
                 for (int m = j+1; m < Np_y; ++m)
                   {
                     const int id2 = k*Np_y*Np_x + m*Np_x + i;
@@ -193,16 +194,16 @@ namespace Prandtl
                     // ComputeVolumeFlux *overwrites* f, so don't worry about reuse
                     const real_t cs = ctx.iflux.ComputeVolumeFlux(ctx.gas, state1, state2, met1, met2, f);
                     max_char_speed = Kernels::rmax(max_char_speed, cs);
-                  
+
                     const real_t c1 = Dhat2_d[m + Np_y*j]; // column j, entry m
                     const real_t c2 = Dhat2_d[j + Np_y*m]; // column m, entry j
                     Kernels::el_scatter_add(f, dof, neq, id1, c1, el_dudt);
                     Kernels::el_scatter_add(f, dof, neq, id2, c2, el_dudt);
-                  
+
                   }
               }
       } // Y-direction block
-    
+
       if (dim > 2) { // Z-direction (metric row 2)
         for (int k = 0; k < Np_z; ++k)
           for (int j = 0; j < Np_y; ++j)
@@ -211,16 +212,16 @@ namespace Prandtl
                 const int id1 = k*Np_y*Np_x + j*Np_x + i;
                 Kernels::el_gather_state(el_u, dof, neq, id1, state1);
                 const real_t *met1 = elMetric_d + id1*dim*dim + 2*dim;
-              
+
                 for (int m = k+1; m < Np_z; ++m)
                   {
                     const int id2 = m*Np_y*Np_x + j*Np_x + i;
                     Kernels::el_gather_state(el_u, dof, neq, id2, state2);
                     const real_t *met2 = elMetric_d + id2*dim*dim + 2*dim;
-                  
+
                     const real_t cs = ctx.iflux.ComputeVolumeFlux(ctx.gas, state1, state2, met1, met2, f);
                     max_char_speed = Kernels::rmax(max_char_speed, cs);
-                  
+
                     const real_t c1 = Dhat2_d[m + Np_z*k];
                     const real_t c2 = Dhat2_d[k + Np_z*m];
                     Kernels::el_scatter_add(f, dof, neq, id1, c1, el_dudt);
@@ -425,7 +426,7 @@ namespace Prandtl
               Kernels::el_scatter_assign(du_subcell, npe, neq, id1, 1.0, el_dudt);
             }
         }
-  
+
       if (dim > 1)
         {
           for (int k = 0; k < Np_z; k++)
@@ -558,18 +559,18 @@ namespace Prandtl
                   const real_t jInv = 1.0/J;
 
                   real_t dU_viscous[Prandtl::MAXEQ] = {0., 0., 0., 0., 0.};
-                  
+
                   // xi contribution
                   for (int l = 0; l < Np_x; ++l)
                     {
                       const int idl = k * Np_y * Np_x + j * Np_x + l;
                       const real_t c = Dhat_d[l + Np_x * i];
-                      
+
                       Kernels::el_gather_state(el_u, dof, neq, idl, state);
                       Kernels::el_gather_grad_state(el_gradprim_x, el_gradprim_y,
                                                     el_gradprim_z, dim, dof, neq, idl,
                                                     dqx, dqy, dqz);
-                      
+
                       const real_t *adj_row = elMetric_d + idl * dim * dim + 0 * dim;
                       Prandtl::NavierStokesFlux::compute_ref_viscous_flux(ctx.gas, dim, neq, state, dqx, dqy, dqz,
                                                                           adj_row, f_ref);
@@ -578,7 +579,7 @@ namespace Prandtl
                           dU_viscous[q] += c * f_ref[q];
                         }
                     }
-                  
+
                   // eta contribution
                   if (dim > 1)
                     {
@@ -586,24 +587,24 @@ namespace Prandtl
                         {
                           const int idl = k * Np_y * Np_x + l * Np_x + i;
                           const real_t c = Dhat_d[l + Np_y * j];
-                          
+
                           Kernels::el_gather_state(el_u, dof, neq, idl, state);
                           Kernels::el_gather_grad_state(el_gradprim_x, el_gradprim_y,
                                                         el_gradprim_z, dim, dof, neq, idl,
                                                         dqx, dqy, dqz);
-                          
+
                           const real_t *adj_row = elMetric_d + idl * dim * dim + 1 * dim;
                           Prandtl::NavierStokesFlux::compute_ref_viscous_flux(ctx.gas, dim, neq, state,
                                                                               dqx, dqy, dqz,
                                                                               adj_row, f_ref);
-                                                    
+
                           for (int q = 0; q < neq; ++q)
                             {
                               dU_viscous[q] += c * f_ref[q];
                             }
                         }
                     }
-                  
+
                   // zeta contribution
                   if (dim > 2)
                     {
@@ -611,17 +612,17 @@ namespace Prandtl
                         {
                           const int idl = l * Np_y * Np_x + j * Np_x + i;
                           const real_t c = Dhat_d[l + Np_z * k];
-                          
+
                           Kernels::el_gather_state(el_u, dof, neq, idl, state);
                           Kernels::el_gather_grad_state(el_gradprim_x, el_gradprim_y,
                                                         el_gradprim_z, dim, dof, neq, idl,
                                                         dqx, dqy, dqz);
-                          
+
                           const real_t *adj_row = elMetric_d + idl * dim * dim + 2 * dim;
                           Prandtl::NavierStokesFlux::compute_ref_viscous_flux(ctx.gas, dim, neq, state,
                                                                               dqx, dqy, dqz,
                                                                               adj_row, f_ref);
-                                                    
+
                           for (int q = 0; q < neq; ++q)
                             {
                               dU_viscous[q] += c * f_ref[q];
@@ -632,7 +633,240 @@ namespace Prandtl
                 }
             }
         }
-    }     
-  }; 
+    }
 
+    template <typename ContextType>
+    MFEM_HOST_DEVICE inline
+    static void AssembleGradElementVolumeKernel(const ContextType &ctx,
+                                                const real_t *el_u,
+                                                const real_t *elJac_d,
+                                                const real_t *elMetric_d,
+                                                real_t *el_grad_u[Prandtl::MAXDIM])
+    {
+      const int Np_x = ctx.Np_x;
+      const int Np_y = ctx.Np_y;
+      const int Np_z = ctx.Np_z;
+      const int neq  = ctx.num_equations;
+      const int dim  = ctx.dim;
+      const int dof  = Np_x * Np_y * Np_z;
+      const real_t *D_d = ctx.D_d;
+
+      if(dim == 1){
+
+        // Keep MAX_EQ in mind later if neq can exceed 5.
+        real_t dudxi[Prandtl::MAXEQ];
+
+        for (int i = 0; i < Np_x; ++i)
+          {
+            const int id = i;
+
+            for (int q = 0; q < neq; ++q)
+              {
+                dudxi[q]  = 0.0;
+              }
+            // Reference-space derivatives.
+            for (int l = 0; l < Np_x; ++l)
+              {
+                const int id_x = l;
+                const real_t c_xi  = D_d[i*Np_x + l]; // legacy D_T(l, i)
+
+                for (int q = 0; q < neq; ++q)
+                  {
+                    dudxi[q]  += el_u[id_x + q * dof] * c_xi;
+                  }
+              }
+
+            const real_t invJ = 1.0 / elJac_d[id];
+            const real_t *adj = elMetric_d + id * dim * dim;
+
+            for (int q = 0; q < neq; ++q)
+              {
+                el_grad_u[0][id + q * dof] = invJ * (dudxi[q] * adj[0]);
+              }
+          }
+      } else if(dim == 2){
+        // Keep MAX_EQ in mind later if neq can exceed 5.
+        real_t dudxi[Prandtl::MAXEQ];
+        real_t dudeta[Prandtl::MAXEQ];
+
+        for (int j = 0; j < Np_y; ++j)
+          {
+            for (int i = 0; i < Np_x; ++i)
+              {
+                const int id = j * Np_x + i;
+
+                for (int q = 0; q < neq; ++q)
+                  {
+                    dudxi[q]  = 0.0;
+                    dudeta[q] = 0.0;
+                  }
+
+                // Reference-space derivatives.
+                for (int l = 0; l < Np_x; ++l)
+                  {
+                    const int id_x = j * Np_x + l;
+                    const int id_y = l * Np_x + i;
+
+                    const real_t c_xi  = D_d[l + Np_x * i]; // legacy D_T(l,i)
+                    const real_t c_eta = D_d[l + Np_x * j]; // legacy D_T(l,j)
+
+                    for (int q = 0; q < neq; ++q)
+                      {
+                        dudxi[q]  += el_u[id_x + q * dof] * c_xi;
+                        dudeta[q] += el_u[id_y + q * dof] * c_eta;
+                      }
+                  }
+
+                const real_t invJ = 1.0 / elJac_d[id];
+                const real_t *adj = elMetric_d + id * dim * dim;
+
+                // adj stored row-major per point:
+                // [ adj[0] adj[1] ]
+                // [ adj[2] adj[3] ]
+                for (int q = 0; q < neq; ++q)
+                  {
+                    el_grad_u[0][id + q * dof] = invJ * (dudxi[q] * adj[0] + dudeta[q] * adj[2]);
+                    el_grad_u[1][id + q * dof] = invJ * (dudxi[q] * adj[1] + dudeta[q] * adj[3]);
+                  }
+              }
+          }
+      } else if (dim == 3) {
+
+        real_t dudxi[Prandtl::MAXEQ];
+        real_t dudeta[Prandtl::MAXEQ];
+        real_t dudzeta[Prandtl::MAXEQ];
+
+        for (int k = 0; k < Np_z; ++k)
+          {
+            for (int j = 0; j < Np_y; ++j)
+              {
+                for (int i = 0; i < Np_x; ++i)
+                  {
+                    const int id = k * Np_x * Np_y + j * Np_x + i;
+
+                    for (int q = 0; q < neq; ++q)
+                      {
+                        dudxi[q]  = 0.0;
+                        dudeta[q] = 0.0;
+                        dudzeta[q] = 0.0;
+                      }
+
+                    // Reference-space derivatives.
+                    for (int l = 0; l < Np_x; ++l)
+                      {
+                        const int id_x = k * Np_x * Np_y + j * Np_x + l;
+                        const int id_y = k * Np_x * Np_y + l * Np_x + i;
+                        const int id_z = l * Np_x * Np_y + j * Np_x + i;
+                        const real_t c_xi  = D_d[l + Np_x * i]; // legacy D_T(l,i)
+                        const real_t c_eta = D_d[l + Np_x * j]; // legacy D_T(l,j)
+                        const real_t c_zeta = D_d[l + Np_x * k]; // legacy D_T(l,k)
+                        for (int q = 0; q < neq; ++q)
+                          {
+                            dudxi[q]  += el_u[id_x + q * dof] * c_xi;
+                            dudeta[q] += el_u[id_y + q * dof] * c_eta;
+                            dudzeta[q] += el_u[id_z + q * dof] * c_zeta;
+                          }
+                      }
+
+                    const real_t invJ = 1.0 / elJac_d[id];
+                    const real_t *adj = elMetric_d + id * dim * dim;
+
+                    // adj stored row-major per point:
+                    // [ adj[0] adj[1] adj[2] ]
+                    // [ adj[3] adj[4] adj[5] ]
+                    // [ adj[6] adj[7] adj[8] ]
+                    for (int q = 0; q < neq; ++q)
+                      {
+                        el_grad_u[0][id + q * dof] = invJ * (dudxi[q] * adj[0] +
+                                                             dudeta[q] * adj[3] +
+                                                             dudzeta[q] * adj[6]);
+
+                        el_grad_u[1][id + q * dof] = invJ * (dudxi[q] * adj[1] +
+                                                             dudeta[q] * adj[4] +
+                                                             dudzeta[q] * adj[7]);
+
+                        el_grad_u[2][id + q * dof] = invJ * (dudxi[q] * adj[2] +
+                                                             dudeta[q] * adj[5] +
+                                                             dudzeta[1] * adj[8]);
+                      }
+                  }
+              }
+          }
+      }
+    }
+
+    // TODO: Some inner loop reordering
+    template <typename ContextT>
+    MFEM_HOST_DEVICE inline
+    static void AssembleGradInteriorFaceKernel(const ContextT &ctx,
+                                               const real_t *u_face,
+                                               const real_t *nor_face,
+                                               const real_t *w_minus,
+                                               const real_t *w_plus,
+                                               real_t *rhs_face[Prandtl::MAXDIM])
+    {
+      const int nfp = ctx.num_face_points;
+      const int neq = ctx.num_equations;
+      const int dim = ctx.dim;
+
+      real_t qMinus[Prandtl::MAXEQ];
+      real_t qPlus[Prandtl::MAXEQ];
+      real_t jump[Prandtl::MAXEQ];
+
+      for (int i = 0; i < nfp; ++i)
+        {
+          const real_t *nor_d = nor_face + i * dim;
+
+          const real_t wminus = w_minus[i];
+          const real_t wplus  = w_plus[i];
+
+          for (int q = 0; q < neq; ++q)
+            {
+              qMinus[q] = u_face[ctx.iface_idx(0, i, q)];
+              qPlus[q]  = u_face[ctx.iface_idx(1, i, q)];
+              jump[q]   = real_t(0.5) * (qPlus[q] - qMinus[q]);
+            }
+
+          for (int q = 0; q < neq; ++q)
+            {
+              for ( int idim = 0;idim < dim;idim++){
+                const real_t f_d = jump[q]*nor_d[idim];
+                rhs_face[idim][ctx.iface_idx(0, i, q)] = wminus * f_d;
+                rhs_face[idim][ctx.iface_idx(1, i, q)] = wplus * f_d;
+              }
+            }
+        }
+    }
+
+    template <typename DeviceCacheT>
+    MFEM_HOST_DEVICE inline
+    static void AssembleGradBoundaryPointKernel(const DeviceCacheT &dc,
+                                                const Prandtl::BCDescriptor &bc,
+                                                const real_t *u_face,
+                                                const real_t *nor_point,
+                                                const real_t scale,
+                                                const int fp,
+                                                real_t *rhs_face[Prandtl::MAXDIM])
+    {
+      const int dim = dc.dim;
+      const int nfp = dc.num_face_points;
+      const int neq = dc.num_equations;
+
+      real_t state1[Prandtl::MAXEQ];
+      real_t fluxN[Prandtl::MAXEQ];
+      real_t flux_dir[Prandtl::MAXEQ];
+
+      Prandtl::Kernels::el_gather_state(u_face, nfp, neq, fp, state1);
+
+      Prandtl::BC::ComputeBdrFaceGradFlux(dc, bc, state1, fluxN);
+
+      for(int idim = 0;idim < dim;idim++){
+        for(int q = 0;q < neq;q++){
+          flux_dir[q] = fluxN[q]*nor_point[idim];
+        }
+        Prandtl::Kernels::el_scatter_add(flux_dir, nfp, neq, fp, scale, rhs_face[idim]);
+      }
+    }
+
+  };
 }

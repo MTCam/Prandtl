@@ -1,5 +1,4 @@
 #include "DGSEMNonlinearForm.hpp"
-#include "LiftingBR1.hpp"
 
 namespace Prandtl
 {
@@ -211,246 +210,212 @@ void DGSEMNonlinearForm::MultLifting(const Vector &u, Vector &dudx) const
     }
 }
 
-void DGSEMNonlinearForm::GradOperatorVolume(const Vector &pu, std::vector<mfem::Vector *> &p_grad_u) const
+void DGSEMNonlinearForm::GradOperator_Volume(const Vector &pu, std::vector<mfem::Vector *> &p_grad_u) const
 {
 
   const int dim = cache->dim;
+  const int restr_size = cache->restr_v->Height();
+  mfem::Vector Ue(restr_size);
+  std::vector<mfem::Vector> dUe(dim);
+  real_t *dU_d[Prandtl::MAXDIM] = {nullptr, nullptr, nullptr};
+  real_t *pgrad_d[Prandtl::MAXDIM] = {nullptr, nullptr, nullptr};
+  for(int idim = 0;idim < dim;idim++){
+    dUe[idim].SetSize(restr_size);
+    dUe[idim].UseDevice();
+    dU_d[idim] = dUe[idim].Write();
+    pgrad_d[idim] = p_grad_u[idim]->Write();
+  }
+  mfem::forall(restr_size, [=] MFEM_HOST_DEVICE (int i)
+  {
+    for(int idim = 0;idim < dim;idim++){
+      dU_d[idim][i] = real_t(0);
+      pgrad_d[idim][i] = real_t(0);
+    }
+  });
 
-  if (dim==2){
+  Ue.UseDevice();
+  cache->restr_v->Mult(pu, Ue);
 
-    mfem::Vector &pdudx(*p_grad_u[0]);
-    mfem::Vector &pdudy(*p_grad_u[1]);
+  const real_t *Ue_d = Ue.Read();
 
-    mfem::Vector Ue(cache->restr_v->Height());
-    mfem::Vector dUxe(cache->restr_v->Height());
-    mfem::Vector dUye(cache->restr_v->Height());
-    
-    Ue.UseDevice();
-    dUxe.UseDevice();
-    dUye.UseDevice();
-    
-    cache->restr_v->Mult(pu, Ue);
-    
-    {
-      real_t *dx = dUxe.Write();
-      real_t *dy = dUye.Write();
-      real_t *pdx = p_grad_u[0]->Write();
-      real_t *pdy = p_grad_u[1]->Write();
-      mfem::forall(dUxe.Size(), [=] MFEM_HOST_DEVICE (int i)
-      {
-        dx[i] = real_t(0);
-        dy[i] = real_t(0);
-        pdx[i] = real_t(0);
-        pdy[i] = real_t(0);
-      });
+  auto dc = device_cache;
+
+  const int ne = dc.num_elements;
+  const int ndof = dc.ndof_scalar_el;
+  const int neq = dc.num_equations;
+  const int estride = ndof * neq;
+  const int jac_stride = ndof;
+  const int metric_stride = ndof * dc.dim * dc.dim;
+
+  const real_t *elJac_d = dc.elJac_d;
+  const real_t *elMetric_d = dc.elMetric_d;
+
+  mfem::forall(ne, [=] MFEM_HOST_DEVICE (int e)
+  {
+    const real_t *u_el = Ue_d + e * estride;
+    real_t *du_el_d[Prandtl::MAXDIM] = {nullptr, nullptr, nullptr};
+    for(int idim = 0;idim < dim;idim++){
+      du_el_d[idim] = dU_d[idim] + e*estride;
     }
 
-    const real_t *Ue_d = Ue.Read();
-    real_t *dUxe_d = dUxe.Write();
-    real_t *dUye_d = dUye.Write();
+    const real_t *jac_el = elJac_d + e * jac_stride;
+    const real_t *metric_el = elMetric_d + e * metric_stride;
 
-    auto dc = device_cache;
+    DGSEMIntegrator::AssembleGradElementVolumeKernel(dc, u_el, jac_el, metric_el,
+                                                     du_el_d);
+  });
 
-    const int ne = dc.num_elements;
-    const int ndof = dc.ndof_scalar_el;
-    const int neq = dc.num_equations;
-    const int estride = ndof * neq;
-    const int jac_stride = ndof;
-    const int metric_stride = ndof * dc.dim * dc.dim;
-    
-    const real_t *elJac_d = dc.elJac_d;
-    const real_t *elMetric_d = dc.elMetric_d;
-    
-    mfem::forall(ne, [=] MFEM_HOST_DEVICE (int e)
-    {
-      const real_t *u_el = Ue_d + e * estride;
-      real_t *dux_el = dUxe_d + e * estride;
-      real_t *duy_el = dUye_d + e * estride;
-      
-      const real_t *jac_el = elJac_d + e * jac_stride;
-      const real_t *metric_el = elMetric_d + e * metric_stride;
-      
-      LiftingBR1::AssembleGradElementVolumeKernel2D(dc, u_el, jac_el, metric_el,
-                                                    dux_el, duy_el);
-    });
-    
-    cache->restr_v->AddMultTranspose(dUxe, pdudx);
-    cache->restr_v->AddMultTranspose(dUye, pdudy);
-    
-  } else {
-    MFEM_ASSERT(false, "dim != 2 unsupported right now.");
+  for(int idim = 0;idim < dim;idim++){
+    cache->restr_v->AddMultTranspose(dUe[idim], *p_grad_u[idim]);
   }
+
 }
-  
-  void DGSEMNonlinearForm::GradOperatorBoundaryFaces(const mfem::Vector &pu,
-                                                     std::vector<mfem::Vector *> &p_grad_u) const
+
+
+  void DGSEMNonlinearForm::GradOperator_BoundaryFaces(const mfem::Vector &pu,
+                                                      std::vector<mfem::Vector *> &p_grad_u) const
   {
     const int dim = cache->dim;
-    MFEM_ASSERT(dim == 2, "Only dim=2 supported right now.");
-    
-    mfem::Vector &pdudx(*p_grad_u[0]);
-    mfem::Vector &pdudy(*p_grad_u[1]);
-    
+
     auto dc = device_cache;
-    
+
     const int neq = dc.num_equations;
     const int nfp = dc.num_face_points;
     const int face_size = nfp * neq;
-    const int nfaces_restr = cache->restr_b->Height() / face_size;
+    const int restr_size = cache->restr_b->Height();
+    const int nfaces_restr = restr_size / face_size;
     const int norm_size = nfp * dim;
     const int npoints_bnd = nfaces_restr * nfp;
-    
-    mfem::Vector u_faces(cache->restr_b->Height());
-    mfem::Vector rhs_faces_x(cache->restr_b->Height());
-    mfem::Vector rhs_faces_y(cache->restr_b->Height());
-    mfem::Vector faces_dudx(pdudx.Size());
-    mfem::Vector faces_dudy(pdudy.Size());
-    
-    u_faces.UseDevice();
-    rhs_faces_x.UseDevice();
-    rhs_faces_y.UseDevice();
-    faces_dudx.UseDevice();
-    faces_dudy.UseDevice();
-    
-    {
-      real_t *rx = rhs_faces_x.Write();
-      real_t *ry = rhs_faces_y.Write();
-      real_t *dx = faces_dudx.Write();
-      real_t *dy = faces_dudy.Write();
-      
-      mfem::forall(rhs_faces_x.Size(), [=] MFEM_HOST_DEVICE (int i)
-      {
-        rx[i] = real_t(0);
-        ry[i] = real_t(0);
-      });
-      
-      mfem::forall(faces_dudx.Size(), [=] MFEM_HOST_DEVICE (int i)
-      {
-        dx[i] = real_t(0);
-        dy[i] = real_t(0);
-      });
+    const int psize = pu.Size();
+    mfem::Vector u_faces(restr_size);
+    std::vector<mfem::Vector> rhs_faces(dim);
+    std::vector<mfem::Vector> du_faces(dim);
+    for(int idim = 0;idim < dim;idim++){
+      rhs_faces[idim].SetSize(restr_size);
+      du_faces[idim].SetSize(psize);
+      rhs_faces[idim].UseDevice();
+      du_faces[idim].UseDevice();
     }
-    
+    u_faces.UseDevice();
     cache->restr_b->Mult(pu, u_faces);
-    
     const real_t *u_d = u_faces.Read();
-    real_t *rhs_x_d = rhs_faces_x.Write();
-    real_t *rhs_y_d = rhs_faces_y.Write();
-    
     const real_t *nor_d = dc.bnd_nor_d;
     const real_t *wt_d = dc.bnd_wt_d;
     const int *bnd_marker_index_d = dc.bnd_marker_index_d;
-    
+
+    real_t *rhs_d[Prandtl::MAXDIM] = {nullptr, nullptr, nullptr};
+    real_t *du_d[Prandtl::MAXDIM] = {nullptr, nullptr, nullptr};
+    for(int idim = 0;idim < dim;idim++){
+      rhs_d[idim] = rhs_faces[idim].Write();
+      du_d[idim] = du_faces[idim].Write();
+    }
+
+    for (int idim = 0; idim < dim; ++idim) {
+      real_t *rd = rhs_d[idim];
+      mfem::forall(restr_size, [=] MFEM_HOST_DEVICE (int i) { rd[i] = real_t(0); });
+    }
+    for (int idim = 0; idim < dim; ++idim) {
+      real_t *dud = du_d[idim];
+      mfem::forall(psize, [=] MFEM_HOST_DEVICE (int i) { dud[i] = real_t(0); });
+    }
+
     mfem::forall(npoints_bnd, [=] MFEM_HOST_DEVICE (int p)
     {
       const int f = p / nfp;
       const int fp = p % nfp;
-      
+
       const int bnd_face_marker_index = bnd_marker_index_d[f];
       if (bnd_face_marker_index < 0)
         {
           return;
         }
-      
+
       const int bc_index = bnd_face_marker_index; // same convention as inviscid device path for now
       if (bc_index < 0)
         {
           return;
         }
-      
+
       const Prandtl::BCDescriptor &bc = dc.bc_descr_d[bc_index];
       if (bc.type == int(Prandtl::BCType::Invalid))
         {
           return;
         }
-      
+
       const int face_offset = f * face_size;
       const int norm_offset = f * norm_size;
       const int w_offset = f * nfp;
-      
+
       const real_t *u_face_d = u_d + face_offset;
-      real_t *rhs_face_x_d = rhs_x_d + face_offset;
-      real_t *rhs_face_y_d = rhs_y_d + face_offset;
-      
+
       const real_t *nor_face_d = nor_d + norm_offset;
       const real_t *nor_point = nor_face_d + fp * dim;
       
       // Legacy one-sided boundary lifting uses +1/(w0*J1)
       const real_t scale = wt_d[w_offset + fp];
 
-      LiftingBR1::AssembleGradBoundaryPointKernel2D(dc, bc,
-                                                    u_face_d,
-                                                    nor_point,
-                                                    scale,
-                                                    fp,
-                                                    rhs_face_x_d,
-                                                    rhs_face_y_d);
+      real_t *rhs_face[Prandtl::MAXDIM] = {nullptr, nullptr, nullptr};
+      for(int idim = 0;idim < dim;idim++){
+        rhs_face[idim] = rhs_d[idim] + face_offset;
+      }
+
+      DGSEMIntegrator::AssembleGradBoundaryPointKernel(dc, bc,
+                                                       u_face_d,
+                                                       nor_point,
+                                                       scale,
+                                                       fp,
+                                                       rhs_face);
     });
-    
-    cache->restr_b->MultTranspose(rhs_faces_x, faces_dudx);
-    cache->restr_b->MultTranspose(rhs_faces_y, faces_dudy);
-    
-    pdudx += faces_dudx;
-    pdudy += faces_dudy;
+
+    for(int idim = 0;idim < dim;idim++){
+      cache->restr_b->MultTranspose(rhs_faces[idim], du_faces[idim]);
+      *p_grad_u[idim] += du_faces[idim];
+    }
+
   }
-  
-  // void DGSEMNonlinearForm::GradOperatorBoundaryFacesDevice(
-  //     const mfem::Vector &pu,
-  //     std::vector<mfem::Vector *> &p_grad_u) const
-  // {
-  //   MFEM_ASSERT(cache->dim == 2, "Only dim=2 supported right now.");
-  //   return;
-  // }
-  
-  
-void DGSEMNonlinearForm::GradOperatorInteriorFaces(const mfem::Vector &pu,
-                                                   std::vector<mfem::Vector *> &p_grad_u) const
+
+void DGSEMNonlinearForm::GradOperator_InteriorFaces(const mfem::Vector &pu,
+                                                    std::vector<mfem::Vector *> &p_grad_u) const
 {
   const int dim = cache->dim;
-  MFEM_ASSERT(dim == 2, "Only dim=2 supported right now.");
-
-  mfem::Vector &pdudx(*p_grad_u[0]);
-  mfem::Vector &pdudy(*p_grad_u[1]);
 
   auto dc = device_cache;
-
+  const int psize = pu.Size();
+  const int restr_size = cache->restr_f->Height();
   const int neq = dc.num_equations;
   const int nfp = dc.num_face_points;
-  const int nfaces = cache->restr_f->Height() / (2 * nfp * neq);
+  const int nfaces = restr_size / (2 * nfp * neq);
   const int face_size = 2 * nfp * neq;
   const int norm_size = nfp * dim;
 
-  mfem::Vector u_faces(cache->restr_f->Height());
-  mfem::Vector rhs_faces_x(cache->restr_f->Height());
-  mfem::Vector rhs_faces_y(cache->restr_f->Height());
-
-  mfem::Vector faces_dudx(pdudx.Size());
-  mfem::Vector faces_dudy(pdudy.Size());
-
+  mfem::Vector u_faces(restr_size);
+  std::vector<mfem::Vector> rhs_faces(dim);
+  std::vector<mfem::Vector> du_faces(dim);
+  for(int idim = 0;idim < dim;idim++){
+    rhs_faces[idim].SetSize(restr_size);
+    du_faces[idim].SetSize(psize);
+    rhs_faces[idim].UseDevice();
+    du_faces[idim].UseDevice();
+  }
   u_faces.UseDevice();
-  rhs_faces_x.UseDevice();
-  rhs_faces_y.UseDevice();
-  faces_dudx.UseDevice();
-  faces_dudy.UseDevice();
+  cache->restr_f->Mult(pu, u_faces);
+  const real_t *u_d = u_faces.Read();
 
-  faces_dudx = 0.0;
-  faces_dudy = 0.0;
-
-  {
-    real_t *rx = rhs_faces_x.Write();
-    real_t *ry = rhs_faces_y.Write();
-    mfem::forall(rhs_faces_x.Size(), [=] MFEM_HOST_DEVICE (int i)
-    {
-      rx[i] = real_t(0);
-      ry[i] = real_t(0);
-    });
+  real_t *rhs_d[Prandtl::MAXDIM] = {nullptr, nullptr, nullptr};
+  real_t *du_d[Prandtl::MAXDIM] = {nullptr, nullptr, nullptr};
+  for(int idim = 0;idim < dim;idim++){
+    rhs_d[idim] = rhs_faces[idim].Write();
+    du_d[idim] = du_faces[idim].Write();
   }
 
-  cache->restr_f->Mult(pu, u_faces);
-
-  const real_t *u_d = u_faces.Read();
-  real_t *rhs_x_d = rhs_faces_x.Write();
-  real_t *rhs_y_d = rhs_faces_y.Write();
+  for (int idim = 0; idim < dim; ++idim) {
+    real_t *rd = rhs_d[idim];
+    mfem::forall(restr_size, [=] MFEM_HOST_DEVICE (int i) { rd[i] = real_t(0); });
+  }
+  for (int idim = 0; idim < dim; ++idim) {
+    real_t *dud = du_d[idim];
+    mfem::forall(psize, [=] MFEM_HOST_DEVICE (int i) { dud[i] = real_t(0); });
+  }
 
   const real_t *nor_d  = dc.nor_d;
   const real_t *wm_d   = dc.fw_minus_d;
@@ -467,24 +432,23 @@ void DGSEMNonlinearForm::GradOperatorInteriorFaces(const mfem::Vector &pu,
     const real_t *w_minus_d   = wm_d + w_offset;
     const real_t *w_plus_d    = wp_d + w_offset;
 
-    real_t *rhs_face_x_d = rhs_x_d + face_offset;
-    real_t *rhs_face_y_d = rhs_y_d + face_offset;
+    real_t *rhs_face[Prandtl::MAXDIM] = {nullptr, nullptr, nullptr};
+    for(int idim = 0;idim < dim;idim++){
+      rhs_face[idim] = rhs_d[idim] + face_offset;
+    }
 
-    LiftingBR1::AssembleGradInteriorFaceKernel2D(dc,
-                                                 u_face_d,
-                                                 nor_face_d,
-                                                 w_minus_d,
-                                                 w_plus_d,
-                                                 rhs_face_x_d,
-                                                 rhs_face_y_d);
+    DGSEMIntegrator::AssembleGradInteriorFaceKernel(dc,
+                                                    u_face_d,
+                                                    nor_face_d,
+                                                    w_minus_d,
+                                                    w_plus_d,
+                                                    rhs_face);
   });
 
-  cache->restr_f->MultTranspose(rhs_faces_x, faces_dudx);
-  cache->restr_f->MultTranspose(rhs_faces_y, faces_dudy);
-
-  // on-device?
-  pdudx += faces_dudx;
-  pdudy += faces_dudy;
+  for(int idim = 0;idim < dim;idim++){
+    cache->restr_f->MultTranspose(rhs_faces[idim], du_faces[idim]);
+    *p_grad_u[idim] += du_faces[idim];
+  }
 
 }
 
@@ -511,11 +475,11 @@ void DGSEMNonlinearForm::GradOperator(const mfem::Vector &u,
   MFEM_ASSERT(p_grad_u.size() == dim, "Size mismatch for gradient storage");
   MFEM_ASSERT(grad_u.size() == dim, "Size mismatch for gradient storage");
 
-  GradOperatorVolume(pu, p_grad_u);
- 
-  GradOperatorInteriorFaces(pu, p_grad_u);
+  GradOperator_Volume(pu, p_grad_u);
 
-  GradOperatorBoundaryFaces(pu, p_grad_u);
+  GradOperator_InteriorFaces(pu, p_grad_u);
+
+  GradOperator_BoundaryFaces(pu, p_grad_u);
 
   if (Serial())
     {
@@ -586,7 +550,7 @@ void DGSEMNonlinearForm::MultLifting(const Vector &u, Vector &dudx, Vector &dudy
               attr_marker[i] |= marker[i];
             }
         }
- 
+
       for (int i = 0; i < fes->GetNE(); i++)
         {
           const int attr = mesh->GetAttribute(i);
@@ -1477,7 +1441,7 @@ real_t DGSEMNonlinearForm::MultCNS_Volume(const mfem::Vector &pu, const std::vec
 // NOTE:
 //  - No axisymmetry (broken in device version of MULT)
 //  - No subcell blending (broken in device version of MULT)
-real_t DGSEMNonlinearForm::MultVolumeInviscid(const Vector &pu, Vector &pdudt) const
+real_t DGSEMNonlinearForm::MultEuler_Volume(const Vector &pu, Vector &pdudt) const
 {
   // ScopedTimer timer("MultVolumeInviscidDevice");
 
@@ -1606,7 +1570,7 @@ real_t DGSEMNonlinearForm::MultVolumeInviscid(const Vector &pu, Vector &pdudt) c
   return max_char_speed;
 }
 
-real_t DGSEMNonlinearForm::MultInteriorFacesInviscid(const Vector &pu, Vector &pdudt) const
+real_t DGSEMNonlinearForm::MultEuler_InteriorFaces(const Vector &pu, Vector &pdudt) const
 {
   //  ScopedTimer timer("MultInteriorFacesInviscidDevice");
   auto dc = device_cache;
@@ -1678,7 +1642,7 @@ real_t DGSEMNonlinearForm::MultInteriorFacesInviscid(const Vector &pu, Vector &p
 }
 
 
-real_t DGSEMNonlinearForm::MultBndFacesInviscid(const Vector &pu, Vector &pdudt) const
+real_t DGSEMNonlinearForm::MultEuler_BoundaryFaces(const Vector &pu, Vector &pdudt) const
 {
   //  ScopedTimer timer("MultBndFacesInviscidDevice");
   auto dc = device_cache;
@@ -1803,16 +1767,16 @@ real_t DGSEMNonlinearForm::MultEuler(const Vector &u, Vector &dudt) const
 
   real_t max_char_speed = 0.0;
   // This step overwrites contents of pdudt
-  max_char_speed = MultVolumeInviscid(pu, pdudt);
+  max_char_speed = MultEuler_Volume(pu, pdudt);
   // std::cout << "Volume wavespeed: " << max_char_speed << std::endl;
 
   real_t max_char_speed_facial = 0.0;
-  max_char_speed_facial = MultInteriorFacesInviscid(pu, pdudt);
+  max_char_speed_facial = MultEuler_InteriorFaces(pu, pdudt);
   // std::cout << "Facial wavespeed: " << max_char_speed_facial << std::endl;
   max_char_speed = std::max(max_char_speed, max_char_speed_facial);
 
   real_t max_char_speed_bnd = 0.0;
-  max_char_speed_bnd = MultBndFacesInviscid(pu, pdudt);
+  max_char_speed_bnd = MultEuler_BoundaryFaces(pu, pdudt);
   // max_char_speed_bnd = MultBndFacesInviscidHost(pu, pdudt);
   // std::cout << "Boundary wavespeed: " << max_char_speed_bnd << std::endl;
   max_char_speed = std::max(max_char_speed, max_char_speed_bnd);
