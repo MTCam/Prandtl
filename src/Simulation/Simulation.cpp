@@ -158,7 +158,7 @@ void Simulation::LoadConfig(const std::string &config_file_path)
     nancheck = runtime["nancheck"].get<bool>();
     if (nancheck)
     {
-        nancheck_steps = runtime.value("nancheck_steps", 1);
+      nancheck_steps = runtime.value("nancheck_steps", debug_simulation ? 1 : 1000);
     }
 
     clock_simulation = runtime["clock_simulation"].get<bool>();
@@ -341,6 +341,7 @@ void Simulation::LoadConfig(const std::string &config_file_path)
     mesh->FinalizeMesh(0, true);
     pmesh = std::make_shared<ParMesh>(MPI_COMM_WORLD, *mesh);
     mesh->Clear();
+    delete mesh;
     if(myRank == 0 && debug_simulation){
       std::cout << "Mesh distributed" << std::endl;
     }

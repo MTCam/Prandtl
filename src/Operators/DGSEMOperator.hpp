@@ -81,7 +81,7 @@ private:
 
     mutable DGSEMOperatorCache operator_cache;
     mutable DGSEMDeviceCache device_cache;
-    mutable bool use_device_path;
+    mutable bool use_device_path = false;
 
     void ComputeGlobalEntropyVector(const Vector &u, Vector &global_entropy) const;
     void ComputeEntropyState(const Vector &u, Vector &e) const;

@@ -787,7 +787,7 @@ namespace Prandtl
 
                         el_grad_u[2][id + q * dof] = invJ * (dudxi[q] * adj[2] +
                                                              dudeta[q] * adj[5] +
-                                                             dudzeta[1] * adj[8]);
+                                                             dudzeta[q] * adj[8]);
                       }
                   }
               }
