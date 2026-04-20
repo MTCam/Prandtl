@@ -126,7 +126,7 @@ void Simulation::LoadConfig(const std::string &config_file_path)
     std::cout.precision(precision);
 
     cfl = runtime.value("cfl", 1.0);
-    print_interval = runtime.value("print_interval", 10);
+    print_interval = runtime.value("print_interval", debug_simulation ?  1 : 100);
     output_file_path = runtime["output_file_path"].get<std::string>();
     paraview_folder = runtime.value("paraview_folder", "ParaView");
     checkpoint_dt = runtime.value("checkpoint_dt", 0.01);

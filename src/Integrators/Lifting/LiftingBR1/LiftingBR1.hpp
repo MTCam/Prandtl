@@ -1,8 +1,6 @@
 #pragma once
 
 #include "LiftingScheme.hpp"
-#include "prandtl_kernels.hpp"
-#include "bc_kernels.hpp"
 
 namespace Prandtl
 {
