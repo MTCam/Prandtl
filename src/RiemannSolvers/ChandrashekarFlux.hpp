@@ -200,9 +200,9 @@ namespace Prandtl
       }
 
       template<typename GasModelT>
-      MFEM_HOST_DEVICE inline real_t ComputeFacialFlux(const GasModelT &gasModel,const real_t *qminus,
-                                                       const real_t *qplus, const real_t *nor,
-                                                       real_t *flux) const {
+      MFEM_HOST_DEVICE inline real_t ComputeFaceFlux(const GasModelT &gasModel,const real_t *qminus,
+                                                     const real_t *qplus, const real_t *nor,
+                                                     real_t *flux) const {
         return ComputeFaceFluxKernel(gasModel, qminus, qplus, nor, flux); 
       }
     };

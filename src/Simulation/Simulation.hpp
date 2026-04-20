@@ -109,6 +109,7 @@ private:
   int max_bdr_attr;
   void InitDevice(std::string);
   std::unique_ptr<mfem::Device> device_;
+  bool use_device_path = false;
 
 #ifdef AXISYMMETRIC
   void ConservativeToPrimitive(const Vector &U_cons,

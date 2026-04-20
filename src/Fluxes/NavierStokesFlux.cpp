@@ -4,8 +4,9 @@
 namespace Prandtl
 {
 
-  void NavierStokesFlux::ComputeViscousFlux(const Vector &state, const Vector &dqdx, const Vector &dqdy,
-                                            const Vector &dqdz, DenseMatrix &flux) const
+  void NavierStokesFlux::ComputeViscousFlux(const mfem::Vector &state, const mfem::Vector &dqdx,
+                                            const mfem::Vector &dqdy, const mfem::Vector &dqdz,
+                                            mfem::DenseMatrix &flux) const
   {
     PointStateView S{state.GetData()};
     real_t mu = gasModel.viscosity(S);
@@ -58,8 +59,8 @@ namespace Prandtl
     flux(4, 2) = vx * flux(1, 2) + vy * flux(2, 2) + vz * flux(3, 2) + kappa * grad_t[2]; 
   }
   
-  void NavierStokesFlux::ComputeViscousFlux(const Vector &state, const Vector &dqdx,
-                                            const Vector &dqdy, DenseMatrix &flux) const
+  void NavierStokesFlux::ComputeViscousFlux(const mfem::Vector &state, const mfem::Vector &dqdx,
+                                            const mfem::Vector &dqdy, mfem::DenseMatrix &flux) const
   {
     PointStateView S{state.GetData()};
     real_t kappa = gasModel.thermal_conductivity(S);
@@ -94,7 +95,8 @@ namespace Prandtl
     flux(3, 1) = vx * flux(1, 1) + vy * flux(2, 1) + kappa * grad_t[1];
 }
 
-  void NavierStokesFlux::ComputeViscousFlux(const Vector &state, const Vector &dqdx, DenseMatrix &flux) const
+  void NavierStokesFlux::ComputeViscousFlux(const mfem::Vector &state, const mfem::Vector &dqdx,
+                                            mfem::DenseMatrix &flux) const
   {
     PointStateView S{state.GetData()};
     real_t kappa = gasModel.thermal_conductivity(S);
@@ -115,10 +117,11 @@ namespace Prandtl
     flux(1, 0) = mu * (2.0 * dudx - mu_bulk_loc * div);
     flux(2, 0) = vx * flux(1, 0) + kappa * grad_t[0];
   }
-  
-  real_t NavierStokesFlux::ComputeFlux(const Vector &U,
-                                       ElementTransformation &Tr,
-                                       DenseMatrix &FU) const
+
+  // Inviscid / Euler Flux
+  real_t NavierStokesFlux::ComputeFlux(const mfem::Vector &U,
+                                       mfem::ElementTransformation &Tr,
+                                       mfem::DenseMatrix &FU) const
   {
     
     PointStateView S{U.GetData()};
@@ -165,10 +168,11 @@ namespace Prandtl
   }
   
   
-  real_t NavierStokesFlux::ComputeFluxDotN(const Vector &x,
-                                           const Vector &normal,
-                                           FaceElementTransformations &Tr,
-                                           Vector &FUdotN) const
+  // Inviscid / Euler Flux .dot. normal
+  real_t NavierStokesFlux::ComputeFluxDotN(const mfem::Vector &x,
+                                           const mfem::Vector &normal,
+                                           mfem::FaceElementTransformations &Tr,
+                                           mfem::Vector &FUdotN) const
   {
     PointStateView S{x.GetData()};
 

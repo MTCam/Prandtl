@@ -10,7 +10,6 @@ jobs:
     name: Ubuntu/GCC
     runs-on: ubuntu-22.04
     env:
-#      CMAKE_BUILD_TYPE: RelWithDebInfo
       CMAKE_BUILD_TYPE: Debug
       INSTALL_PREFIX: ${{ github.workspace }}/deps
       PYVISTA_OFF_SCREEN: "true"
@@ -88,8 +87,6 @@ jobs:
           FC: ${{ env.FC }}
           # These paths match your script’s build outputs
           MFEM_DIR: ${{ github.workspace }}/libs/mfem/build
-          # HYPRE_DIR: ${{ github.workspace }}/libs/hypre/src/hypre
-          # METIS_DIR: ${{ github.workspace }}/libs/metis-5.1.0
         run: |
           mkdir -p build-euler
           #  -DCONFIG_FILE=${CONFIG_FILE}
@@ -97,17 +94,17 @@ jobs:
             -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE} \
             -DBUILD_TESTING=ON \
             -DCMAKE_PREFIX_PATH=${MFEM_DIR} \
-            -DSUBCELL_FV_BLENDING=ON
+            -DSUBCELL_FV_BLENDING=ON -DNO_OPT=ON
 
       - name: Build Prandtl (Euler)
         run: cmake --build build-euler -- -k 0
 
       - name: Example smoke test (Euler, IsentropicVortex)
         run: |
-          scripts/test_run_example.sh \
+          scripts/run_example.sh \
             -b "$(pwd)/build-euler" \
             -c TestCases/Euler/2D/IsentropicVortex/config.json \
-            -n 100
+            -t "0.002" -n 100
 
       - name: Configure Prandtl (CNS)
         env:
@@ -117,8 +114,6 @@ jobs:
           FC: ${{ env.FC }}
           # These paths match your script’s build outputs
           MFEM_DIR: ${{ github.workspace }}/libs/mfem/build
-          # HYPRE_DIR: ${{ github.workspace }}/libs/hypre/src/hypre
-          # METIS_DIR: ${{ github.workspace }}/libs/metis-5.1.0
         run: |
           mkdir -p build-cns
           #  -DCONFIG_FILE=${CONFIG_FILE}
@@ -126,17 +121,18 @@ jobs:
             -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE} \
             -DBUILD_TESTING=ON \
             -DCMAKE_PREFIX_PATH=${MFEM_DIR} \
-            -DPARABOLIC=ON -DSUBCELL_FV_BLENDING=ON
+            -DPARABOLIC=ON -DSUBCELL_FV_BLENDING=ON \
+            -DNO_OPT=ON
 
       - name: Build Prandtl (CNS)
         run: cmake --build build-cns -- -k 0
 
       - name: Example smoke test (CNS, LidDrivenCavity)
         run: |
-          scripts/test_run_example.sh \
+          scripts/run_example.sh \
             -b "$(pwd)/build-cns" \
             -c TestCases/NavierStokes/2D/LidDrivenCavity/config.json \
-            -n 100
+            -t "0.0001" -n 100
 
       - name: Example regression test (Cyclic - IsentropicVortex)
         run: |
@@ -176,7 +172,20 @@ jobs:
             -n "100" \
             -b "$(pwd)/build-cns" \
             -c TestCases/NavierStokes/2D/TaylorGreenVortex/config.json
-          python scripts/compare_viz.py RegressionTests/TaylorGreenVortex/ParaView/Cycle000100/data.pvtu TestCases/GoldenData/TaylorGreenVortex2D/Cycle000100/data.pvtu --atol 1e-12 --rtol 1e-12
+          python scripts/compare_viz.py RegressionTests/TaylorGreenVortex/ParaView/Cycle000100/data.pvtu TestCases/GoldenData/TaylorGreenVortex2D/Cycle000100/data.pvtu --atol 1e-13 --rtol 1e-13
+
+      - name: Example regression test (Gold standard - ForwardFacingStep)
+        run: |
+          cd TestCases/GoldenData
+          tar zxvf ForwardFacingStep.tgz
+          cd ../..
+          rm -rf RegressionTests/ForwardFacingStep
+          scripts/run_regression_test.sh \
+            -t "0.0001" \
+            -n "100" \
+            -b "$(pwd)/build-euler" \
+            -c TestCases/Euler/2D/ForwardFacingStep/config.json
+          python scripts/compare_viz.py RegressionTests/ForwardFacingStep/ParaView/Cycle000100/data.pvtu TestCases/GoldenData/ForwardFacingStep/Cycle000100/data.pvtu --atol 1e-13 --rtol 1e-13
 
       - name: Unit tests (Euler)
         run: ctest --test-dir build-euler --output-on-failure

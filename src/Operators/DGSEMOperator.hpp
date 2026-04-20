@@ -8,9 +8,21 @@
 #include "BasicOperations.hpp"
 #include "GasModel.hpp"
 #include "dgsem_cache_utilities.hpp"
+#include "bc_cache_utilities.hpp"
 
 namespace Prandtl
 {
+  struct IntegralMeasures {
+    real_t mass = 0.0;
+    real_t ke = 0.0;
+    real_t en = 0.0;
+    real_t max_press = 0.0;
+    real_t min_press = 0.0;
+    real_t max_temp = 0.0;
+    real_t min_temp = 0.0;
+    real_t max_dens = 0.0;
+    real_t min_dens = 0.0;
+  };
 
 using namespace mfem;
   
@@ -31,11 +43,11 @@ private:
 
     mutable Array<int> vdof_indices;
     mutable Vector el_vdofs, grad_vdofs;
-
+    
     const int num_equations, dim, order, num_elements;
     const int num_dofs_scalar;
     const int Ndofs;
-
+   
     mutable Vector global_entropy;
     
 #ifdef AXISYMMETRIC
@@ -59,19 +71,30 @@ private:
     
     std::vector<BdrFaceIntegrator*> bfnfi;
     std::vector<Array<int>> bdr_marker;
+    mfem::Array<Prandtl::BCDescriptor> bc_descriptors;
+    mfem::Vector bc_vector_data;
+    mfem::Vector bc_scalar_data;
     mutable Array<int> ind_indx;
     mutable Vector ind_dof;
     mutable real_t alpha_dof;
-    DGSEMOperatorCache operator_cache;
-    DGSEMDeviceCache device_cache;
+    mutable IntegralMeasures diag0;
 
-    void CreateOperatorCache();
+    mutable DGSEMOperatorCache operator_cache;
+    mutable DGSEMDeviceCache device_cache;
+    mutable bool use_device_path = false;
+
     void ComputeGlobalEntropyVector(const Vector &u, Vector &global_entropy) const;
+    void ComputeEntropyState(const Vector &u, Vector &e) const;
     void ComputeGlobalPrimitiveGradVector(const Vector &u, Vector &dudx) const;
+    void ComputeGradPrimFromGradEntropy(const Vector &u, std::vector<mfem::Vector *> &gradState) const;
     void ComputeGlobalPrimitiveGradVector(const Vector &u, Vector &dudx, Vector &dudy) const;
     void ComputeGlobalPrimitiveGradVector(const Vector &u, Vector &dudx, Vector &dudy, Vector &dudz) const;
+
+#ifdef SUBCELL_FV_BLENDING
     void ComputeBlendingCoefficient(const Vector &u) const;
-    void AssembleDeviceCache();
+    void ComputeBlendingCoefficientFromIndicator(const Vector &indicator_field) const;
+    void ComputeIndicatorField(const Vector &u, Vector &indicator_field) const;
+#endif
 
 #ifdef AXISYMMETRIC
     void BuildAxisIndexFromMarker();
@@ -101,7 +124,21 @@ public:
     
     ~DGSEMOperator();
     
-    void AddBdrFaceIntegrator(BdrFaceIntegrator *bfi, Array<int> &bdr_marker);
+  void UseDevice(bool use_device_path_) const {
+    use_device_path = use_device_path_;
+  }
+
+  void ComputeIntegralMeasures(const Vector &u, IntegralMeasures &diag) const;
+  IntegralMeasures GetIntegralMeasuresBaseline() const { return diag0; }
+  void SetBCDescriptorData(const mfem::Array<Prandtl::BCDescriptor> &bc_descr, const mfem::Vector &bc_scalar_dat,
+                           const mfem::Vector &bc_vector_dat)
+  {
+    bc_descriptors = bc_descr;
+    bc_scalar_data = bc_scalar_dat;
+    bc_vector_data = bc_vector_dat;
+  }
+
+  void AddBdrFaceIntegrator(BdrFaceIntegrator *bfi, Array<int> &bdr_marker);
     
     void Mult(const Vector &u, Vector &dudt) const override;
     inline real_t GetMaxCharSpeed()
@@ -138,6 +175,7 @@ public:
         p_floor_abs = std::max(p_floor_abs, p_fac * p_inf);
     }
 #endif
+    void Finalize(real_t time=0);
 };
 
 }
