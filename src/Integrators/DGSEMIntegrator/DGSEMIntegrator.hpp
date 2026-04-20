@@ -795,7 +795,6 @@ namespace Prandtl
       }
     }
 
-    // TODO: Some inner loop reordering
     template <typename ContextT>
     MFEM_HOST_DEVICE inline
     static void AssembleGradInteriorFaceKernel(const ContextT &ctx,
@@ -827,14 +826,16 @@ namespace Prandtl
               jump[q]   = real_t(0.5) * (qPlus[q] - qMinus[q]);
             }
 
-          for (int q = 0; q < neq; ++q)
-            {
-              for ( int idim = 0;idim < dim;idim++){
-                const real_t f_d = jump[q]*nor_d[idim];
-                rhs_face[idim][ctx.iface_idx(0, i, q)] = wminus * f_d;
-                rhs_face[idim][ctx.iface_idx(1, i, q)] = wplus * f_d;
+          for ( int idim = 0;idim < dim;idim++){
+            real_t *rhs_d = rhs_face[idim];
+            const real_t n_d = nor_d[idim];
+            for (int q = 0; q < neq; ++q)
+              {
+                const real_t f_d = jump[q]*n_d;
+                rhs_d[ctx.iface_idx(0, i, q)] = wminus * f_d;
+                rhs_d[ctx.iface_idx(1, i, q)] = wplus * f_d;
               }
-            }
+          }
         }
     }
 
