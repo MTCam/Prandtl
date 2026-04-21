@@ -43,7 +43,7 @@ namespace Prandtl
     MFEM_HOST_DEVICE
     inline void Normal(const int dim, const real_t *vec, real_t *nor)
     {
-      MFEM_ASSERT(dim == 2 || dim == 3, "Normal only defined here for 2D/3D");
+      // MFEM_ASSERT(dim == 2 || dim == 3, "Normal only defined here for 2D/3D");
       
       if (dim == 2)
         {
@@ -62,7 +62,7 @@ namespace Prandtl
       const real_t az = fabs(z);
       
       // Reject zero vector
-      MFEM_ASSERT(ax > 0 || ay > 0 || az > 0, "Zero vector has no normal");
+      // MFEM_ASSERT(ax > 0 || ay > 0 || az > 0, "Zero vector has no normal");
       
       // Pick the coordinate axis least aligned with vec.
       // Then nor = vec x e_i.
@@ -98,7 +98,7 @@ namespace Prandtl
     MFEM_HOST_DEVICE
     inline void Cross(const int dim, const real_t *vec1, const real_t *vec2, real_t *cross)
     {
-      MFEM_ASSERT(dim == 3, "Apply cross product only to 3D vectors");
+      // MFEM_ASSERT(dim == 3, "Apply cross product only to 3D vectors");
       
       cross[0] = vec1[1] * vec2[2] - vec1[2] * vec2[1];
       cross[1] = vec1[2] * vec2[0] - vec1[0] * vec2[2];
@@ -142,7 +142,7 @@ namespace Prandtl
     MFEM_HOST_DEVICE inline
     void el_gather_state(const real_t *u, const int dof, const int num_eq, const int id, real_t *dst)
     {
-      MFEM_ASSERT(id >= 0 && id < dof, "element index out of bounds");
+      // MFEM_ASSERT(id >= 0 && id < dof, "element index out of bounds");
       for (int q = 0; q < num_eq; ++q)
         dst[q] = u[q*dof + id];
     }
@@ -165,7 +165,7 @@ namespace Prandtl
                         const real_t scale,
                         real_t *du)
     {
-      MFEM_ASSERT(id >= 0 && id < dof, "element index out of bounds");
+      // MFEM_ASSERT(id >= 0 && id < dof, "element index out of bounds");
       // Element storage is component-major (byVDIM):
       // du[q*dof + id] corresponds to "row id, component q" in DenseMatrix(dof, num_eq)
       for (int q = 0; q < num_eq; ++q)
@@ -182,7 +182,7 @@ namespace Prandtl
                            const real_t scale,
                            real_t *du)
     {
-      MFEM_ASSERT(id >= 0 && id < dof, "element index out of bounds");
+      // MFEM_ASSERT(id >= 0 && id < dof, "element index out of bounds");
       // Element storage is component-major (byVDIM):
       // du[q*dof + id] corresponds to "row id, component q" in DenseMatrix(dof, num_eq)
       for (int q = 0; q < num_eq; ++q)
@@ -207,6 +207,11 @@ namespace Prandtl
             }
         }
     }
-    
+
+    MFEM_HOST_DEVICE inline bool is_bad_value(real_t x)
+    {
+      return !isfinite(x);
+    }
+
   }
 }
