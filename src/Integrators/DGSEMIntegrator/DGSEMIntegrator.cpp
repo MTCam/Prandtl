@@ -242,13 +242,13 @@ void DGSEMIntegrator::AssembleFaceVector(const mfem::FiniteElement &el1, const m
     mfem::DenseMatrix el_dudt_mat(el_dudt.GetData(), dof, num_equations);
     
 #ifdef SUBCELL_FV_BLENDING
-    alpha0 = el_alpha(0);
+    real_t alpha0 = el_alpha(0);
     // const real_t *elalpha = operator_cache->alpha->HostRead();
     // real_t alpha1 = elalpha[Tr.ElementNo];
     // MFEM_ASSERT(alpha1 == alpha0, "Alphas mismatch");
     // ComputeFVFluxesFromCache(el_u_mat, Tr, el_dudt_mat);
     // el_dudt *= alpha0;
-    ComputeFVFluxes(el_u_mat, alpha, Tr, el_dudt_mat);
+    ComputeFVFluxes(el_u_mat, alpha0, Tr, el_dudt_mat);
 #endif
 
     for (int k = 0; k < Np_z; k++)
