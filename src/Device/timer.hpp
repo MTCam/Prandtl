@@ -18,7 +18,9 @@ public:
     std::printf("[TIMER] %s : %.6f ms\n", name_, ms);
   }
 #else
-  explicit ScopedTimer(const std::string &name){};
+  explicit ScopedTimer(const char *name)
+    : name_(name),
+      start_() {}
   ~ScopedTimer(){};
 #endif
 private:

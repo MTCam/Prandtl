@@ -57,9 +57,9 @@ namespace Prandtl
       const real_t y = vec[1];
       const real_t z = vec[2];
       
-      const real_t ax = fabs(x);
-      const real_t ay = fabs(y);
-      const real_t az = fabs(z);
+      const real_t ax = std::fabs(x);
+      const real_t ay = std::fabs(y);
+      const real_t az = std::fabs(z);
       
       // Reject zero vector
       // MFEM_ASSERT(ax > 0 || ay > 0 || az > 0, "Zero vector has no normal");
@@ -210,7 +210,7 @@ namespace Prandtl
 
     MFEM_HOST_DEVICE inline bool is_bad_value(real_t x)
     {
-      return !isfinite(x);
+      return !std::isfinite(x);
     }
 
   }
