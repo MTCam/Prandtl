@@ -75,7 +75,7 @@ namespace Prandtl
       mfem::Vector subcellMetricEta;
       mfem::Vector subcellMetricZeta;
       mfem::Vector subcellWeights;
-      mfem::Vector alpha;
+      std::shared_ptr<mfem::ParGridFunction> alpha;
 #endif
 
       // Grab the face dof from the restriction (face,point) index

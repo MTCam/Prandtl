@@ -62,6 +62,7 @@ namespace Prandtl
 #endif
     // Important that gasModel is POD for host<->device
     operator_cache.gas = gasModel;
+    operator_cache.alpha = alpha;
     operator_cache.bc_descriptors = bc_descriptors;
     operator_cache.bc_scalar_data = bc_scalar_data;
     operator_cache.bc_vector_data = bc_vector_data;
@@ -106,13 +107,13 @@ namespace Prandtl
 
   void DGSEMOperator::ComputeIndicatorField(const Vector &u, Vector &indicator_field) const
   {
-    // ScopedTimer timer("MultVolumeInviscidDevice");
-    
+    ScopedTimer timer("ComputeIndicator_Device");
+
     // This block is executed by the host
     const int nval_restr = operator_cache.restr_v->Height();
     // Copy the device cache so that it is not member data
     auto dc = device_cache;
-    
+
     // Device cache parameters
     const int dim = dc.dim;
     const int ne = dc.num_elements;
@@ -146,16 +147,22 @@ namespace Prandtl
       Prandtl::PointStateView S{elstate};
       ifield_d[vind] = dc.gas.pressure(S) * dc.gas.density(S);
     });
+
   }
 
   void DGSEMOperator::ComputeBlendingCoefficientFromIndicator(const Vector &indicator_field) const
   {
-    indicator->CheckIndicatorSmoothness(indicator_field);
+    {
+      ScopedTimer timer("CheckIndicatorSmoothness_Host");
+      // This is a HOST-only routine.  Make sure the input is host-readable
+      indicator->CheckIndicatorSmoothness(indicator_field);
+    }
+    ScopedTimer timer("ComputeAlpha_Host");
+    real_t *alpha_h = alpha->HostWrite();
+    const real_t *eta_h = eta->HostRead();
     for (int el = 0; el < num_elements; el++)
       {
-        fes0->GetElementDofs(el, ind_indx);
-        eta->GetSubVector(ind_indx, ind_dof);
-        alpha_dof = 1.0 / (1.0 + std::exp(-sharpness_fac * (ind_dof(0) - modalThreshold) / modalThreshold));
+        alpha_dof = 1.0 / (1.0 + std::exp(-sharpness_fac * (eta_h[el] - modalThreshold) / modalThreshold));
         if (alpha_dof < alpha_min)
           {
             alpha_dof = 0.0;
@@ -164,12 +171,10 @@ namespace Prandtl
           {
             alpha_dof = 1.0;
           }
-        alpha_dof = std::min(alpha_dof, alpha_max);
-        alpha->SetSubVector(ind_indx, alpha_dof);
+        alpha_h[el] = std::min(alpha_dof, alpha_max);
       }
-    
   }
-#endif
+ #endif
 
   void DGSEMOperator::ComputeIntegralMeasures(const Vector &u, IntegralMeasures &diag) const
   {
@@ -348,13 +353,14 @@ namespace Prandtl
   // Device version of ComputeGlobalEntropyVector
   void DGSEMOperator::ComputeEntropyState(const Vector &u, Vector &e) const
   {
-    
+    ScopedTimer timer("ComputeEntropyState_Device");
+
     // This block is executed by the host
     const int nval_restr = operator_cache.restr_v->Height();
-    
+
     // Copy the device cache so that it is not member data
     auto dc = device_cache;
-    
+
     // Device cache parameters
     const int ne = dc.num_elements;
     const int ndof = dc.ndof_scalar_el;
@@ -362,23 +368,23 @@ namespace Prandtl
     const int npts = ndof * ne;
 
     MFEM_ASSERT(nval_restr == npts*neq, "Unexpected size in ComputeEntropyState");
-    
+
     auto gas = dc.gas;
-    
+
     mfem::Vector restrU(nval_restr);
     restrU.UseDevice();
     
     mfem::Vector restrE(nval_restr);
     restrE.UseDevice();
     real_t *eState_d = restrE.Write();
-    
+
     e.SetSize(u.Size());
     e.UseDevice();
 
     operator_cache.restr_v->Mult(u, restrU);
     const real_t *restrU_d = restrU.Read();
     const int estride = ndof*neq;
-    
+
     // Inside the FORALL below, executed on device
     mfem::forall(npts, [=] MFEM_HOST_DEVICE (int pt)
     {
@@ -386,11 +392,11 @@ namespace Prandtl
       const int ept = pt % ndof;
       const int eoff = elno * estride;
       const real_t *u_el = restrU_d + eoff;
-      
+
       real_t elUstate[Prandtl::MAXEQ];
       Kernels::el_gather_state(u_el, ndof, neq, ept, elUstate);
       Prandtl::PointStateView S{elUstate};
-      
+
       real_t elEState[Prandtl::MAXEQ];
       PointStateViewRW E{elEState};
       gas.entropy_state(S, E);
@@ -404,6 +410,7 @@ namespace Prandtl
 
   void DGSEMOperator::ComputeGlobalEntropyVector(const Vector &u, Vector &global_entropy) const
 {
+  ScopedTimer timer("ComputeEntropyState_Host");
     DenseMatrix ent_mat(Ndofs, num_equations);
     for (int el = 0; el < num_elements; el++)
     {
@@ -418,6 +425,7 @@ namespace Prandtl
 
 void DGSEMOperator::ComputeGlobalPrimitiveGradVector(const Vector &u, Vector &dudx) const
 {
+  ScopedTimer timer("GradEnt2GradPrim_Host");
     for (int el = 0; el < num_elements; el++)
     {
         ElementTransformation *Tr = vfes->GetElementTransformation(el);
@@ -436,7 +444,7 @@ void DGSEMOperator::ComputeGlobalPrimitiveGradVector(const Vector &u, Vector &du
 // of the primitive variables so that all the data in gradState is replaced.
 void DGSEMOperator::ComputeGradPrimFromGradEntropy(const Vector &u, std::vector<mfem::Vector *> &gradState) const
 {
-  
+  ScopedTimer timer("GradEntropyToGradPrim_Device");
     // This block is executed by the host
     const int nval_restr = operator_cache.restr_v->Height();
     
@@ -502,6 +510,7 @@ void DGSEMOperator::ComputeGradPrimFromGradEntropy(const Vector &u, std::vector<
 
 void DGSEMOperator::ComputeGlobalPrimitiveGradVector(const Vector &u, Vector &dudx, Vector &dudy) const
 {
+  ScopedTimer timer("GradEnt2GradPrim_Host");
     for (int el = 0; el < num_elements; el++)
     {
         ElementTransformation *Tr = vfes->GetElementTransformation(el);
@@ -926,6 +935,9 @@ void DGSEMOperator::ComputeGlobalPrimitiveGradVector(const Vector &u, Vector &du
 
 void DGSEMOperator::Mult(const Vector &u, Vector &dudt) const
 {
+  std::string timername("RHS_");
+  timername += use_device_path ? "Device" : "Host";
+  ScopedTimer timer(timername.c_str());
 
 #ifdef AXISYMMETRIC
   RecoverStateFromWeighted(u, U);
@@ -937,64 +949,68 @@ void DGSEMOperator::Mult(const Vector &u, Vector &dudt) const
 
   
 #ifdef SUBCELL_FV_BLENDING
-  mfem::Vector indicator_field;
-  ComputeIndicatorField(Ustate, indicator_field);
-  // MFEM_ASSERT(indicator_field.Size() == vfes->GetNE() * Ndofs,
-  //             "indicator field size mismatch");
-  // MFEM_ASSERT(operator_cache.alpha.Size() == vfes->GetNE(),
-  //             "alpha size mismatch");
-  ComputeBlendingCoefficientFromIndicator(indicator_field);
-  // ComputeBlendingCoefficient(Ustate);
-  // Blending coeff alpha is accessed later with Read()
-  real_t *alpha_h = operator_cache.alpha.HostWrite();
-  for(int e = 0;e < operator_cache.num_elements;e++){
-    alpha_h[e] = (*alpha)(e);
+  if (use_device_path)
+    {
+      ScopedTimer timer("SubcellBlendingStep_Device");
+      mfem::Vector indicator_field;
+      // Since the CV are on-device, and computing
+      // the indicator requires the CV, we compute
+      // the indicator on-device and xfer only
+      // alpha (the blending coeff) from host/device.
+      ComputeIndicatorField(Ustate, indicator_field);
+      ComputeBlendingCoefficientFromIndicator(indicator_field);
+    } else {
+      ScopedTimer timer("SubcellBlendingStep_Host");
+      ComputeBlendingCoefficient(Ustate);
   }
 #endif
 
 #ifdef PARABOLIC // VISCOUS
 
   if(use_device_path){
-
-    mfem::Vector entropyState(Ustate.Size());
-    ComputeEntropyState(Ustate, entropyState);
-    std::vector<mfem::Vector *> gradPrim(dim);
-    // grad_u is a vector of parallel grid functions
-    // this bit grabs an mfem::Vector ref. 
-    for(int idim = 0;idim < dim;idim++){
-      gradPrim[idim] = &(*grad_u[idim]);
+    {
+      ScopedTimer timer("Step_Device");
+      mfem::Vector entropyState(Ustate.Size());
+      ComputeEntropyState(Ustate, entropyState);
+      std::vector<mfem::Vector *> gradPrim(dim);
+      // grad_u is a vector of parallel grid functions
+      // this bit grabs an mfem::Vector ref.
+      for(int idim = 0;idim < dim;idim++){
+        gradPrim[idim] = &(*grad_u[idim]);
+      }
+      nonlinearForm->GradOperator(entropyState, gradPrim);
+      ComputeGradPrimFromGradEntropy(Ustate, gradPrim);
+      max_char_speed = nonlinearForm->MultCNS(Ustate, gradPrim, dudt);
     }
-    nonlinearForm->GradOperator(entropyState, gradPrim);
-    ComputeGradPrimFromGradEntropy(Ustate, gradPrim);
-    max_char_speed = nonlinearForm->MultCNS(Ustate, gradPrim, dudt);
-
   } else {
+    {
+      ScopedTimer timer("Step_Host");
+      ComputeGlobalEntropyVector(Ustate, global_entropy);
  
-    ComputeGlobalEntropyVector(Ustate, global_entropy);
-
-    if (dim == 1)
-      {
-        nonlinearForm->MultLifting(global_entropy, *grad_u[0]);
-        ComputeGlobalPrimitiveGradVector(Ustate, *grad_u[0]);
-        nonlinearForm->Mult(Ustate, *grad_u[0], dudt);
-      }
-    else if (dim == 2)
-      {
-        nonlinearForm->MultLifting(global_entropy, *grad_u[0], *grad_u[1]);
-        ComputeGlobalPrimitiveGradVector(Ustate, *grad_u[0], *grad_u[1]);
-        nonlinearForm->Mult(Ustate, *grad_u[0], *grad_u[1], dudt);
-      }
-    else
-      {
-        nonlinearForm->MultLifting(global_entropy, *grad_u[0], *grad_u[1], *grad_u[2]);
-        ComputeGlobalPrimitiveGradVector(Ustate, *grad_u[0], *grad_u[1], *grad_u[2]);
-        nonlinearForm->Mult(Ustate, *grad_u[0], *grad_u[1], *grad_u[2], dudt);
-      }
-    max_char_speed = integrator->GetMaxCharSpeed();
-    for (int b = 0; b < bfnfi.size(); b++)
-      {
-        max_char_speed = std::max(bfnfi[b]->GetMaxCharSpeed(), max_char_speed);
-      }
+      if (dim == 1)
+        {
+          nonlinearForm->MultLifting(global_entropy, *grad_u[0]);
+          ComputeGlobalPrimitiveGradVector(Ustate, *grad_u[0]);
+          nonlinearForm->Mult(Ustate, *grad_u[0], dudt);
+        }
+      else if (dim == 2)
+        {
+          nonlinearForm->MultLifting(global_entropy, *grad_u[0], *grad_u[1]);
+          ComputeGlobalPrimitiveGradVector(Ustate, *grad_u[0], *grad_u[1]);
+          nonlinearForm->Mult(Ustate, *grad_u[0], *grad_u[1], dudt);
+        }
+      else
+        {
+          nonlinearForm->MultLifting(global_entropy, *grad_u[0], *grad_u[1], *grad_u[2]);
+          ComputeGlobalPrimitiveGradVector(Ustate, *grad_u[0], *grad_u[1], *grad_u[2]);
+          nonlinearForm->Mult(Ustate, *grad_u[0], *grad_u[1], *grad_u[2], dudt);
+        }
+      max_char_speed = integrator->GetMaxCharSpeed();
+      for (int b = 0; b < bfnfi.size(); b++)
+        {
+          max_char_speed = std::max(bfnfi[b]->GetMaxCharSpeed(), max_char_speed);
+        }
+    }
   }
 
 #else   // INVISCID

@@ -156,9 +156,14 @@ void Simulation::LoadConfig(const std::string &config_file_path)
     }
 
     nancheck = runtime["nancheck"].get<bool>();
+    if(debug_simulation)
+      nancheck = true;
     if (nancheck)
     {
       nancheck_steps = runtime.value("nancheck_steps", debug_simulation ? 1 : 1000);
+      if(Mpi::Root()){
+        std::cout << "Checking for NANs every " << nancheck_steps << " steps" << std::endl;
+      }
     }
 
     clock_simulation = runtime["clock_simulation"].get<bool>();
@@ -305,6 +310,9 @@ void Simulation::LoadConfig(const std::string &config_file_path)
     if (runtime.contains("ser_ref_levels"))
       {
         ref_levels = runtime.value("ser_ref_levels", 0);
+        if(Mpi::Root()){
+          std::cout << "Serial mesh refinement levels: " << ref_levels << std::endl;
+        }
         for (int lev = 0; lev < ref_levels; lev++)
         {
             mesh->UniformRefinement();
@@ -348,6 +356,9 @@ void Simulation::LoadConfig(const std::string &config_file_path)
     if (runtime.contains("par_ref_levels"))
     {
         ref_levels = runtime.value("par_ref_levels", 0);
+        if(Mpi::Root()){
+          std::cout << "Parallel mesh refinement levels: " << ref_levels << std::endl;
+        }
         for (int lev = 0; lev < ref_levels; lev++)
         {
             pmesh->UniformRefinement();
@@ -371,6 +382,9 @@ void Simulation::LoadConfig(const std::string &config_file_path)
 
     num_dofs_scalar = fes->GetNDofs();
     num_dofs_system = vfes->GetVSize();
+    int points_per_element = std::pow(order+1, dim);
+    int num_elements = num_dofs_scalar / points_per_element;
+    MPI_Allreduce(MPI_IN_PLACE, &num_elements, 1, MPI_INTEGER, MPI_SUM, pmesh->GetComm());
 
     if(myRank == 0 && debug_simulation){
       std::cout << "Initial exchanges complete." << std::endl;
@@ -939,8 +953,14 @@ void Simulation::LoadConfig(const std::string &config_file_path)
 
     if (Mpi::Root())
     {
-        std::cout << "The Number of Degrees of Freedom per Conservative Variable per Rank: " << num_dofs_scalar << std::endl;
-        std::cout << "The Number of Degrees of Freedom (System) per Rank: " << num_dofs_system << std::endl;
+      std::cout << "The Number of Equations being Solved: " << num_equations << std::endl;
+      std::cout << "The Total Number of Order " << order << " Elements in the Simulation: " << num_elements << std::endl;
+      std::cout << "The Total Number of DOFs in the Simulation (All Eqns/All Ranks): "
+                << num_elements*points_per_element*num_equations << std::endl;
+      std::cout << "The Total Number of DOFs per Equation per Element: " << points_per_element << std::endl;
+      std::cout << "The Average Number of Elements per Rank: " << num_elements / numProcs << std::endl;
+      std::cout << "The Number of DOFs per Equation per Rank: " << num_dofs_scalar << std::endl;
+      std::cout << "The Number of DOFs (System) per Rank: " << num_dofs_system << std::endl;
     }
 
     ode_solver->Init(*NS);
@@ -1209,7 +1229,10 @@ void Simulation::Run()
         dt_real = std::min(dt, t_final - t);
 
         // Perform the time step
-        ode_solver->Step(*sol, t, dt_real);
+        {
+          ScopedTimer timer("Timestep");
+          ode_solver->Step(*sol, t, dt_real);
+        }
         ti++;
 
         real_t cfl_rep = 0.0;
@@ -1257,6 +1280,7 @@ void Simulation::Run()
         done = (t >= t_final - 1e-8 * dt);
 
         // Check for NaN/Inf values?
+        rho.HostRead();
         if (nancheck && ti % nancheck_steps == 0)
         {
             for (const real_t &val : rho)

@@ -574,9 +574,6 @@ namespace Prandtl {
     const int Np_z = cache->Np_z;
     const real_t *D = cache->D.HostRead();
  
-    cache->alpha.SetSize(ne);
-    cache->alpha = 0.0;
-
     mfem::DenseTensor SubcellMetricXi, SubcellMetricEta, SubcellMetricZeta;
     SubcellMetricXi.SetSize(dim, Np_z * Np_y * (Np_x + 1), ne);
     if(dim > 1)
