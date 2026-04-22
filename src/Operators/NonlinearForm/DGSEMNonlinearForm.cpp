@@ -1,7 +1,26 @@
 #include "DGSEMNonlinearForm.hpp"
 
+
 namespace Prandtl
 {
+
+  // This is a Inf/NAN detector helper
+  int CountBadEntries(const mfem::Vector &v)
+  {
+    mfem::Vector one_bad(v.Size());
+    const real_t *vd = v.Read();
+    real_t *bd_w = one_bad.Write();
+
+    mfem::forall(v.Size(), [=] MFEM_HOST_DEVICE (int i) {
+                             bd_w[i] = Prandtl::Kernels::is_bad_value(vd[i]) ? 1.0 : 0.0;
+                           });
+    const real_t *bd_r = one_bad.Read();
+    int nbad = 0;
+    for(int i = 0;i < v.Size();i++){
+      nbad += bd_r[i];
+    }
+    return nbad;
+  }
 
 DGSEMNonlinearForm::DGSEMNonlinearForm(ParFiniteElementSpace *pf)
     : ParNonlinearForm(pf)
@@ -212,7 +231,7 @@ void DGSEMNonlinearForm::MultLifting(const Vector &u, Vector &dudx) const
 
 void DGSEMNonlinearForm::GradOperator_Volume(const Vector &pu, std::vector<mfem::Vector *> &p_grad_u) const
 {
-
+  ScopedTimer timer("GradOperator_Volume_Device");
   const int dim = cache->dim;
   const int restr_size = cache->restr_v->Height();
   mfem::Vector Ue(restr_size);
@@ -275,6 +294,7 @@ void DGSEMNonlinearForm::GradOperator_Volume(const Vector &pu, std::vector<mfem:
   void DGSEMNonlinearForm::GradOperator_BoundaryFaces(const mfem::Vector &pu,
                                                       std::vector<mfem::Vector *> &p_grad_u) const
   {
+    ScopedTimer timer("GradOperator_BoundaryFaces_Device");
     const int dim = cache->dim;
 
     auto dc = device_cache;
@@ -377,6 +397,7 @@ void DGSEMNonlinearForm::GradOperator_Volume(const Vector &pu, std::vector<mfem:
 void DGSEMNonlinearForm::GradOperator_InteriorFaces(const mfem::Vector &pu,
                                                     std::vector<mfem::Vector *> &p_grad_u) const
 {
+  ScopedTimer timer("GradOperator_InteriorFaces_Device");
   const int dim = cache->dim;
 
   auto dc = device_cache;
@@ -455,6 +476,7 @@ void DGSEMNonlinearForm::GradOperator_InteriorFaces(const mfem::Vector &pu,
 void DGSEMNonlinearForm::GradOperator(const mfem::Vector &u,
                                       std::vector<mfem::Vector *> &grad_u) const
 {
+  ScopedTimer timer("GradOperator_Device");
   const int dim = cache->dim;
   const Vector &pu = Prolongate(u);
 
@@ -509,6 +531,7 @@ void DGSEMNonlinearForm::GradOperator(const mfem::Vector &u,
 
 void DGSEMNonlinearForm::MultLifting(const Vector &u, Vector &dudx, Vector &dudy) const
 {
+  ScopedTimer timer("GradOperator_Host");
   const Vector &pu = Prolongate(u);
   if (P)
     {
@@ -530,6 +553,7 @@ void DGSEMNonlinearForm::MultLifting(const Vector &u, Vector &dudx, Vector &dudy
 
   if (dnfi.Size())
     {
+      ScopedTimer timerv("GradOperator_Volume_Host");
       // Which attributes need to be processed?
       Array<int> attr_marker(mesh->attributes.Size() ?
                              mesh->attributes.Max() : 0);
@@ -574,6 +598,7 @@ void DGSEMNonlinearForm::MultLifting(const Vector &u, Vector &dudx, Vector &dudy
 
   if (fnfi.Size())
     {
+      ScopedTimer timerv("GradOperator_InteriorFaces_Host");
       FaceElementTransformations *tr;
       const FiniteElement *fe1, *fe2;
       Array<int> vdofs2;
@@ -640,6 +665,7 @@ void DGSEMNonlinearForm::MultLifting(const Vector &u, Vector &dudx, Vector &dudy
 
   if (bfnfi.Size())
     {
+      ScopedTimer timerv("GradOperator_BoundaryFaces_Host");
       FaceElementTransformations *tr;
       const FiniteElement *fe1, *fe2;
 
@@ -1151,6 +1177,8 @@ real_t DGSEMNonlinearForm::MultCNS_BoundaryFaces(const mfem::Vector &pu,
                                                  const std::vector<mfem::Vector *> &p_grad_prim,
                                                  mfem::Vector &pdudt) const
 {
+  ScopedTimer timer("MultCNS_BoundaryFaces");
+
   auto dc = device_cache;
   const int dim = dc.dim;
   const int neq = dc.num_equations;
@@ -1163,10 +1191,8 @@ real_t DGSEMNonlinearForm::MultCNS_BoundaryFaces(const mfem::Vector &pu,
 
   mfem::Vector rhs_faces(restr_size);
   mfem::Vector faces_dudt(pdudt.Size());
-  // mfem::Vector u_faces(restr_size);
   bnd_u.SetSize(restr_size);
   const real_t *grad_prim_d[Prandtl::MAXDIM] = {nullptr, nullptr, nullptr};
-  // const real_t *face_grad_prim[Prandtl::MAXDIM] = {nullptr, nullptr, nullptr};
   bnd_grad_prim.resize(dim);
   for(int idim = 0;idim < dim;idim++){
     bnd_grad_prim[idim].SetSize(restr_size);
@@ -1198,8 +1224,6 @@ real_t DGSEMNonlinearForm::MultCNS_BoundaryFaces(const mfem::Vector &pu,
   const real_t *nor_d   = dc.bnd_nor_d;      // size nfaces*nfp*dim
   const real_t *inv1_d  = dc.bnd_wt_d; // size nfaces*nfp
   const int *bnd_marker_index_d = dc.bnd_marker_index_d;
-  // const int *bnd_attr = dc.bnd_attr_d;
-  // const int *bnd_marker_to_bc_descr_d = dc.bnd_marker_to_bc_descr_d;
   real_t *ws_d = dc.bndWaveSpeed_d;
 
   mfem::forall(npoints_bnd, [=] MFEM_HOST_DEVICE (int p)
@@ -1212,7 +1236,6 @@ real_t DGSEMNonlinearForm::MultCNS_BoundaryFaces(const mfem::Vector &pu,
       ws_d[p] = 0.0;
       return;
     }
-    //    int bc_index = bnd_marker_to_bc_descr_d[bnd_face_marker_index];
     int bc_index = bnd_face_marker_index; // no mapping atm
     if(bc_index < 0){
       ws_d[p] = 0.0;
@@ -1279,14 +1302,13 @@ real_t DGSEMNonlinearForm::MultCNS_BoundaryFaces(const mfem::Vector &pu,
 real_t DGSEMNonlinearForm::MultCNS_Volume(const mfem::Vector &pu, const std::vector<mfem::Vector *> &p_grad_prim,
                                           mfem::Vector &pdudt) const
 {
-  // ScopedTimer timer("AssembleCNSRHS_Volume");
+  ScopedTimer timer("MultCNS_Volume");
   // Copy the device cache so that it is not member data
   auto dc = device_cache;
   const int dim = dc.dim;
 
   const int restr_size = cache->restr_v->Height();
   // This block is executed by the host
-  // mfem::Vector Ue(cache->restr_v->Height());
   mfem::Vector dUe(restr_size);
   if(vol_u.Size() != restr_size){
     vol_u.SetSize(restr_size);
@@ -1345,7 +1367,7 @@ real_t DGSEMNonlinearForm::MultCNS_Volume(const mfem::Vector &pu, const std::vec
     mfem::forall(dUfv.Size(), [=] MFEM_HOST_DEVICE (int i) { d[i] = real_t(0); });
   }
 
-  const real_t *alpha_d = cache->alpha.Read();
+  const real_t *alpha_d = cache->alpha->Read();
 #endif
 
   // Derived parameters
@@ -1443,7 +1465,7 @@ real_t DGSEMNonlinearForm::MultCNS_Volume(const mfem::Vector &pu, const std::vec
 //  - No subcell blending (broken in device version of MULT)
 real_t DGSEMNonlinearForm::MultEuler_Volume(const Vector &pu, Vector &pdudt) const
 {
-  // ScopedTimer timer("MultVolumeInviscidDevice");
+  ScopedTimer timer("MultEuler_Volume");
 
   // This block is executed by the host
   mfem::Vector Ue(cache->restr_v->Height());
@@ -1494,7 +1516,7 @@ real_t DGSEMNonlinearForm::MultEuler_Volume(const Vector &pu, Vector &pdudt) con
     mfem::forall(dUfv.Size(), [=] MFEM_HOST_DEVICE (int i) { d[i] = real_t(0); });
   }
 
-  const real_t *alpha_d = cache->alpha.Read();
+  const real_t *alpha_d = cache->alpha->Read();
 #endif
 
   // Derived parameters
@@ -1572,7 +1594,7 @@ real_t DGSEMNonlinearForm::MultEuler_Volume(const Vector &pu, Vector &pdudt) con
 
 real_t DGSEMNonlinearForm::MultEuler_InteriorFaces(const Vector &pu, Vector &pdudt) const
 {
-  //  ScopedTimer timer("MultInteriorFacesInviscidDevice");
+  ScopedTimer timer("MultEuler_InteriorFaces");
   auto dc = device_cache;
   const int dim = dc.dim;
   const int neq = dc.num_equations;
@@ -1644,7 +1666,7 @@ real_t DGSEMNonlinearForm::MultEuler_InteriorFaces(const Vector &pu, Vector &pdu
 
 real_t DGSEMNonlinearForm::MultEuler_BoundaryFaces(const Vector &pu, Vector &pdudt) const
 {
-  //  ScopedTimer timer("MultBndFacesInviscidDevice");
+  ScopedTimer timer("MultEuler_BoundaryFaces");
   auto dc = device_cache;
   const int dim = dc.dim;
   const int neq = dc.num_equations;
@@ -1681,8 +1703,6 @@ real_t DGSEMNonlinearForm::MultEuler_BoundaryFaces(const Vector &pu, Vector &pdu
   const real_t *nor_d   = dc.bnd_nor_d;      // size nfaces*nfp*dim
   const real_t *inv1_d  = dc.bnd_wt_d; // size nfaces*nfp
   const int *bnd_marker_index_d = dc.bnd_marker_index_d;
-  // const int *bnd_attr = dc.bnd_attr_d;
-  // const int *bnd_marker_to_bc_descr_d = dc.bnd_marker_to_bc_descr_d;
   real_t *ws_d = dc.bndWaveSpeed_d;
 
   mfem::forall(npoints_bnd, [=] MFEM_HOST_DEVICE (int p)
@@ -1755,6 +1775,17 @@ real_t DGSEMNonlinearForm::MultEuler_BoundaryFaces(const Vector &pu, Vector &pdu
 // Top level MULT for inviscid cases, called from DGSEMOperator
 real_t DGSEMNonlinearForm::MultEuler(const Vector &u, Vector &dudt) const
 {
+  ScopedTimer timer("MultEuler");
+
+  auto report_bad = [&](const char *name, const mfem::Vector &v)
+   {
+     int nbad = CountBadEntries(v);
+     if (nbad)
+       {
+         mfem::out << "BAD VALUES IN: (" << name << "), count=" << nbad << std::endl;
+       }
+   };
+
   // ScopedTimer timer("MultInviscid");
   const Vector &pu = Prolongate(u);
   if (P)
@@ -1768,17 +1799,17 @@ real_t DGSEMNonlinearForm::MultEuler(const Vector &u, Vector &dudt) const
   real_t max_char_speed = 0.0;
   // This step overwrites contents of pdudt
   max_char_speed = MultEuler_Volume(pu, pdudt);
-  // std::cout << "Volume wavespeed: " << max_char_speed << std::endl;
 
   real_t max_char_speed_facial = 0.0;
   max_char_speed_facial = MultEuler_InteriorFaces(pu, pdudt);
+  // report_bad("int rhs", pdudt);
+
   // std::cout << "Facial wavespeed: " << max_char_speed_facial << std::endl;
   max_char_speed = std::max(max_char_speed, max_char_speed_facial);
-
   real_t max_char_speed_bnd = 0.0;
   max_char_speed_bnd = MultEuler_BoundaryFaces(pu, pdudt);
-  // max_char_speed_bnd = MultBndFacesInviscidHost(pu, pdudt);
-  // std::cout << "Boundary wavespeed: " << max_char_speed_bnd << std::endl;
+  // report_bad("bnd rhs", pdudt);
+
   max_char_speed = std::max(max_char_speed, max_char_speed_bnd);
 
   if (Serial())
@@ -2045,6 +2076,8 @@ void DGSEMNonlinearForm::Mult(const Vector &u, const Vector &dudx, const Vector 
 
   if (dnfi.Size())
     {
+      ScopedTimer timer("CNS_Volume_Host");
+
       // Which attributes need to be processed?
       Array<int> attr_marker(mesh->attributes.Size() ?
                              mesh->attributes.Max() : 0);
@@ -2090,6 +2123,7 @@ void DGSEMNonlinearForm::Mult(const Vector &u, const Vector &dudx, const Vector 
 
   if (fnfi.Size())
     {
+      ScopedTimer timer("CNS_InteriorFaces_Host");
       FaceElementTransformations *tr;
       const FiniteElement *fe1, *fe2;
       Array<int> vdofs2;
@@ -2174,6 +2208,7 @@ void DGSEMNonlinearForm::Mult(const Vector &u, const Vector &dudx, const Vector 
 
   if (bfnfi.Size())
     {
+      ScopedTimer timer("CNS_BoundaryFaces_Host");
       FaceElementTransformations *tr;
       const FiniteElement *fe1, *fe2;
 
@@ -2266,32 +2301,22 @@ real_t DGSEMNonlinearForm::MultCNS(const mfem::Vector &u, const std::vector<mfem
         grad_aux_[idim].SetSize(psize);
         P->Mult(*grad_prim[idim], grad_aux_[idim]);
       }
-      // aux2.SetSize(P->Height());
-      // aux2_x.SetSize(P->Height());
-      // aux2_y.SetSize(P->Height());
-
-      // P->Mult(*grad_prim[0], aux2_x);
-      // P->Mult(*grad_prim[1], aux2_y);
     }
 
   Vector &pdudt = P ? rhs_aux_ : dudt;
-  // const Vector &pdudx = P ? aux2_x : dudx;
-  // const Vector &pdudy = P ? aux2_y : dudy;
+
   std::vector<mfem::Vector *> pGradPrim(dim);
   for(int idim = 0;idim < dim;idim++){
     pGradPrim[idim] = &grad_aux_[idim];
   }
-  //  pGradPrim[1] = &aux2_y;
 
   pdudt = 0.0;
   real_t max_char_speed = MultCNS_Volume(pu, pGradPrim, pdudt);
-  // MultCNS_Volume_Host(pu, pGradPrim, pdudt);
-  // MultCNS_InteriorFaces_Host(pu, pGradPrim, pdudt);
+
   real_t max_char_speed_faces = MultCNS_InteriorFaces(pu, pGradPrim, pdudt);
   max_char_speed = std::max(max_char_speed, max_char_speed_faces);
 
   real_t max_char_speed_bnd = MultCNS_BoundaryFaces(pu, pGradPrim, pdudt);
-  // MultCNS_BoundaryFaces_Host(pu, pGradPrim, pdudt);
   max_char_speed = std::max(max_char_speed, max_char_speed_bnd);
   
   if (Serial())
@@ -2319,7 +2344,8 @@ real_t DGSEMNonlinearForm::MultCNS_InteriorFaces(const mfem::Vector &pu,
                                                  const std::vector<mfem::Vector *> &p_grad_prim,
                                                  mfem::Vector &pdudt) const
 {
-  //  ScopedTimer timer("MultInteriorFacesInviscidDevice");
+  ScopedTimer timer("MultCNS_InteriorFaces");
+  
   auto dc = device_cache;
   const int dim = dc.dim;
   const int neq = dc.num_equations;
@@ -2334,11 +2360,9 @@ real_t DGSEMNonlinearForm::MultCNS_InteriorFaces(const mfem::Vector &pu,
   int_u.SetSize(restr_size);
   int_u.UseDevice();
   
-  // mfem::Vector u_faces(restr_size);
   mfem::Vector rhs_faces(restr_size);
   mfem::Vector faces_dudt(pdudt);
   const real_t *grad_prim_d[Prandtl::MAXDIM] = {nullptr, nullptr, nullptr};
-  // const real_t *face_grad_prim[Prandtl::MAXDIM] = {nullptr, nullptr, nullptr};
   if(int_grad_prim.size() != dim){
     int_grad_prim.resize(dim);
   }
@@ -2350,7 +2374,6 @@ real_t DGSEMNonlinearForm::MultCNS_InteriorFaces(const mfem::Vector &pu,
   }
   faces_dudt.UseDevice();
   rhs_faces.UseDevice();
-  // u_faces.UseDevice();
   
   // If zeroed before accumulation, do it explicitly on device:
   // Potentially, this is not needed at all since I think we overwrite everything
@@ -2383,9 +2406,6 @@ real_t DGSEMNonlinearForm::MultCNS_InteriorFaces(const mfem::Vector &pu,
     const real_t *dprim_face_x = (dim > 0) ? grad_prim_d[0] + face_offset : nullptr;
     const real_t *dprim_face_y = (dim > 1) ? grad_prim_d[1] + face_offset : nullptr;
     const real_t *dprim_face_z = (dim > 2) ? grad_prim_d[2] + face_offset : nullptr;
-    // for(int idim = 0;idim < dim;idim++){
-    //   face_grad_prim[idim] = grad_prim_d[idim] + face_offset;
-    // }
 
     // Call one fused kernel for inviscid and viscous facial terms
     real_t ws = DGSEMIntegrator::AssembleViscousElementFaceKernel(dc, u_face_d, nor_face_d,
