@@ -7,7 +7,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 project(Prandtl)
 
 option(BUILD_TESTING "Build unit tests" ON)
-option(PARABOLIC "Enable Compressible Navier-Stokes Solver" OFF)
+option(PARABOLIC "Enable Compressible Navier-Stokes Solver" ON)
 option(SUBCELL_FV_BLENDING "Enable subcell blending" ON)
 option(AXISYMMETRIC "Enable Axisymmetric domain solver" OFF)
 option(SUTHERLAND "Enable Sutherland transport model" OFF)
