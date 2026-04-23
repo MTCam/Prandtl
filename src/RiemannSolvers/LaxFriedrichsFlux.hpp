@@ -1,6 +1,8 @@
 #pragma once
 
 #include "mfem.hpp"
+#include "prandtl_kernels.hpp"
+#include "NavierStokesFlux.hpp"
 
 namespace Prandtl
 {
@@ -10,36 +12,185 @@ using namespace mfem;
 
 class LaxFriedrichsFlux : public FluxFunction
 {
+private:
+  const IdealGasModel gasModel;
 public:
-   LaxFriedrichsFlux(const FluxFunction &fluxFunction)
-     : FluxFunction(fluxFunction)
-   {
+  LaxFriedrichsFlux(const FluxFunction &fluxFunction, const IdealGasModel &gasModel_)
+    : FluxFunction(fluxFunction), gasModel(gasModel_)
+  {
 #ifndef MFEM_THREAD_SAFE
-      fluxN1.SetSize(num_equations);
-      fluxN2.SetSize(num_equations);
+    fluxN1.SetSize(num_equations);
+    fluxN2.SetSize(num_equations);
 #endif
-   }
-
-   /**
-    * @brief  hat(F)n = ½(F(u⁺,x)n + F(u⁻,x)n) - ½λ(u⁺ - u⁻)
-    *
-    * @param[in] state1 state value at a point from the first element
-    * (num_equations)
-    * @param[in] state2 state value at a point from the second element
-    * (num_equations)
-    * @param[in] nor normal vector (not a unit vector) (dim)
-    * @param[in] Tr face element transformation
-    * @param[out] flux ½(F(u⁺,x)n + F(u⁻,x)n) - ½λ(u⁺ - u⁻)
-    */
-   real_t Eval(const Vector &state1, const Vector &state2,
-               const Vector &nor, FaceElementTransformations &Tr,
-               Vector &flux) const;
-
+  }
+  
+  /**
+   * @brief  hat(F)n = ½(F(u⁺,x)n + F(u⁻,x)n) - ½λ(u⁺ - u⁻)
+   *
+   * @param[in] state1 state value at a point from the first element
+   * (num_equations)
+   * @param[in] state2 state value at a point from the second element
+   * (num_equations)
+   * @param[in] nor normal vector (not a unit vector) (dim)
+   * @param[in] Tr face element transformation
+   * @param[out] flux ½(F(u⁺,x)n + F(u⁻,x)n) - ½λ(u⁺ - u⁻)
+   */
+  real_t Eval(const Vector &state1, const Vector &state2,
+              const Vector &nor, FaceElementTransformations &Tr,
+              Vector &flux) const;
+  
+  real_t ComputeVolumeFlux(const Vector &state1, const Vector &state2,
+                           const Vector &metric1, const Vector &metric2,
+                           Vector &F_tilde) const;
+  real_t ComputeFaceFlux(const Vector &state1, const Vector &state2,
+                         const Vector &nor, Vector &flux) const;
+  
 protected:
 #ifndef MFEM_THREAD_SAFE
-   mutable Vector fluxN1, fluxN2;
+  mutable Vector fluxN1, fluxN2;
 #endif
+  
+public:
+  
+  // This is Riemann solver that computes the numerical flux for 2 point states
+  // Will be ctx.iflux.ComputeVolumeFlux
+  template<typename GasT>
+  MFEM_HOST_DEVICE
+  inline static real_t ComputeVolumeFluxKernel(const GasT &gas,
+                                               const real_t* q1,
+                                               const real_t* q2,
+                                               const real_t* met1,
+                                               const real_t* met2,
+                                               real_t* F_tilde)
+  {
+    const int dim = gas.dim();
+    const int neq = gas.num_equations();
+    
+    // mean metric row
+    real_t met[3] = {0,0,0};
+    Kernels::ComputeMeanVec(met1, met2, met, dim);
+    Prandtl::PointStateView S1{q1};
+    Prandtl::PointStateView S2{q2};
+    real_t inv_flux_1[Prandtl::MAXEQ][Prandtl::MAXDIM];
+    real_t inv_flux_2[Prandtl::MAXEQ][Prandtl::MAXDIM];
+    real_t inv_flux_bar[Prandtl::MAXEQ];
+    real_t jump[Prandtl::MAXEQ];
+    NavierStokesFlux::ComputeInviscidFluxKernel(gas, q1, inv_flux_1);
+    NavierStokesFlux::ComputeInviscidFluxKernel(gas, q2, inv_flux_2);
+    for(int ieq=0;ieq < neq;ieq++){
+      inv_flux_bar[ieq] = 0;
+      jump[ieq] = q2[ieq] - q1[ieq];
+      for(int idim = 0;idim < dim;idim++){
+        inv_flux_bar[ieq] += 0.5*(inv_flux_1[ieq][idim] + inv_flux_2[ieq][idim])*met[idim];
+      }
+    }
+    
+    real_t vn_1 = 0;
+    real_t vn_2 = 0;
+    real_t mnorm = 0;
+    for (int d=0; d<dim; ++d)
+      {
+        const real_t v1 = gas.velocity(S1, d);
+        const real_t v2 = gas.velocity(S2, d);
+        vn_1 += v1*met[d];
+        vn_2 += v2*met[d];
+        mnorm += met[d]*met[d];
+      }
+    vn_1 = Prandtl::Kernels::rabs(vn_1);
+    vn_2 = Prandtl::Kernels::rabs(vn_2);
+    mnorm = Prandtl::Kernels::rsqrt(mnorm);
+    const real_t c1 = gas.sound_speed(S1)*mnorm;
+    const real_t c2 = gas.sound_speed(S2)*mnorm;
+    const real_t lambda_max = Kernels::rmax(vn_1 + c1, vn_2 + c2);
+    
+    for(int ieq = 0;ieq < neq;ieq++){
+      F_tilde[ieq] = inv_flux_bar[ieq] - 0.5*lambda_max*jump[ieq];
+    }
+    
+    return lambda_max;
+  }
+  
+  template<typename GasModelT>
+  MFEM_HOST_DEVICE inline static real_t
+  ComputeFaceFluxKernel(const GasModelT &gasModel,
+                        const real_t *state1,
+                        const real_t *state2,
+                        const real_t *nor,
+                        real_t *flux)
+  {
+    const int dim = gasModel.dim();
+    const int neq = gasModel.num_equations();
+    
+    Prandtl::PointStateView S1{state1};
+    Prandtl::PointStateView S2{state2};
+    
+    real_t inv_flux_1[Prandtl::MAXEQ][Prandtl::MAXDIM];
+    real_t inv_flux_2[Prandtl::MAXEQ][Prandtl::MAXDIM];
+    
+    NavierStokesFlux::ComputeInviscidFluxKernel(gasModel, state1, inv_flux_1);
+    NavierStokesFlux::ComputeInviscidFluxKernel(gasModel, state2, inv_flux_2);
+    
+    real_t vn1 = 0.0;
+    real_t vn2 = 0.0;
+    real_t nor_mag2 = 0.0;
+    
+    for (int d = 0; d < dim; ++d)
+      {
+        vn1 += gasModel.velocity(S1, d) * nor[d];
+        vn2 += gasModel.velocity(S2, d) * nor[d];
+        nor_mag2 += nor[d] * nor[d];
+      }
+    
+    const real_t nor_mag = Prandtl::Kernels::rsqrt(nor_mag2);
+    
+    vn1 = Prandtl::Kernels::rabs(vn1);
+    vn2 = Prandtl::Kernels::rabs(vn2);
+    
+    const real_t c1 = gasModel.sound_speed(S1);
+    const real_t c2 = gasModel.sound_speed(S2);
+    
+    const real_t lambda_max =
+      Prandtl::Kernels::rmax(vn1 + c1 * nor_mag,
+                             vn2 + c2 * nor_mag);
+    
+    for (int ieq = 0; ieq < neq; ++ieq)
+      {
+        real_t fn1 = 0.0;
+        real_t fn2 = 0.0;
+        
+        for (int d = 0; d < dim; ++d)
+          {
+            fn1 += inv_flux_1[ieq][d] * nor[d];
+            fn2 += inv_flux_2[ieq][d] * nor[d];
+          }
+        
+        const real_t central_flux = 0.5 * (fn1 + fn2);
+        const real_t jump = state2[ieq] - state1[ieq];
+        
+        flux[ieq] = central_flux - 0.5 * lambda_max * jump;
+      }
+    
+    return lambda_max;
+  }
+  
+  struct InviscidFlux {
+    
+    template<typename GasModelT>
+    MFEM_HOST_DEVICE inline real_t ComputeVolumeFlux(const GasModelT &gasModel,
+                                                     const real_t *q1, const real_t *q2,
+                                                     const real_t *met1, const real_t *met2,
+                                                     real_t *F_tilde) const{
+      return ComputeVolumeFluxKernel(gasModel, q1, q2, met1, met2, F_tilde); 
+    }
+    
+    template<typename GasModelT>
+    MFEM_HOST_DEVICE inline real_t ComputeFaceFlux(const GasModelT &gasModel,const real_t *qminus,
+                                                   const real_t *qplus, const real_t *nor,
+                                                   real_t *flux) const {
+      return ComputeFaceFluxKernel(gasModel, qminus, qplus, nor, flux); 
+    }
+  };
 };
-
-
+  
+  
 }

@@ -324,11 +324,11 @@ namespace Prandtl
           // Here, point_flux is +(F_inv * Normal)
 
           // Grab the viscous flux
-          NavierStokesFlux::ComputeViscousFluxKernel(ctx.gas, dim, qMinus,
+          NavierStokesFlux::ComputeViscousFluxKernel(ctx.gas, qMinus,
                                                      gradPrim_minus[0],
                                                      gradPrim_minus[1],
                                                      gradPrim_minus[2], vflux_minus);
-          NavierStokesFlux::ComputeViscousFluxKernel(ctx.gas, dim, qPlus,
+          NavierStokesFlux::ComputeViscousFluxKernel(ctx.gas, qPlus,
                                                      gradPrim_plus[0],
                                                      gradPrim_plus[1],
                                                      gradPrim_plus[2], vflux_plus);

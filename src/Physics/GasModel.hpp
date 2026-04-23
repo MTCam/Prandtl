@@ -69,6 +69,13 @@ namespace Prandtl
 
     template<typename StateView>
     MFEM_HOST_DEVICE
+    inline real_t scalar(const StateView &S, int s) const
+    {
+      return S.scalar(L, s);
+    };
+
+    template<typename StateView>
+    MFEM_HOST_DEVICE
     inline real_t energy(const StateView &S) const
     {
       return S.energy(L);
@@ -203,7 +210,8 @@ namespace Prandtl
 
   // Current concrete choice: ideal single-species gas + constant transport
   using IdealGasModel = GasModel<IdealSingleGasEOS, Transport>;
-  
+  using ActiveGasModel = IdealGasModel;
+
   // Bridge helper so old call-sites that only have PhysicsConstants can move over
   // inline IdealGasModel make_ideal_gas_model(std::shared_ptr<const PhysicsConstants> phys)
   // {

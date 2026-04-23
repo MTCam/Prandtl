@@ -23,4 +23,21 @@ real_t LaxFriedrichsFlux::Eval(const Vector &state1, const Vector &state2,
    return std::max(speed1, speed2);
 }
 
+  real_t LaxFriedrichsFlux::ComputeVolumeFlux(const Vector &state1, const Vector &state2,
+                                              const Vector &metric1, const Vector &metric2,
+                                              Vector &F_tilde) const
+  {
+    return ComputeVolumeFluxKernel(gasModel, state1.GetData(), state2.GetData(),
+                                   metric1.GetData(), metric2.GetData(),
+                                   F_tilde.GetData());
+  }
+
+
+  real_t LaxFriedrichsFlux::ComputeFaceFlux(const Vector &state1, const Vector &state2,
+                                            const Vector &nor, Vector &flux) const
+  {
+    return ComputeFaceFluxKernel(gasModel, state1.GetData(), state2.GetData(),
+                                 nor.GetData(), flux.GetData());
+  }
+  
 }
