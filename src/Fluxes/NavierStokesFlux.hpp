@@ -11,9 +11,9 @@ namespace Prandtl
   class NavierStokesFlux : public mfem::FluxFunction
   {
   private:
-    const IdealGasModel gasModel;
+    const ActiveGasModel gasModel;
   public:
-    explicit NavierStokesFlux(const IdealGasModel &gasModel_)
+    explicit NavierStokesFlux(const ActiveGasModel &gasModel_)
       : mfem::FluxFunction(gasModel_.num_equations(), gasModel_.dim()), gasModel(gasModel_){};
     void ComputeViscousFlux(const mfem::Vector &state, const mfem::Vector &dqdx,
                             const mfem::Vector &dqdy, const mfem::Vector &dqdz,
@@ -57,9 +57,60 @@ namespace Prandtl
                            mfem::FaceElementTransformations &Tr,
                            mfem::Vector &fluxN) const override;
 
+    // Inviscid / Euler Flux
+    template<typename GasT>
+    MFEM_HOST_DEVICE inline static void
+    ComputeInviscidFluxKernel(const GasT &gas,
+                              const real_t *state,
+                              real_t inv_flux[Prandtl::MAXEQ][Prandtl::MAXDIM])
+    { 
+      PointStateView S{state};
+      
+      // 1. Get states
+      const int dim = gas.dim();
+      const real_t density = gas.density(S);
+      const real_t spec_vol = 1.0/density;
+      real_t momentum[Prandtl::MAXDIM] = {0.,0.,0.};
+      for(int idim = 0;idim < dim;idim++){
+        momentum[idim] = gas.momentum(S, idim);
+      }
+
+      const real_t energy = gas.energy(S);
+      const real_t pressure = gas.pressure(S);
+      const real_t ke = gas.kinetic_energy_density(S);
+      const int eq_mass = gas.L.eq_mass;
+      const int eq_mom0 = gas.L.eq_mom0;
+      const int eq_ener = gas.L.eq_energy;
+      const int eq_spec = gas.L.eq_scalar0;
+
+      const real_t H = (energy + pressure)*spec_vol;
+      // 2. Compute Flux
+      for (int d = 0; d < dim; d++)
+        {
+          inv_flux[eq_mass][d] = momentum[d];
+          for (int i = 0; i < dim; i++)
+            {
+              // ρuuᵀ
+              inv_flux[eq_mom0+i][d] = momentum[i]*momentum[d]*spec_vol;
+            }
+          // (ρuuᵀ) + p
+          inv_flux[eq_mom0+d][d] += pressure;
+          inv_flux[eq_ener][d] = momentum[d]*H;
+          for(int s = 0;s < gas.L.num_scalars;s++){
+            inv_flux[eq_spec+s][d] = gas.scalar(S, s) * momentum[d] * spec_vol;
+          }
+        }
+      // 3. Compute maximum characteristic speed 
+      // const real_t sound = gas.sound_speed(S);
+      // fluid speed |u|
+      // const real_t speed = Prandtl::Kernels::rsqrt(2.0 * ke / density);
+      // max characteristic speed = fluid speed + sound speed
+      // return speed + sound;
+    }
+
     template<typename GasT>
     MFEM_HOST_DEVICE inline
-    static void ComputeViscousFluxKernel(const GasT &gas, const int dim,
+    static void ComputeViscousFluxKernel(const GasT &gas,
                                          const real_t *state,
                                          const real_t *dprim_x,
                                          const real_t *dprim_y,
@@ -68,7 +119,7 @@ namespace Prandtl
     {
 
       // TODO: Update for scalar transport
-
+      const int dim = gas.dim();
       // Zero the flux to start
       for(int q = 0;q < Prandtl::MAXEQ;q++){
         for(int idir = 0;idir < dim;idir++){
@@ -171,7 +222,7 @@ namespace Prandtl
       real_t flux_phys[Prandtl::MAXEQ][Prandtl::MAXDIM] = {{0.}};
 
       // Grab the physical flux
-      ComputeViscousFluxKernel(gas, dim, state, dqx, dqy, dqz, flux_phys);
+      ComputeViscousFluxKernel(gas, state, dqx, dqy, dqz, flux_phys);
       
       for (int q = 0; q < neq; ++q)
         {

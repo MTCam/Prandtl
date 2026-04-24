@@ -46,13 +46,13 @@ protected:
   bool constant, t_dependent;
   Vector dqdx, dqdy, dqdz;
   std::shared_ptr<LiftingScheme> liftingScheme;
-  const IdealGasModel gasModel;
+  const ActiveGasModel gasModel;
   const NumericalFlux &rsolver;  // Numerical flux that maps F(u±,x) to hat(F)
   bool scaleStateInAxisymm = true;
   const int mass_eq, mom_eq, en_eq, sc_eq; 
 
 public:
-  BdrFaceIntegrator(std::shared_ptr<LiftingScheme> liftingScheme, const IdealGasModel &gasModel_,
+  BdrFaceIntegrator(std::shared_ptr<LiftingScheme> liftingScheme, const ActiveGasModel &gasModel_,
                     const NumericalFlux &rsolver, int Np, const real_t &time, bool constant, bool t_dependent);
    
    void ResetMaxCharSpeed()

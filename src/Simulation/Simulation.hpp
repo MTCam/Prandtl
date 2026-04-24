@@ -37,7 +37,7 @@ private:
   
   std::shared_ptr<PhysicsConstants> physicsConstants;
   std::shared_ptr<StateLayout> stateLayout;
-  std::shared_ptr<IdealGasModel> gasModel;
+  std::shared_ptr<ActiveGasModel> gasModel;
 
   std::string output_file_path;
   std::string paraview_folder;

@@ -13,11 +13,11 @@ private:
     VectorFunctionCoefficient conserv_state_fun;
 public:
     SupersonicInflowBdrFaceIntegrator(std::shared_ptr<LiftingScheme> liftingScheme,
-                                      const IdealGasModel &gasModel_,
+                                      const ActiveGasModel &gasModel_,
                                       const NumericalFlux &rsolver, const int Np, const real_t &time,
                                       VectorFunctionCoefficient &conserv_state_fun, bool t_dependent = false);
     SupersonicInflowBdrFaceIntegrator(std::shared_ptr<LiftingScheme> liftingScheme,
-                                      const IdealGasModel &gasModel_,
+                                      const ActiveGasModel &gasModel_,
                                       const NumericalFlux &rsolver, const int Np, const real_t &time,
                                       const Vector &conserv_state);
     

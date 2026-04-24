@@ -28,7 +28,7 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             gcc-12 g++-12 gfortran-12 libgl1 libegl1 \
             mpich libmpich-dev environment-modules \
-            cmake ninja-build pkg-config ccache jq
+            cmake ninja-build pkg-config ccache jq libeigen3-dev
           echo "CC=mpicc"   >> $GITHUB_ENV
           echo "CXX=mpicxx" >> $GITHUB_ENV
           echo "FC=mpifort" >> $GITHUB_ENV
@@ -59,7 +59,7 @@ jobs:
           fi
           echo "MFEM_SRC=$MFEM_SRC" | tee -a $GITHUB_ENV
 
-      - name: Build dependency submodules (HYPRE, METIS, MFEM)
+      - name: Build dependency submodules (HYPRE, METIS, MFEM, MPP)
         run: |
           # Make 'module' available so build_depends.sh sees IS_HPC=true and skips GLVis
           if [ -f /etc/profile.d/modules.sh ]; then
@@ -78,6 +78,7 @@ jobs:
           ls -lh libs/mfem/*/libmfem* 2>/dev/null || true
           ls -lh libs/hypre/src/hypre/lib 2>/dev/null || true
           ls -lh libs/metis-5.1.0/lib 2>/dev/null || true
+          ls -lh libs/Mutationpp/install 2>/dev/null || true
 
       - name: Configure Prandtl (Euler)
         env:
@@ -87,13 +88,15 @@ jobs:
           FC: ${{ env.FC }}
           # These paths match your script’s build outputs
           MFEM_DIR: ${{ github.workspace }}/libs/mfem/build
+          Eigen3_DIR: /usr/share/eigen3/cmake
+          Mutationpp_DIR: ${{ github.workspace }}/libs/Mutationpp/install/lib/cmake/Mutationpp
         run: |
           mkdir -p build-euler
           #  -DCONFIG_FILE=${CONFIG_FILE}
           cmake -S . -B build-euler -G Ninja \
             -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE} \
             -DBUILD_TESTING=ON \
-            -DCMAKE_PREFIX_PATH=${MFEM_DIR} \
+            -DCMAKE_PREFIX_PATH="${MFEM_DIR};${Eigen3_DIR}:${Mutationpp_DIR}" \
             -DSUBCELL_FV_BLENDING=ON -DNO_OPT=ON
 
       - name: Build Prandtl (Euler)
@@ -120,7 +123,7 @@ jobs:
           cmake -S . -B build-cns -G Ninja \
             -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE} \
             -DBUILD_TESTING=ON \
-            -DCMAKE_PREFIX_PATH=${MFEM_DIR} \
+            -DCMAKE_PREFIX_PATH="${MFEM_DIR};${Eigen3_DIR}:${Mutationpp_DIR}" \
             -DPARABOLIC=ON -DSUBCELL_FV_BLENDING=ON \
             -DNO_OPT=ON
 

@@ -6,7 +6,7 @@ namespace Prandtl
 {
   // Constructor for RiemannInvariantBdrFaceIntegrator with a variable (space- and/or time-dependent) primitive state
   RiemannInvariantBdrFaceIntegrator::RiemannInvariantBdrFaceIntegrator(std::shared_ptr<LiftingScheme> liftingScheme,
-                                                                       const IdealGasModel &gasModel_,
+                                                                       const ActiveGasModel &gasModel_,
                                                                        const NumericalFlux &rsolver, const int Np,
                                                                        const real_t &time,
                                                                        VectorFunctionCoefficient &prim_state_fun, bool t_dependent)
@@ -20,7 +20,7 @@ namespace Prandtl
   
   // Constructor for RiemannInvariantBdrFaceIntegrator with a constant primitive state
   RiemannInvariantBdrFaceIntegrator::RiemannInvariantBdrFaceIntegrator(std::shared_ptr<LiftingScheme> liftingScheme,
-                                                                       const IdealGasModel &gasModel_,
+                                                                       const ActiveGasModel &gasModel_,
                                                                        const NumericalFlux &rsolver, const int Np,
                                                                        const real_t &time, const Vector &prim_state)
   : BdrFaceIntegrator(liftingScheme, gasModel_, rsolver, Np, time, true, false),

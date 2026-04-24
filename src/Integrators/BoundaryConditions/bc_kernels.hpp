@@ -130,7 +130,7 @@ namespace Prandtl {
         fluxN[mom_eq+idim] = p_star * nor[idim];
       // Inviscid part is done, now for the viscous part
       real_t qn = qWall * normag;
-      NavierStokesFlux::ComputeViscousFluxKernel(gasModel, dim, state1, gradPrim_x, gradPrim_y,
+      NavierStokesFlux::ComputeViscousFluxKernel(gasModel, state1, gradPrim_x, gradPrim_y,
                                                  gradPrim_z, visc_flux);
       real_t vflux_n[Prandtl::MAXEQ];
       for(int j = 0;j < neq;j++){

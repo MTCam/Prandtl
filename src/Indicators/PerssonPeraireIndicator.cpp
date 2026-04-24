@@ -8,7 +8,7 @@ namespace Prandtl
                                                    std::shared_ptr<ParFiniteElementSpace> fes0,
                                                    std::shared_ptr<ParGridFunction> eta,
                                                    std::shared_ptr<ModalBasis> modalBasis,
-                                                   const IdealGasModel &gasModel_)
+                                                   const ActiveGasModel &gasModel_)
   : Indicator(vfes, fes0, eta), modalBasis(modalBasis), gasModel(gasModel_),
     ubdegs(modalBasis->GetPolyDegs())
   {
