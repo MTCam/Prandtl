@@ -36,7 +36,7 @@ public:
   {
     const int dim = gas.dim();
     const int neq = gas.num_equations();
-    
+
     // mean metric row
     real_t met[3] = {0,0,0};
     Kernels::ComputeMeanVec(met1, met2, met, dim);
@@ -45,17 +45,16 @@ public:
     real_t inv_flux_1[Prandtl::MAXEQ][Prandtl::MAXDIM];
     real_t inv_flux_2[Prandtl::MAXEQ][Prandtl::MAXDIM];
     real_t inv_flux_bar[Prandtl::MAXEQ];
-    real_t jump[Prandtl::MAXEQ];
+
     NavierStokesFlux::ComputeInviscidFluxKernel(gas, q1, inv_flux_1);
     NavierStokesFlux::ComputeInviscidFluxKernel(gas, q2, inv_flux_2);
     for(int ieq=0;ieq < neq;ieq++){
       inv_flux_bar[ieq] = 0;
-      jump[ieq] = q2[ieq] - q1[ieq];
       for(int idim = 0;idim < dim;idim++){
         inv_flux_bar[ieq] += 0.5*(inv_flux_1[ieq][idim] + inv_flux_2[ieq][idim])*met[idim];
       }
     }
-    
+
     real_t vn_1 = 0;
     real_t vn_2 = 0;
     real_t mnorm = 0;
@@ -73,11 +72,11 @@ public:
     const real_t c1 = gas.sound_speed(S1)*mnorm;
     const real_t c2 = gas.sound_speed(S2)*mnorm;
     const real_t lambda_max = Kernels::rmax(vn_1 + c1, vn_2 + c2);
-    
+
     for(int ieq = 0;ieq < neq;ieq++){
-      F_tilde[ieq] = inv_flux_bar[ieq]; // - 0.5*lambda_max*jump[ieq];
+      F_tilde[ieq] = inv_flux_bar[ieq];
     }
-    
+
     return lambda_max;
   }
   
