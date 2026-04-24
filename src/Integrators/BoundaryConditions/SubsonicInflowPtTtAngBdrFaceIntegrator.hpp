@@ -19,12 +19,12 @@ using namespace mfem;
     
   public:
     SubsonicInflowPtTtAngBdrFaceIntegrator(std::shared_ptr<LiftingScheme> liftingScheme,
-                                           const IdealGasModel &gasModel_,
+                                           const ActiveGasModel &gasModel_,
                                            const NumericalFlux &rsolver, const int Np, const real_t &time,
                                            FunctionCoefficient &pt, FunctionCoefficient &Tt,
                                            real_t theta = 0.0, real_t phi = 0.0, bool t_dependent = false);
     SubsonicInflowPtTtAngBdrFaceIntegrator(std::shared_ptr<LiftingScheme> liftingScheme,
-                                           const IdealGasModel &gasModel_,
+                                           const ActiveGasModel &gasModel_,
                                            const NumericalFlux &rsolver, const int Np, const real_t &time,
                                            real_t pt, real_t Tt, real_t theta = 0.0, real_t phi = 0.0);
 

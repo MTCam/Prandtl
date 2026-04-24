@@ -5,7 +5,7 @@ namespace Prandtl
 
 // Constructor for SpecifiedStateBdrfaceIntegrator with a variable (space- and/or time-dependent) conservative state
 SpecifiedStateBdrFaceIntegrator::SpecifiedStateBdrFaceIntegrator(std::shared_ptr<LiftingScheme> liftingScheme,
-                                                                 const IdealGasModel &gasModel_,
+                                                                 const ActiveGasModel &gasModel_,
                                                                  const NumericalFlux &rsolver, const int Np,
                                                                  const real_t &time,
                                                                  VectorFunctionCoefficient &conserv_state_fun_, bool t_dependent)
@@ -15,7 +15,7 @@ SpecifiedStateBdrFaceIntegrator::SpecifiedStateBdrFaceIntegrator(std::shared_ptr
 
 // Constructor for SpecifiedStateBdrfaceIntegrator with a constant conservative state
 SpecifiedStateBdrFaceIntegrator::SpecifiedStateBdrFaceIntegrator(std::shared_ptr<LiftingScheme> liftingScheme,
-                                                                 const IdealGasModel &gasModel_,
+                                                                 const ActiveGasModel &gasModel_,
                                                                  const NumericalFlux &rsolver, int Np,
                                                                  const real_t &time, const Vector &conserv_state)
 : BdrFaceIntegrator(liftingScheme, gasModel_, rsolver, Np, time, true, false), 
