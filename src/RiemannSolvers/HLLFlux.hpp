@@ -13,7 +13,7 @@ namespace Prandtl
   private:
     const ActiveGasModel gasModel;
   public:
-    LaxFriedrichsFlux(const NavierStokesFlux &fluxFunction, const ActiveGasModel &gasModel_)
+    HLLFlux(const NavierStokesFlux &fluxFunction, const ActiveGasModel &gasModel_)
       : Prandtl::NumericalFlux(fluxFunction), gasModel(gasModel_)
     {}
     real_t ComputeFaceFlux(const mfem::Vector &state1, const mfem::Vector &state2,

@@ -1,0 +1,62 @@
+{
+    "compileTime":
+    {
+        "PARABOLIC": false,
+        "SUBCELL_FV_BLENDING": true,
+        "SUTHERLAND": false,
+        "USE_FILTER": false
+    },
+    "runTime":
+    {
+        "order": 3,
+        "dim" : 2, 
+        "num_equations": 4,
+
+        "precision": 15,
+
+        "visualize": true,
+        "paraview": true,
+        "visit": false,
+        "vis_steps": 1000,
+        "output_file_path" : "../../TestCases/LTE/Euler/LTEVortex",
+
+        "nancheck": false,
+
+        "clock_simulation": true,
+        "variable_dt": true,
+        "cfl": 1.0,
+        "final_time": 2.0,
+
+        "ser_ref_levels": 3,
+
+        "gas_mixture": "air_5",
+        "gas_composition": "N:0.8, O:0.2",
+        "N_rho": 1000,
+        "N_rhoe" : 1000,
+        "rho_min":  0.8,
+        "rho_max": 1.2,
+        "rhoe_min": 170000.0,
+        "rhoe_max": 240000.0,
+
+        "mesh_file": "../../TestCases/LTE/Euler/LTEVortex/IsentropicVortex.mesh",
+        "conditions":
+        {
+            "initial_conditions":
+            {
+                "signature": 5,
+                "params":
+                {
+                    "x1": 0.2,
+                    "x2": 10.0,
+                    "x3": 1.0,
+                    "x4": 1.0,
+                    "x5": 200000.0
+                },
+                "function": "LTEVortexIC"
+            }
+        },
+        "numerical_flux": "Chandrashekar",
+        "ode_solver": "RK3SSP"
+    }
+}
+

@@ -12,6 +12,15 @@ option(SUBCELL_FV_BLENDING "Enable subcell blending" ON)
 option(AXISYMMETRIC "Enable Axisymmetric domain solver" OFF)
 option(SUTHERLAND "Enable Sutherland transport model" OFF)
 option(ENABLE_TIMERS "Enable performance timers." OFF)
+option(LTE "Enable LTE gas model" OFF)
+
+if (LTE)
+  find_package(mutation++ REQUIRED)
+  find_package(Eigen3 REQUIRED)
+  message(STATUS "Building Prandtl with Gas Model: LTE Gas Model")
+else()
+  message(STATUS "Building Prandtl with Gas Model: Ideal Single Component")
+endif()
 
 find_package(MFEM REQUIRED CONFIG) 
 if (TARGET MFEM::mfem)
@@ -55,6 +64,10 @@ endif()
 if(ENABLE_TIMERS)
   message(STATUS "Enabling performance timers.")
   target_compile_definitions(${PROJECT_NAME} PRIVATE ENABLE_TIMERS)
+endif()
+
+if(LTE)
+  target_compile_definitions(${PROJECT_NAME} PRIVATE LTE)
 endif()
 
 if(PARABOLIC)
@@ -211,13 +224,24 @@ target_include_directories(${PROJECT_NAME}
     PUBLIC ${CMAKE_SOURCE_DIR}/TestCases/Euler/2D/IsentropicVortex
     PUBLIC ${CMAKE_SOURCE_DIR}/TestCases/Euler/2D/Ramp
     PUBLIC ${CMAKE_SOURCE_DIR}/TestCases/Euler/2D/Nagashima_Ramjet
+    PUBLIC ${CMAKE_SOURCE_DIR}/TestCases/LTE/Euler/LTEVortex
     )
 
-target_link_libraries(${PROJECT_NAME}
-    PRIVATE
-    ${PRANDTL_MFEM_TARGET}
-    MPI::MPI_CXX
-)
+if (LTE)
+  target_link_libraries(${PROJECT_NAME}
+  PRIVATE
+  ${PRANDTL_MFEM_TARGET}
+  MPI::MPI_CXX
+  mutation++::mutation++
+  Eigen3::Eigen
+  )
+else()        
+  target_link_libraries(${PROJECT_NAME}
+  PRIVATE
+  ${PRANDTL_MFEM_TARGET}
+  MPI::MPI_CXX
+  )
+endif()
 
 if (BUILD_TESTING)
   include(CTest)
