@@ -103,7 +103,6 @@ void LiftingBR1::AssembleLiftingFaceVector(const FiniteElement &el1, const Finit
 
         subtract(0.5, state2, state1, f);
         g = f;
-
         f *= nor(0);
         AddMult_a_VWt(+1.0 / (ir->IntPoint(0).weight * J1), shape1, f, el_dudx_mat1);
         AddMult_a_VWt(+1.0 / (ir->IntPoint(0).weight * J2), shape2, f, el_dudx_mat2);
@@ -219,7 +218,8 @@ void LiftingBR1::AssembleLiftingElementVector(const FiniteElement &el, ElementTr
 }
 
 
-void LiftingBR1::AssembleLiftingElementVector(const FiniteElement &el, ElementTransformation &Tr, const Vector &el_u, Vector &el_dudx, Vector &el_dudy)
+void LiftingBR1::AssembleLiftingElementVector(const FiniteElement &el, ElementTransformation &Tr,
+                                              const Vector &el_u, Vector &el_dudx, Vector &el_dudy)
 {
     // const int dof = el.GetDof();
 

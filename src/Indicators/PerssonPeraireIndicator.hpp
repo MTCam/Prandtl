@@ -19,6 +19,7 @@ private:
 public:
   PerssonPeraireIndicator(std::shared_ptr<ParFiniteElementSpace> vfes, std::shared_ptr<ParFiniteElementSpace> fes0, std::shared_ptr<ParGridFunction> eta, std::shared_ptr<ModalBasis> modalBasis, const ActiveGasModel &gasModel_);
   virtual void CheckSmoothness(const Vector &x) override;
+  virtual void CheckIndicatorSmoothness(const Vector &indicator) override;
 };
 
 }

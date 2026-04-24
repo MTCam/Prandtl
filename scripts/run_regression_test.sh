@@ -177,7 +177,6 @@ else
   ' "${cfg_abs}" > "${patched}"
 fi
 local -a MPI_LAUNCHER="mpiexec -n ${NMPIRANKS}"
-echo "mpi launcher: ${MPI_LAUNCHER}"
 
 # Override MPI_LAUNCHER if required for this platform:
 case "${HOST_SHORT}" in
@@ -186,6 +185,7 @@ case "${HOST_SHORT}" in
         MPI_LAUNCHER="flux run --exclusive -N ${NHOSTS} -n ${NMPIRANKS}"
         ;;
 esac
+echo "mpi launcher: ${MPI_LAUNCHER}"
 # Run from the per-example dir; keep your “two levels down” invariant
 # Run example (isolate failures; do NOT exit on first error)
 # mpiexec -n "${NMPIRANKS}" 

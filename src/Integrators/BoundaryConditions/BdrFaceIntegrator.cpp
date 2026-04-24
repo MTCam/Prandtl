@@ -62,7 +62,8 @@ constexpr bool debug_boundary = false;
    dU_face1.SetSize(num_equations);
 }
 
-void BdrFaceIntegrator::AssembleFaceVector(const FiniteElement &el1, const FiniteElement &el2, FaceElementTransformations &Tr,
+void BdrFaceIntegrator::AssembleFaceVector(const FiniteElement &el1, const FiniteElement &el2,
+                                           FaceElementTransformations &Tr,
                                            const Vector &el_u, Vector &el_dudt)
 {
    if (debug_boundary) // && (time >= 2.99999 || time == 0))

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "BdrFaceIntegrator.hpp"
+#include "bc_kernels.hpp"
 
 namespace Prandtl
 
@@ -20,6 +21,5 @@ public:
     virtual real_t ComputeBdrFaceInviscidFlux(const Vector &state1, Vector &state2, Vector &fluxN, const Vector &nor,
                                               FaceElementTransformations &Tr, const IntegrationPoint &ip) override;
 };
-
 
 }
