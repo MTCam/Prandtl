@@ -2,53 +2,24 @@
 
 #include "mfem.hpp"
 #include "prandtl_kernels.hpp"
+#include "NumericalFlux.hpp"
 #include "NavierStokesFlux.hpp"
 
 namespace Prandtl
 {
 
-using namespace mfem;
-
-
-class LaxFriedrichsFlux : public FluxFunction
-{
-private:
-  const IdealGasModel gasModel;
-public:
-  LaxFriedrichsFlux(const FluxFunction &fluxFunction, const IdealGasModel &gasModel_)
-    : FluxFunction(fluxFunction), gasModel(gasModel_)
+  class LaxFriedrichsFlux : public Prandtl::NumericalFlux
   {
-#ifndef MFEM_THREAD_SAFE
-    fluxN1.SetSize(num_equations);
-    fluxN2.SetSize(num_equations);
-#endif
-  }
-  
-  /**
-   * @brief  hat(F)n = ½(F(u⁺,x)n + F(u⁻,x)n) - ½λ(u⁺ - u⁻)
-   *
-   * @param[in] state1 state value at a point from the first element
-   * (num_equations)
-   * @param[in] state2 state value at a point from the second element
-   * (num_equations)
-   * @param[in] nor normal vector (not a unit vector) (dim)
-   * @param[in] Tr face element transformation
-   * @param[out] flux ½(F(u⁺,x)n + F(u⁻,x)n) - ½λ(u⁺ - u⁻)
-   */
-  real_t Eval(const Vector &state1, const Vector &state2,
-              const Vector &nor, FaceElementTransformations &Tr,
-              Vector &flux) const;
-  
-  real_t ComputeVolumeFlux(const Vector &state1, const Vector &state2,
-                           const Vector &metric1, const Vector &metric2,
-                           Vector &F_tilde) const;
-  real_t ComputeFaceFlux(const Vector &state1, const Vector &state2,
-                         const Vector &nor, Vector &flux) const;
-  
-protected:
-#ifndef MFEM_THREAD_SAFE
-  mutable Vector fluxN1, fluxN2;
-#endif
+  private:
+    const ActiveGasModel gasModel;
+  public:
+    LaxFriedrichsFlux(const NavierStokesFlux &fluxFunction, const ActiveGasModel &gasModel_)
+      : Prandtl::NumericalFlux(fluxFunction), gasModel(gasModel_)
+  {}
+    real_t ComputeFaceFlux(const mfem::Vector &state1, const mfem::Vector &state2,
+                           const mfem::Vector &nor, mfem::Vector &flux) const override;
+    real_t ComputeVolumeFlux(const mfem::Vector &state1, const Vector &state2, const Vector &metric1,
+                             const mfem::Vector &metric2, mfem::Vector &F_tilde) override;
   
 public:
   
