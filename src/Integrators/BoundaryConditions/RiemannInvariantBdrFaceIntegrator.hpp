@@ -17,11 +17,11 @@ private:
 
 public:
     RiemannInvariantBdrFaceIntegrator(std::shared_ptr<LiftingScheme> liftingScheme,
-                                      const IdealGasModel &gasModel_,
+                                      const ActiveGasModel &gasModel_,
                                       const NumericalFlux &rsolver, const int Np, const real_t &time,
                                       VectorFunctionCoefficient &prim_state_fun, bool t_dependent = false);
     RiemannInvariantBdrFaceIntegrator(std::shared_ptr<LiftingScheme> liftingScheme,
-                                      const IdealGasModel &gasModel_,
+                                      const ActiveGasModel &gasModel_,
                                       const NumericalFlux &rsolver, const int Np, const real_t &time, const Vector &prim_state);
     virtual void ComputeOuterInviscidState(const Vector &state1, Vector &state2, FaceElementTransformations &Tr, const IntegrationPoint &ip) override;
     

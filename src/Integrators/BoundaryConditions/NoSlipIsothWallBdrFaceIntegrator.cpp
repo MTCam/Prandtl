@@ -5,7 +5,7 @@ namespace Prandtl
 {
 
 NoSlipIsothWallBdrFaceIntegrator::NoSlipIsothWallBdrFaceIntegrator(std::shared_ptr<LiftingScheme> liftingScheme,
-                                                                   const IdealGasModel &gasModel_,
+                                                                   const ActiveGasModel &gasModel_,
                                                                    const NumericalFlux &rsolver, const int Np,
                                                                    const real_t &time,
                                                                    FunctionCoefficient &T_wall_, VectorFunctionCoefficient &V_wall_,
@@ -14,7 +14,7 @@ NoSlipIsothWallBdrFaceIntegrator::NoSlipIsothWallBdrFaceIntegrator(std::shared_p
   T_wall(T_wall_), V_wall(V_wall_) {}
   
 NoSlipIsothWallBdrFaceIntegrator::NoSlipIsothWallBdrFaceIntegrator(std::shared_ptr<LiftingScheme> liftingScheme,
-                                                                   const IdealGasModel &gasModel_,
+                                                                   const ActiveGasModel &gasModel_,
                                                                    const NumericalFlux &rsolver, const int Np,
                                                                    const real_t &time, real_t &T, const Vector &V)
 : SlipWallBdrFaceIntegrator(liftingScheme, gasModel_, rsolver, Np, time, true, false),

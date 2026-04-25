@@ -7,7 +7,7 @@ namespace Prandtl
 
 constexpr bool debug_boundary = false;
 
-  BdrFaceIntegrator::BdrFaceIntegrator(std::shared_ptr<LiftingScheme> liftingScheme_, const IdealGasModel &gasModel_,
+  BdrFaceIntegrator::BdrFaceIntegrator(std::shared_ptr<LiftingScheme> liftingScheme_, const ActiveGasModel &gasModel_,
                                        const NumericalFlux &rsolver, int Np, const real_t &time, bool constant, bool t_dependent)
     : NonlinearFormIntegrator(), gasModel(gasModel_),
       liftingScheme(liftingScheme_),
