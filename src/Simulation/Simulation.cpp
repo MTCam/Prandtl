@@ -394,8 +394,13 @@ void Simulation::LoadConfig(const std::string &config_file_path)
     gasModel = std::make_shared<ActiveGasModel>(*physicsConstants, *stateLayout);
 
     flux = std::make_shared<NavierStokesFlux>(*gasModel);
-    if (runtime["numerical_flux"].get<std::string>() == "Chandrashekar"){
+    std::string numflux_type(runtime["numerical_flux"].get<std::string>());
+    if (numflux_type == "Chandrashekar"){
+      numericalFlux = std::make_shared<ChandrashekarFlux>(*flux, *gasModel);
+    } else if (numflux_type == "LLF"){
       numericalFlux = std::make_shared<LaxFriedrichsFlux>(*flux, *gasModel);
+    } else if (numflux_type == "HLL"){
+      numericalFlux = std::make_shared<HLLFlux>(*flux, *gasModel);
     } else {
       std::cerr << "Error: Invalid numerical flux specified." << std::endl;
       return;
