@@ -1,9 +1,9 @@
 #pragma once
 
 #include "mfem.hpp"
-#include "prandtl_kernels.hpp"
 #include "NumericalFlux.hpp"
 #include "NavierStokesFlux.hpp"
+#include "prandtl_kernels.hpp"
 
 namespace Prandtl
 {

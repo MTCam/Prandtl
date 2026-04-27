@@ -31,6 +31,7 @@
 #include "RiemannInvariantBdrFaceIntegrator.hpp"
 #include "LaxFriedrichsFlux.hpp"
 #include "ChandrashekarFlux.hpp"
+#include "HLLFlux.hpp"
 #include "Physics.hpp"
 #include "Limiter.hpp"
 #include "PerssonPeraireIndicator.hpp"

@@ -5,8 +5,17 @@
 
 namespace Prandtl
 {
+  // // Current concrete choice: ideal single-species gas + constant transport
+  // using LLFFlux = LaxFriedrichsFlux::InviscidFlux;
+  // using HLLFlux = HLL::InviscidFlux;
+  // using KEPECFlux = Chandrashekar::InviscidFlux;
 
-using namespace mfem;
+  // struct ActivePhysics {
+  //   using GasModel = IdealGasModel;
+  //   using InviscidFlux = LLFFlux;
+  // };
+
+  using namespace mfem;
 
 class Simulation
 {

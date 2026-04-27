@@ -6,7 +6,7 @@
 namespace Prandtl
 {
 
-  class ChandrashekarFlux : public NumericalFlux
+  class ChandrashekarFlux : public Prandtl::NumericalFlux
   {
   private:
     mutable Vector metric;
