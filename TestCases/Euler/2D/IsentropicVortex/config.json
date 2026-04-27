@@ -24,7 +24,7 @@
 
         "clock_simulation": true,
         "variable_dt": true,
-        "cfl": 1.0,
+        "cfl": 0.2,
         "final_time": 2.0,
 
         "R_gas": 287.05,
