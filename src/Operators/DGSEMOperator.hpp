@@ -83,18 +83,6 @@ private:
     mutable DGSEMDeviceCache device_cache;
     mutable bool use_device_path = false;
 
-    void ComputeGlobalEntropyVector(const Vector &u, Vector &global_entropy) const;
-    void ComputeEntropyState(const Vector &u, Vector &e) const;
-    void ComputeGlobalPrimitiveGradVector(const Vector &u, Vector &dudx) const;
-    void ComputeGradPrimFromGradEntropy(const Vector &u, std::vector<mfem::Vector *> &gradState) const;
-    void ComputeGlobalPrimitiveGradVector(const Vector &u, Vector &dudx, Vector &dudy) const;
-    void ComputeGlobalPrimitiveGradVector(const Vector &u, Vector &dudx, Vector &dudy, Vector &dudz) const;
-
-#ifdef SUBCELL_FV_BLENDING
-    void ComputeBlendingCoefficient(const Vector &u) const;
-    void ComputeBlendingCoefficientFromIndicator(const Vector &indicator_field) const;
-    void ComputeIndicatorField(const Vector &u, Vector &indicator_field) const;
-#endif
 
 #ifdef AXISYMMETRIC
     void BuildAxisIndexFromMarker();
@@ -127,6 +115,18 @@ public:
   void UseDevice(bool use_device_path_) const {
     use_device_path = use_device_path_;
   }
+
+#ifdef SUBCELL_FV_BLENDING
+    void ComputeBlendingCoefficient(const Vector &u) const;
+    void ComputeBlendingCoefficientFromIndicator(const Vector &indicator_field) const;
+    void ComputeIndicatorField(const Vector &u, Vector &indicator_field) const;
+#endif
+    void ComputeGlobalEntropyVector(const Vector &u, Vector &global_entropy) const;
+    void ComputeEntropyState(const Vector &u, Vector &e) const;
+    void ComputeGlobalPrimitiveGradVector(const Vector &u, Vector &dudx) const;
+    void ComputeGradPrimFromGradEntropy(const Vector &u, std::vector<mfem::Vector *> &gradState) const;
+    void ComputeGlobalPrimitiveGradVector(const Vector &u, Vector &dudx, Vector &dudy) const;
+    void ComputeGlobalPrimitiveGradVector(const Vector &u, Vector &dudx, Vector &dudy, Vector &dudz) const;
 
   void ComputeIntegralMeasures(const Vector &u, IntegralMeasures &diag) const;
   IntegralMeasures GetIntegralMeasuresBaseline() const { return diag0; }
