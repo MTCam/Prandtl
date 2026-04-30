@@ -1091,11 +1091,20 @@ void Simulation::Run()
       {
         hmin = std::min(pmesh->GetElementSize(i, 1), hmin);
       }
+
     MPI_Allreduce(MPI_IN_PLACE, &hmin, 1, MPITypeMap<real_t>::mpi_type, MPI_MIN, pmesh->GetComm());
-    heff = hmin / ((order+1)*(order+1));
+    // Asymptotically should be hmin / (p+1)^2 due to node clustering, but is pretty wrong at low
+    // order.  This form attempts to smoothly transition to asymptotic form with increasing order
+    real_t p1 = order + 1;
+    real_t alpha1 = std::min(real_t(1.0), std::max(real_t(0.0), (p - 3.0) / 3.0));
+    heff = hmin / ((1.0 - alpha1) * p1 + alpha1 * p1 * p1);
+
     if (debug_simulation && Mpi::Root()){
       std::cout << "Mesh h_min: " << heff << std::endl;
     }
+    const real_t nuscale = \
+      std::max(1.0, physicsConstants->gamma/physicsConstants->Pr);
+
     if (variable_dt && cfl > 0.0)
     {        
         Vector z(sol->Size());
@@ -1103,14 +1112,11 @@ void Simulation::Run()
         real_t max_char_speed = NS->GetMaxCharSpeed();
         MPI_Allreduce(MPI_IN_PLACE, &max_char_speed, 1,  MPITypeMap<real_t>::mpi_type, MPI_MAX, pmesh->GetComm());
         real_t dt_adv = heff / max_char_speed;
-#ifdef PARABOLIC
-        real_t nu_eff = \
-          std::max(1.0, physicsConstants->gamma/physicsConstants->Pr) * physicsConstants->mu / diag0.min_dens;
-        real_t dt_diff = heff * heff / nu_eff;
-        real_t dt_m1 = 1.0 / (1.0/dt_adv + 1.0/dt_diff);
-        dt = cfl / dim / (1.0/dt_adv + 1.0/dt_diff);
-#else
         dt = cfl / dim * dt_adv;
+#ifdef PARABOLIC
+        real_t nu_eff = nuscale * physicsConstants->mu / diag0.min_dens;
+        real_t dt_diff = heff * heff / nu_eff;
+        dt = cfl / dim / (1.0/dt_adv + 1.0/dt_diff);
 #endif
         if(Mpi::Root()){
           std::cout << "Fixed CFL: " << cfl << std::endl
@@ -1261,31 +1267,32 @@ void Simulation::Run()
           real_t max_char_speed = NS->GetMaxCharSpeed();
           MPI_Allreduce(MPI_IN_PLACE, &max_char_speed, 1, MPITypeMap<real_t>::mpi_type, MPI_MAX, pmesh->GetComm());
           real_t dt_adv = heff / max_char_speed;
+          real_t dtest = dt_adv;
 #ifdef PARABOLIC
-          real_t nu_eff = \
-            std::max(1.0, physicsConstants->gamma/physicsConstants->Pr) * physicsConstants->mu / diag.min_dens;
+          real_t nu_eff = nuscale * physicsConstants->mu / diag.min_dens;
           real_t dt_diff = heff * heff / nu_eff;
           real_t dt_m1 = 1.0 / (1.0/dt_adv + 1.0/dt_diff);
-          if(debug_simulation && Mpi::Root()){
-            std::cout << "DT(adv,diff): (" << dt_adv << ", " << dt_diff << ")" << std::endl;
-            std::cout << "Max specific volume: " << 1.0 / diag.min_dens << std::endl;
-            std::cout << "Effective viscosity: " << nu_eff << std::endl;
-            std::cout << "Max wavespeed: " << max_char_speed << std::endl;
-          }
-          if(variable_dt){
-            dt = cfl / dim * dt_m1;
-          } else {
-            cfl_rep = dim * dt / dt_m1;
-          }
-#else
-          if(variable_dt){
-            dt = cfl / dim * dt_adv;
-          } else {
-            cfl_rep = dt * dim  / dt_adv;
-          }
+          dtest = dt_m1;
 #endif
-        }
+          if(variable_dt){
+            dt = cfl / dim * dt_est;
+          } else {
+            cfl_rep = dim * dt / dt_est;
+          }
 
+          if(debug_simulation && Mpi::Root()){
+#ifdef PARABOLIC
+            std::cout << "DT(adv, diff, sim): (" << dt_adv << ", " << dt_diff << ", " << dt << ")" << std::endl;
+            std::cout << "Effective viscosity: " << nu_eff << std::endl;
+#else
+            std::cout << "DT: " << dt_adv << std::endl;
+#endif
+            std::cout << "Max wavespeed: " << max_char_speed << std::endl;
+            std::cout << "Max specific volume: " << 1.0 / diag.min_dens << std::endl;
+          }
+          
+        }
+        
         // Check for completion
         done = (t >= t_final - 1e-8 * dt);
 

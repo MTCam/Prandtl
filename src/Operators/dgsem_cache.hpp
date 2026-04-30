@@ -3,7 +3,8 @@
 #include "mfem.hpp"
 #include "GasModel.hpp"
 #include "bc_cache_utilities.hpp"
-#include "LaxFriedrichsFlux.hpp"
+#include "ActivePhysics.hpp"
+//#include "LaxFriedrichsFlux.hpp"
 
 namespace Prandtl
 {
@@ -68,10 +69,11 @@ namespace Prandtl
       mutable mfem::Vector elWaveSpeed; // size nelements
       mutable mfem::Vector ifWaveSpeed; // size ninterior faces
       mutable mfem::Vector bndWaveSpeed; // size nbnd faces
-      ActiveGasModel gas;
+      ActivePhysics::GasModel gas;
+      ActivePhysics::InviscidFlux iflux;
       //ActivePhysics::InviscidFlux iflux;
       // Prandtl::ChandrashekarFlux::InviscidFlux iflux;
-      Prandtl::LaxFriedrichsFlux::InviscidFlux iflux;
+      //Prandtl::LaxFriedrichsFlux::InviscidFlux iflux;
 
 #ifdef SUBCELL_FV_BLENDING
       mfem::Vector subcellMetricXi;
@@ -137,12 +139,13 @@ namespace Prandtl
     // Physics parts
     real_t *elWaveSpeed_d = nullptr;
     real_t *ifWaveSpeed_d = nullptr;
-    real_t *bndWaveSpeed_d = nullptr;
-    IdealGasModel gas;
-    //ActivePhysics::InviscidFlux iflux;
-
+    real_t *bndWaveSpeed_d = nullptr; 
+    ActivePhysics::GasModel gas;
+    ActivePhysics::InviscidFlux iflux;
+    // IdealGasModel gas;
+    // ActivePhysics::InviscidFlux iflux;
     // Prandtl::ChandrashekarFlux::InviscidFlux iflux;
-    Prandtl::LaxFriedrichsFlux::InviscidFlux iflux;
+    // Prandtl::LaxFriedrichsFlux::InviscidFlux iflux;
 
 #ifdef SUBCELL_FV_BLENDING
     const real_t *subcell_metric_xi_d = nullptr;
