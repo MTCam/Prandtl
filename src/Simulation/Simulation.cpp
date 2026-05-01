@@ -29,24 +29,43 @@
 #include "json.hpp"
 #include <filesystem>
 #include <mpi.h>
-
 namespace Prandtl
 {
 
-Simulation& Simulation::SimulationCreate()
+  Simulation& Simulation::SimulationCreate(std::string device_cfg)
 {
-    static Simulation sim;
-    return sim;
+  static Simulation sim(device_cfg);
+  return sim;
 }
 
-Simulation::Simulation()
+  void Simulation::InitDevice(std::string device_cfg)
+  {
+    if(device_cfg.empty() || device_cfg == "off"){
+      device_cfg = "cpu";
+      use_device_path = false;
+      if(myRank == 0){
+        std::cout << "HOST compute path enabled." << std::endl;
+      }
+    } else {
+      use_device_path = true;
+      if(myRank == 0){
+        std::cout << "DEVICE compute path enabled." << std::endl;
+      }
+    }
+    if(!device_){
+      device_ = std::make_unique<mfem::Device>(device_cfg);
+      if(myRank == 0){ device_->Print(); }
+    }
+  }
+
+  Simulation::Simulation(std::string device_cfg)
     : r_coef([](const Vector &X){ return X[1];}), z_coef([](const Vector &X){ return X[0];})
 {
     Mpi::Init();
     numProcs = Mpi::WorldSize();
     myRank = Mpi::WorldRank();
     Hypre::Init();
-
+    InitDevice(device_cfg);
 
     if (Mpi::Root())
     {
@@ -80,7 +99,7 @@ Simulation::~Simulation()
     }
 }
 
-bool debug_simulation = false;
+constexpr bool debug_simulation = false;
 
 void Simulation::LoadConfig(const std::string &config_file_path)
 {
@@ -107,7 +126,7 @@ void Simulation::LoadConfig(const std::string &config_file_path)
     std::cout.precision(precision);
 
     cfl = runtime.value("cfl", 1.0);
-    print_interval = runtime.value("print_interval", 10);
+    print_interval = runtime.value("print_interval", debug_simulation ?  1 : 100);
     output_file_path = runtime["output_file_path"].get<std::string>();
     paraview_folder = runtime.value("paraview_folder", "ParaView");
     checkpoint_dt = runtime.value("checkpoint_dt", 0.01);
@@ -137,9 +156,14 @@ void Simulation::LoadConfig(const std::string &config_file_path)
     }
 
     nancheck = runtime["nancheck"].get<bool>();
+    if(debug_simulation)
+      nancheck = true;
     if (nancheck)
     {
-        nancheck_steps = runtime.value("nancheck_steps", 1000);
+      nancheck_steps = runtime.value("nancheck_steps", debug_simulation ? 1 : 1000);
+      if(Mpi::Root()){
+        std::cout << "Checking for NANs every " << nancheck_steps << " steps" << std::endl;
+      }
     }
 
     clock_simulation = runtime["clock_simulation"].get<bool>();
@@ -157,7 +181,7 @@ void Simulation::LoadConfig(const std::string &config_file_path)
         runtime.value("R_gas", 287.05),
         runtime.value("mu", 0.02));
 
-
+    
     if (runtime.contains("lifting_scheme"))
     {
         if (runtime["lifting_scheme"].get<std::string>() == "BR1")
@@ -205,21 +229,6 @@ void Simulation::LoadConfig(const std::string &config_file_path)
         std::cerr << "Error: Invalid ODE solver specified." << std::endl;
         return;
     }
-
-    flux = std::make_shared<NavierStokesFlux>(dim,
-        physicsConstants->gamma, physicsConstants->Pr, physicsConstants->mu, physicsConstants->mu0,
-        physicsConstants->mu_bulk, physicsConstants->R_gas, physicsConstants->Ts, physicsConstants->T0);
-
-    if (runtime["numerical_flux"].get<std::string>() == "Chandrashekar")
-    {
-        numericalFlux = std::make_shared<ChandrashekarFlux>(*flux, physicsConstants->gamma);
-    }
-    else
-    {
-        std::cerr << "Error: Invalid numerical flux specified." << std::endl;
-        return;
-    }
-
 
     signature = runtime["conditions"]["initial_conditions"].value("signature", 0);
     std::string IC_key = runtime["conditions"]["initial_conditions"].value("function", "LidDrivenCavityIC");
@@ -270,7 +279,12 @@ void Simulation::LoadConfig(const std::string &config_file_path)
     }
 
     Mesh *mesh;
-    mesh = new Mesh(runtime["mesh_file"].get<std::string>());
+    std::string mesh_file_name(runtime["mesh_file"].get<std::string>());
+    {
+      ScopedTimer timer("ReadMesh");
+      mesh = new Mesh(mesh_file_name);
+    }
+ 
     bool periodic;
     if (runtime.contains("periodic"))
     {
@@ -290,15 +304,21 @@ void Simulation::LoadConfig(const std::string &config_file_path)
         mesh->bdr_attribute_sets.SetAttributeSet("left", left);
         mesh->bdr_attribute_sets.SetAttributeSet("right", right);
     }
-
+    if (!periodic && mesh->GetNBE() == 0){
+      mesh->GenerateBoundaryElements();
+    }
     if (runtime.contains("ser_ref_levels"))
-    {
+      {
         ref_levels = runtime.value("ser_ref_levels", 0);
+        if(Mpi::Root()){
+          std::cout << "Serial mesh refinement levels: " << ref_levels << std::endl;
+        }
         for (int lev = 0; lev < ref_levels; lev++)
         {
             mesh->UniformRefinement();
         }
     }
+    mesh->FinalizeTopology();
 
     if (mesh->GetNE() < Mpi::WorldSize())
     {
@@ -319,35 +339,72 @@ void Simulation::LoadConfig(const std::string &config_file_path)
         mesh->ReorderElements(mesh_ordering);
     }
 
-    if (dim > 1)
-    {
+    // TODO: Let's gate this for now
+    if (dim > 1 && runtime.value("use_nc_mesh", true))
+      {
         mesh->EnsureNCMesh();
-    }
+      }
 
+    // Completely finalize the mesh
+    mesh->FinalizeMesh(0, true);
     pmesh = std::make_shared<ParMesh>(MPI_COMM_WORLD, *mesh);
     mesh->Clear();
-
+    delete mesh;
+    if(myRank == 0 && debug_simulation){
+      std::cout << "Mesh distributed" << std::endl;
+    }
     if (runtime.contains("par_ref_levels"))
     {
         ref_levels = runtime.value("par_ref_levels", 0);
+        if(Mpi::Root()){
+          std::cout << "Parallel mesh refinement levels: " << ref_levels << std::endl;
+        }
         for (int lev = 0; lev < ref_levels; lev++)
         {
             pmesh->UniformRefinement();
         }
     }
 
-    fec = std::make_shared<DG_FECollection>(order, dim, btype);
+    pmesh->ExchangeFaceNbrData();
     fec0 = std::make_shared<DG_FECollection>(0, dim);
-    vfes = std::make_shared<ParFiniteElementSpace>(pmesh.get(), fec.get(), num_equations, ordering);
     fes0 = std::make_shared<ParFiniteElementSpace>(pmesh.get(), fec0.get());
+
+    fec = std::make_shared<DG_FECollection>(order, dim, btype);
+    vfes = std::make_shared<ParFiniteElementSpace>(pmesh.get(), fec.get(), num_equations, ordering);
     dfes = std::make_unique<ParFiniteElementSpace>(pmesh.get(), fec.get(), dim, ordering);
     fes = std::make_unique<ParFiniteElementSpace>(pmesh.get(), fec.get());
 
+    // Let's do an initial exchange to get the data structures populated
+    vfes->ExchangeFaceNbrData();
+    fes0->ExchangeFaceNbrData();
+    dfes->ExchangeFaceNbrData();
+    fes->ExchangeFaceNbrData();
+
     num_dofs_scalar = fes->GetNDofs();
     num_dofs_system = vfes->GetVSize();
-    
-    // sol = std::make_shared<ParGridFunction>(vfes.get());
+    int points_per_element = std::pow(order+1, dim);
+    int num_elements = num_dofs_scalar / points_per_element;
+    MPI_Allreduce(MPI_IN_PLACE, &num_elements, 1, MPI_INTEGER, MPI_SUM, pmesh->GetComm());
 
+    if(myRank == 0 && debug_simulation){
+      std::cout << "Initial exchanges complete." << std::endl;
+    }
+
+    stateLayout = std::make_shared<StateLayout>(dim, num_dofs_scalar);
+    gasModel = std::make_shared<IdealGasModel>(*physicsConstants, *stateLayout);
+
+    flux = std::make_shared<NavierStokesFlux>(*gasModel);
+    if (runtime["numerical_flux"].get<std::string>() == "Chandrashekar"){
+      numericalFlux = std::make_shared<ChandrashekarFlux>(*flux, *gasModel);
+    } else {
+      std::cerr << "Error: Invalid numerical flux specified." << std::endl;
+      return;
+    }
+
+    if(myRank == 0 && debug_simulation){
+      std::cout << "StateLayout and GasModel created." << std::endl;
+    }
+ 
     if (checkpoint_load)
     {
         real_t root_t = 0.0;
@@ -386,6 +443,10 @@ void Simulation::LoadConfig(const std::string &config_file_path)
 
         MPI_Barrier(pmesh->GetComm());
 
+        if(myRank == 0 && debug_simulation){
+          std::cout << "Checkpoint loaded @ (" << ti << ", " << t << ")"
+                    << std::endl;
+        }
     }
     else 
     {
@@ -394,6 +455,10 @@ void Simulation::LoadConfig(const std::string &config_file_path)
 
         t = 0.0;
         ti = 0;
+
+        if(myRank == 0 && debug_simulation){
+          std::cout << "Run is not a restart: (step=0, t=0)" << std::endl;
+        }
     }
 
 #ifdef AXISYMMETRIC
@@ -416,6 +481,7 @@ void Simulation::LoadConfig(const std::string &config_file_path)
     if (debug_simulation)
     {
         real_t *sol_state = sol->GetData();
+        Prandtl::FieldStateView fields{sol_state};
         std::vector<std::pair<real_t, real_t>> zr(num_dofs_scalar, {0.0, 0.0});
 
         std::cout << "\n === sol state rU values after weighting by r ===\n";
@@ -444,14 +510,14 @@ void Simulation::LoadConfig(const std::string &config_file_path)
 
         for (int i = 0; i < num_dofs_scalar; ++i)
         {
-            real_t rho = sol_state[0*num_dofs_scalar+i];
-            real_t rhoU = sol_state[1*num_dofs_scalar+i];
-            real_t rhoV = sol_state[2*num_dofs_scalar+i];
-            real_t E = sol_state[3*num_dofs_scalar+i];
-            real_t z = zr[i].first;
-            real_t r = zr[i].second;
+          real_t rho = fields.mass(*stateLayout, i);
+          real_t rhoU = fields.momentum_x(*stateLayout, i);
+          real_t rhoV = fields.momentum_y(*stateLayout, i);
+          real_t E = fields.energy(*stateLayout, i);
+          real_t z = zr[i].first;
+          real_t r = zr[i].second;
 
-            std::cout << " DOF#" << std::setw(2) << i 
+          std::cout << " DOF#" << std::setw(2) << i 
                     << " (z, r) = ("<< std::fixed << std::setprecision(2) << std::setw(4) << z //std::round(z*100)/100.0
                     << ", " << std::setw(4) << std::round(r*100)/100.0 << "),  state = ["
                     << std::setw(4) << std::round(rho*100)/100.0 << ", "
@@ -469,9 +535,9 @@ void Simulation::LoadConfig(const std::string &config_file_path)
     eta = std::make_shared<ParGridFunction>(fes0.get());
     alpha = std::make_shared<ParGridFunction>(fes0.get());
 
-    dudx = std::make_shared<ParGridFunction>(vfes.get());
-    dudy = std::make_shared<ParGridFunction>(vfes.get());
-    dudz = std::make_shared<ParGridFunction>(vfes.get());
+    std::vector<std::shared_ptr<ParGridFunction> > grad_u(dim);
+    for(int idim = 0;idim < dim;idim++)
+      grad_u[idim] = std::make_shared<ParGridFunction>(vfes.get());
 
     Geometry::Type gtype = vfes->GetFE(0)->GetGeomType();
 
@@ -484,9 +550,25 @@ void Simulation::LoadConfig(const std::string &config_file_path)
         alpha_max = 0.5;
     }
 
-    NS = std::make_unique<DGSEMOperator>(vfes, fes0, pmesh, eta, alpha, dudx, dudy, dudz,
-        std::make_unique<Prandtl::DGSEMIntegrator>(pmesh, fes0, alpha, liftingScheme, *numericalFlux, order + 1, physicsConstants->gamma),
-        std::make_unique<Prandtl::PerssonPeraireIndicator>(vfes, fes0, eta, std::make_shared<Prandtl::ModalBasis>(*fec, gtype, order, dim), physicsConstants->gamma), physicsConstants->gamma, r_gf, alpha_max);
+    auto integrator =
+      std::make_unique<Prandtl::DGSEMIntegrator>(pmesh, fes0, alpha, liftingScheme, *numericalFlux, order+1);
+
+    auto indicator =
+      std::make_unique<Prandtl::PerssonPeraireIndicator>(vfes, fes0, eta,
+                                                         std::make_unique<Prandtl::ModalBasis>(*fec, gtype, order, dim),
+                                                         *gasModel);
+
+    NS = std::make_unique<DGSEMOperator>(vfes, fes0, pmesh, eta, alpha, grad_u, std::move(integrator),
+                                         std::move(indicator), *gasModel, r_gf, alpha_max);
+    NS->UseDevice(use_device_path);
+
+    if(myRank == 0 && debug_simulation){
+      std::cout << "DGSEMOperator created." << std::endl;
+    }
+
+    mfem::Vector bc_vector_data;
+    mfem::Vector bc_scalar_data;
+    mfem::Array<Prandtl::BCDescriptor> bc_descriptors;
 
     if (runtime["conditions"].contains("boundary_conditions"))
     {
@@ -515,49 +597,94 @@ void Simulation::LoadConfig(const std::string &config_file_path)
             }
             bdr_marker_vector.push_back(marker);
 
+            Prandtl::BCDescriptor bc_descr{};
+            bc_descr.flags = 0;
+            bc_descr.data_index = -1;
+            bc_descr.bdr_attr = -1;
+            bc_descr.data_kind = int(Prandtl::BCDataKind::None);
+            bc_descr.type = int(Prandtl::BCType::Invalid);
+
             auto bc_props = boundary.value();  // This is a JSON object.
             std::string type = bc_props["type"].get<std::string>();
-
-            if (type == "symmetry" || type == "axis")
-            {
-                auto symmetry = std::make_unique<SymmetryBdrFaceIntegrator>(liftingScheme, *numericalFlux, order + 1, NS->GetTimeRef(), physicsConstants->gamma, true, false);
-
+            
+            if (type == "symmetry")
+              {
+                auto symmetry = std::make_unique<SymmetryBdrFaceIntegrator>(liftingScheme, *gasModel, *numericalFlux,
+                                                                            order + 1, NS->GetTimeRef(), true, false);
+                
                 NS->AddBdrFaceIntegrator(symmetry.release(), bdr_marker_vector.back());
-
-#ifdef AXISYMMETRIC
-                if (type == "axis")
-                {
-                   NS->SetAxisBoundaryMarker(bdr_marker_vector.back());
-                   NS->SetLowOrderAxis(true);
-                }
+                bc_descr.type = int(Prandtl::BCType::Symmetry);
+                bc_descr.data_kind = int(Prandtl::BCDataKind::None);
+              }
+            else if (type == "axis")
+              {
+#ifndef AXISYMMETRIC
+                MFEM_ABORT("AXIS BC requires axisymmetry build.");
+#else
+                // bc_descr.type = int(Prandtl::BCType::Axis);
+                auto symmetry = std::make_unique<SymmetryBdrFaceIntegrator>(liftingScheme, *gasModel, *numericalFlux,
+                                                                            order + 1, NS->GetTimeRef(), true, false);
+                
+                NS->AddBdrFaceIntegrator(symmetry.release(), bdr_marker_vector.back());
+                NS->SetAxisBoundaryMarker(bdr_marker_vector.back());
+                NS->SetLowOrderAxis(true);
 #endif
-            }
+              }
             else if (type == "slip")
-            {
-                auto slip = std::make_unique<SlipWallBdrFaceIntegrator>(liftingScheme, *numericalFlux, order + 1, NS->GetTimeRef(), physicsConstants->gamma, true, false);
-
+              {
+                auto slip = std::make_unique<SlipWallBdrFaceIntegrator>(liftingScheme, *gasModel, *numericalFlux,
+                                                                        order + 1, NS->GetTimeRef(), true, false);
+                
                 NS->AddBdrFaceIntegrator(slip.release(), bdr_marker_vector.back());
-
-            }
+                bc_descr.type = int(Prandtl::BCType::SlipWall);
+                bc_descr.data_kind = int(Prandtl::BCDataKind::None);
+              }
             else if (type == "no-slip-adiabatic")
-            {   
+              {
+                // if(debug_simulation && Mpi::Root()){
+                //  std::cout << "Detected noslip boundary... configuring." << std::endl;
+                // }
+                bc_descr.type = int(Prandtl::BCType::NoSlipAdiab);
+                bc_descr.data_kind = int(Prandtl::BCDataKind::VectorAndScalarConstant);
                 if (bc_props["velocity"].contains("vector"))
-                {
+                  {
                     std::string velBC_key = bc_props["velocity"]["vector"].get<std::string>();
                     std::string heatBC_key = bc_props["heat"]["scalar"].get<std::string>();
+                    // std::string state_key = bc_props["vector"].get<std::string>();
+                    auto vel_bc = ConditionFactory::Instance().GetVectorBoundaryCondition(velBC_key);
+                    auto heat_bc = ConditionFactory::Instance().GetScalarBoundaryCondition(heatBC_key);
+
+                    mfem::Vector bc_data(vel_bc.Size() + 1);
+                    std::ostringstream Ostr;
+                    Ostr << "Wall velocity: < ";
+                    for(int ivec = 0;ivec < vel_bc.Size();ivec++){
+                      bc_data[ivec] = vel_bc[ivec];
+                      Ostr << vel_bc[ivec] << " ";
+                    }
+                    Ostr << ">" << std::endl;
+                    Ostr << "Heat: " << heat_bc << std::endl;
+                    bc_data[vel_bc.Size()] = heat_bc;
+                    bc_descr.data_index = Prandtl::AppendBCVectorPayload(bc_vector_data, bc_data);                    
+                    Ostr << "bc_vector_data index: " << bc_descr.data_index << std::endl
+                         << "BC Data So Far: [";
+                    for(int ivec=0;ivec < bc_vector_data.Size();ivec++){
+                      Ostr << bc_vector_data[ivec] << " ";
+                    }
+                    Ostr << "]" << std::endl;
+                    // std::cout << Ostr.str();
                     NS->AddBdrFaceIntegrator(
-                        new NoSlipAdiabWallBdrFaceIntegrator(liftingScheme, *numericalFlux, order + 1, NS->GetTimeRef(), physicsConstants->gamma,
-                            ConditionFactory::Instance().GetScalarBoundaryCondition(heatBC_key),
-                            ConditionFactory::Instance().GetVectorBoundaryCondition(velBC_key)), bdr_marker_vector.back());
-                }
+                                             new NoSlipAdiabWallBdrFaceIntegrator(liftingScheme, *gasModel, *numericalFlux, order + 1, NS->GetTimeRef(),
+                                                                                  ConditionFactory::Instance().GetScalarBoundaryCondition(heatBC_key),
+                                                                                  ConditionFactory::Instance().GetVectorBoundaryCondition(velBC_key)), bdr_marker_vector.back());
+                  }
                 else if (bc_props["velocity"].contains("function"))
-                {
+                  {
                     std::shared_ptr<VectorFunctionCoefficient> velBC;
                     std::shared_ptr<FunctionCoefficient> heatBC;
-
+                    
                     std::string velBC_key = bc_props["velocity"]["function"].get<std::string>();
                     std::string heatBC_key = bc_props["heat"]["function"].get<std::string>();
-
+                    
                     bool td;
                     if (bc_props["velocity"].contains("time_dependent"))
                     {
@@ -630,7 +757,11 @@ void Simulation::LoadConfig(const std::string &config_file_path)
                     }
 
                     NS->AddBdrFaceIntegrator(
-                        new NoSlipAdiabWallBdrFaceIntegrator(liftingScheme, *numericalFlux, order + 1, NS->GetTimeRef(), physicsConstants->gamma, *heatBC, *velBC, td), bdr_marker_vector.back());
+                                             new NoSlipAdiabWallBdrFaceIntegrator(liftingScheme, *gasModel,
+                                                                                  *numericalFlux, order + 1, NS->GetTimeRef(),
+                                                                                  *heatBC, *velBC, td),
+                                             bdr_marker_vector.back());
+                    
                 }
                 else
                 {
@@ -644,21 +775,27 @@ void Simulation::LoadConfig(const std::string &config_file_path)
             }
             else if (type == "supersonic-outflow")
             {
-                auto outlet = std::make_unique<SupersonicOutflowBdrFaceIntegrator>(liftingScheme, *numericalFlux, order + 1, NS->GetTimeRef(), physicsConstants->gamma);
+              auto outlet = std::make_unique<SupersonicOutflowBdrFaceIntegrator>(liftingScheme, *gasModel,
+                                                                                 *numericalFlux, order + 1, NS->GetTimeRef());
 
                 NS->AddBdrFaceIntegrator(outlet.release(), bdr_marker_vector.back());
-
+                bc_descr.type = int(Prandtl::BCType::SupersonicOutflow);
+                bc_descr.data_kind = int(Prandtl::BCDataKind::None);
             }
             else if (type == "supersonic-inflow")
             {
                 if (bc_props.contains("vector"))
                 {
                 std::string state_key = bc_props["vector"].get<std::string>();
-                auto inlet = std::make_unique<SupersonicInflowBdrFaceIntegrator>(liftingScheme, *numericalFlux, order + 1, NS->GetTimeRef(), physicsConstants->gamma,
-                        ConditionFactory::Instance().GetVectorBoundaryCondition(state_key));
-
-                    NS->AddBdrFaceIntegrator(inlet.release(), bdr_marker_vector.back());
-
+                mfem::Vector bc_state = ConditionFactory::Instance().GetVectorBoundaryCondition(state_key);
+                auto inlet = std::make_unique<SupersonicInflowBdrFaceIntegrator>(
+                                                              liftingScheme, *gasModel, 
+                                                              *numericalFlux, order + 1, NS->GetTimeRef(), bc_state);
+                NS->AddBdrFaceIntegrator(inlet.release(), bdr_marker_vector.back());
+                const int data_offset = Prandtl::AppendBCVectorPayload(bc_vector_data, bc_state);
+                bc_descr.type = int(Prandtl::BCType::SupersonicInflow);
+                bc_descr.data_kind = int(Prandtl::BCDataKind::VectorConstant);
+                bc_descr.data_index = data_offset;
                 }
                 else
                 {
@@ -716,8 +853,8 @@ void Simulation::LoadConfig(const std::string &config_file_path)
                         std::cerr << "Error: Invalid boundary condition signature." << std::endl;
                         return;
                     }
-                    auto inlet = std::make_unique<SupersonicInflowBdrFaceIntegrator>(liftingScheme, *numericalFlux, order + 1, NS->GetTimeRef(), physicsConstants->gamma,
-                        *stateBC, td);
+                    auto inlet = std::make_unique<SupersonicInflowBdrFaceIntegrator>(liftingScheme, *gasModel, *numericalFlux,
+                                                                                     order + 1, NS->GetTimeRef(), *stateBC, td);
 
                     NS->AddBdrFaceIntegrator(inlet.release(), bdr_marker_vector.back());
 
@@ -728,7 +865,8 @@ void Simulation::LoadConfig(const std::string &config_file_path)
                 if (bc_props.contains("vector"))
                 {
                     std::string state_key = bc_props["vector"].get<std::string>();
-                    NS->AddBdrFaceIntegrator(new SpecifiedStateBdrFaceIntegrator(liftingScheme, *numericalFlux, order + 1, NS->GetTimeRef(), physicsConstants->gamma,
+                    NS->AddBdrFaceIntegrator(new SpecifiedStateBdrFaceIntegrator(liftingScheme, *gasModel, *numericalFlux,
+                                                                                 order + 1, NS->GetTimeRef(),
                         ConditionFactory::Instance().GetVectorBoundaryCondition(state_key)), bdr_marker_vector.back());
                 }
                 else
@@ -787,7 +925,8 @@ void Simulation::LoadConfig(const std::string &config_file_path)
                         std::cerr << "Error: Invalid boundary condition signature." << std::endl;
                         return;
                     }
-                    NS->AddBdrFaceIntegrator(new SpecifiedStateBdrFaceIntegrator(liftingScheme, *numericalFlux, order + 1, NS->GetTimeRef(), physicsConstants->gamma, *stateBC, td), bdr_marker_vector.back());
+                    NS->AddBdrFaceIntegrator(new SpecifiedStateBdrFaceIntegrator(liftingScheme, *gasModel, *numericalFlux, order + 1, NS->GetTimeRef(),
+                                                                                 *stateBC, td), bdr_marker_vector.back());
                 }
             }
             else
@@ -795,21 +934,40 @@ void Simulation::LoadConfig(const std::string &config_file_path)
                 std::cerr << "Error: Invalid boundary condition type specified." << std::endl;
                 return;
             }
+            bc_descriptors.Append(bc_descr);
         }
+    }
+
+    if(myRank == 0 && debug_simulation){
+      std::cout << "Boundary conditions configured." << std::endl;
+    }
+
+    // Set up the operator cache
+    NS->SetBCDescriptorData(bc_descriptors, bc_scalar_data, bc_vector_data);
+    //    NS->SetTime(t); // Finalize does this.
+    NS->Finalize(t);
+
+    if(myRank == 0 && debug_simulation){
+      std::cout << "DGSEMOperator finalized." << std::endl;
     }
 
     if (Mpi::Root())
     {
-        std::cout << "The Number of Degrees of Freedom per Conservative Variable per Rank: " << num_dofs_scalar << std::endl;
-        std::cout << "The Number of Degrees of Freedom (System) per Rank: " << num_dofs_system << std::endl;
+      std::cout << "The Number of Equations being Solved: " << num_equations << std::endl;
+      std::cout << "The Total Number of Order " << order << " Elements in the Simulation: " << num_elements << std::endl;
+      std::cout << "The Total Number of DOFs in the Simulation (All Eqns/All Ranks): "
+                << num_elements*points_per_element*num_equations << std::endl;
+      std::cout << "The Total Number of DOFs per Equation per Element: " << points_per_element << std::endl;
+      std::cout << "The Average Number of Elements per Rank: " << num_elements / numProcs << std::endl;
+      std::cout << "The Number of DOFs per Equation per Rank: " << num_dofs_scalar << std::endl;
+      std::cout << "The Number of DOFs (System) per Rank: " << num_dofs_system << std::endl;
     }
 
-    NS->SetTime(t);
     ode_solver->Init(*NS);
 
-    rho.MakeRef(fes.get(), *sol, 0);
-    mom.MakeRef(dfes.get(), *sol, num_dofs_scalar);
-    energy.MakeRef(fes.get(), *sol, (dim + 1) * num_dofs_scalar);
+    rho.MakeRef(fes.get(), *sol, offset_mass(*stateLayout));
+    mom.MakeRef(dfes.get(), *sol, offset_momentum(*stateLayout));
+    energy.MakeRef(fes.get(), *sol, offset_energy(*stateLayout));
 
     u = std::make_unique<ParGridFunction>(fes.get());
     if (dim > 1)
@@ -848,7 +1006,9 @@ void Simulation::LoadConfig(const std::string &config_file_path)
                 }
             }
             pd->RegisterField("Pressure", p.get());
+#ifdef SUBCELL_FV_BLENDING
             pd->RegisterField("Blending Coeff", alpha.get());
+#endif
             pd->SetLevelsOfDetail(order);
             pd->SetDataFormat(VTKFormat::BINARY);
             pd->SetHighOrderOutput(true);
@@ -875,7 +1035,9 @@ void Simulation::LoadConfig(const std::string &config_file_path)
                 }
             }
             vd->RegisterField("Pressure", p.get());
+#ifdef SUBCELL_FV_BLENDING
             vd->RegisterField("Blending Coeff", alpha.get());
+#endif
         }
     }
 }
@@ -889,22 +1051,65 @@ void Simulation::Run()
         std::cout << "================================================" << std::endl;
     }
 
+    IntegralMeasures diag;
+    diag.mass = 0.0;
+    diag.ke = 0.0;
+    diag.en = 0.0;
+    diag.max_press = 0.0;
+    diag.min_press = 0.0;
+    diag.max_dens = 0.0;
+    diag.min_dens = 0.0;
+    diag.max_temp = 0.0;
+    diag.min_temp = 0.0;
+
+    // print the first node:
+#ifdef AXISYMMETRIC
+    Vector U_cons(sol->Size());
+    NS->RecoverStateFromWeighted(*sol, U_cons);
+    ConservativeToPrimitive(U_cons, *rho_axi, *u, *v, *p);
+    NS->ComputeIntegralMeasures(U_cons, diag);
+#else
+    NS->ComputeIntegralMeasures(*sol, diag);
+#endif
+
+    IntegralMeasures diag0 = NS->GetIntegralMeasuresBaseline();
+
     // Get the minimum characteristic element size and compute the initial time step if time step is variable
- 
+    real_t heff = infinity();
+    hmin = infinity();
+    for (int i = 0; i < pmesh->GetNE(); i++)
+      {
+        hmin = std::min(pmesh->GetElementSize(i, 1), hmin);
+      }
+    MPI_Allreduce(MPI_IN_PLACE, &hmin, 1, MPITypeMap<real_t>::mpi_type, MPI_MIN, pmesh->GetComm());
+    heff = hmin / ((order+1)*(order+1));
+    if (debug_simulation && Mpi::Root()){
+      std::cout << "Mesh h_min: " << heff << std::endl;
+    }
     if (variable_dt && cfl > 0.0)
-    {
-        
-        hmin = infinity();
-        for (int i = 0; i < pmesh->GetNE(); i++)
-        {
-            hmin = std::min(pmesh->GetElementSize(i, 1), hmin);
-        }
-        MPI_Allreduce(MPI_IN_PLACE, &hmin, 1, MPITypeMap<real_t>::mpi_type, MPI_MIN, pmesh->GetComm());
+    {        
         Vector z(sol->Size());
         NS->Mult(*sol, z);
         real_t max_char_speed = NS->GetMaxCharSpeed();
         MPI_Allreduce(MPI_IN_PLACE, &max_char_speed, 1,  MPITypeMap<real_t>::mpi_type, MPI_MAX, pmesh->GetComm());
-        dt = cfl * hmin / (max_char_speed * std::pow(order + 1, 2));
+        real_t dt_adv = heff / max_char_speed;
+#ifdef PARABOLIC
+        real_t nu_eff = \
+          std::max(1.0, physicsConstants->gamma/physicsConstants->Pr) * physicsConstants->mu / diag0.min_dens;
+        real_t dt_diff = heff * heff / nu_eff;
+        real_t dt_m1 = 1.0 / (1.0/dt_adv + 1.0/dt_diff);
+        dt = cfl / dim / (1.0/dt_adv + 1.0/dt_diff);
+#else
+        dt = cfl / dim * dt_adv;
+#endif
+        if(Mpi::Root()){
+          std::cout << "Fixed CFL: " << cfl << std::endl
+                    << "Initial Timestep DT: " << dt << std::endl;
+        }
+    } else {
+      if(Mpi::Root()){
+        std::cout << "Fixed Timestep DT: " << dt << std::endl;
+      }
     }
 
     // Clock the simulation?
@@ -914,34 +1119,49 @@ void Simulation::Run()
         tic_toc.Start();
     }
 
-    // print the first node:
-#ifdef AXISYMMETRIC
-        Vector U_cons(sol->Size());
-        NS->RecoverStateFromWeighted(*sol, U_cons);
-        ConservativeToPrimitive(U_cons, *rho_axi, *u, *v, *p);
-#endif
     if (Mpi::Root())
         {
-            int i = 0;  
+          int i = 0;
 #ifdef AXISYMMETRIC
-            real_t rhoi = (*rho_axi)(i);
-            real_t ui = (*u)(i);               
-            real_t vi = (*v)(i);
-            real_t pi = (*p)(i);
-
-            NS->SetAxisFloorsFromFreestream(rhoi, pi);
+          real_t rhoi = (*rho_axi)(i);
+          real_t ui = (*u)(i);               
+          real_t vi = (*v)(i);
+          real_t pi = (*p)(i);
+          
+          NS->SetAxisFloorsFromFreestream(rhoi, pi);
 #else
-            real_t rhoi = rho(i);
-            real_t ui = mom(i)/rhoi;               
-            real_t vi = mom(i + num_dofs_scalar)/rhoi;
-            real_t pi = physicsConstants->gammaM1 * (energy(i) - 0.5*rhoi*ui*ui);
+          real_t *sol_state = sol->GetData();
+          Prandtl::DofStateView dofState{sol_state, i};
+          real_t rhoi = gasModel->density(dofState);
+          real_t ui = gasModel->velocity(dofState, 0);
+          real_t vi = dim > 1 ? gasModel->velocity(dofState, 1) : 0.0;
+          real_t wi = dim > 2 ? gasModel->velocity(dofState, 2) : 0.0;
+          real_t pi = gasModel->pressure(dofState);
+          // bug: incorrect calculation of kinetic energy
+          //real_t pi = physicsConstants->gammaM1 * (energy(i) - 0.5*rhoi*ui*ui);
 #endif
-            std::cout << "***  initial at dof #" << i << ":  "
-                        << "rho = " << std::round(rhoi*10000)/10000 << ",  u = " << std::round(ui*100)/100 << ",  v = " << std::round(vi*100)/100 << ",  p = " << std::round(pi*100)/100 << "\n";
+          std::cout << "***  initial at dof #" << i << ":  "
+                    << "rho = " << std::round(rhoi*10000)/10000 << ",  velocity = <"
+                    << std::round(ui*100)/100;
+          if(dim > 1){
+            std::cout << ", " << std::round(vi*100)/100;
+            if(dim > 2){
+              std::cout << ", " << std::round(wi*100)/100;
+            }
+          }
+          std::cout << ">, p = " << std::round(pi*100)/100 << std::endl;
+          std::cout << "Total Mass:           " << diag0.mass << std::endl 
+                    << "Total Energy:         " << diag0.en << std::endl
+                    << "Total Kinetic Energy: " << diag0.ke << std::endl;
         }
     // Visualize the initial condition?
     if (visualize)
     {
+      if(Mpi::Root()){
+        std::cout << "Writing initial soln..." << std::endl;
+      }
+      ScopedTimer timer("VisInit");
+
 #ifdef AXISYMMETRIC
 
         if (debug_simulation)
@@ -960,21 +1180,20 @@ void Simulation::Run()
 
         
 #else
+        const real_t *sol_state = sol->HostRead();
         for (int i = 0; i < num_dofs_scalar; i++)
-        {
-            (*u)(i) = mom(i) / rho(i);
-            V_sq = (*u)(i) * (*u)(i);
+          {
+            Prandtl::DofStateView dofState{sol_state, i};
+            (*u)(i) = gasModel->velocity(dofState, 0);
             if (dim > 1)
             {
-                (*v)(i) = mom(i + num_dofs_scalar) / rho(i);
-                V_sq += (*v)(i) * (*v)(i);
-                if (dim > 2)
+              (*v)(i) = gasModel->velocity(dofState, 1);
+              if (dim > 2)
                 {
-                    (*w)(i) = mom(i + 2 * num_dofs_scalar) / rho(i);
-                    V_sq += (*w)(i) * (*w)(i);
+                  (*w)(i) = gasModel->velocity(dofState, 2);
                 }
             }
-            (*p)(i) = physicsConstants->gammaM1 * (energy(i) - 0.5 * rho(i) * V_sq);
+            (*p)(i) = gasModel->pressure(dofState);
         }
 #endif
 
@@ -995,34 +1214,73 @@ void Simulation::Run()
     
     while (!done)
     {
-        
-        if (debug_simulation)
+ 
+      if (debug_simulation)
         {
+          MPI_Barrier(pmesh->GetComm());
+          if(Mpi::Root()){
             std::cout << "################################################################################" << "\n";
             std::cout << "######################### [TIME STEP = " << ti << ", TIME = " << t << "] #########################" << "\n";
             std::cout << "################################################################################" << "\n";
+          }
         }
-    
 
         // Compute the time step size
         dt_real = std::min(dt, t_final - t);
 
         // Perform the time step
-        ode_solver->Step(*sol, t, dt_real);
-
-        // Update the time step size with CFL?
-        if (variable_dt && cfl > 0)
         {
-            real_t max_char_speed = NS->GetMaxCharSpeed();
-            MPI_Allreduce(MPI_IN_PLACE, &max_char_speed, 1, MPITypeMap<real_t>::mpi_type, MPI_MAX, pmesh->GetComm());
-            dt = cfl * hmin / (max_char_speed * std::pow(order + 1, 2));
+          ScopedTimer timer("Timestep");
+          ode_solver->Step(*sol, t, dt_real);
         }
         ti++;
+
+        real_t cfl_rep = 0.0;
+        if (ti % print_interval == 0 || (variable_dt && cfl > 0) || debug_simulation){
+#ifdef AXISYMMETRIC
+          Vector U_cons(sol->Size());
+          NS->RecoverStateFromWeighted(*sol, U_cons);
+          NS->ComputeIntegralMeasures(U_cons, diag);
+#else
+          NS->ComputeIntegralMeasures(*sol, diag);
+#endif
+        }
+        // Update the time step size with CFL?
+        if ((variable_dt && cfl > 0) || (ti%print_interval == 0) || debug_simulation)
+        {
+          real_t max_char_speed = NS->GetMaxCharSpeed();
+          MPI_Allreduce(MPI_IN_PLACE, &max_char_speed, 1, MPITypeMap<real_t>::mpi_type, MPI_MAX, pmesh->GetComm());
+          real_t dt_adv = heff / max_char_speed;
+#ifdef PARABOLIC
+          real_t nu_eff = \
+            std::max(1.0, physicsConstants->gamma/physicsConstants->Pr) * physicsConstants->mu / diag.min_dens;
+          real_t dt_diff = heff * heff / nu_eff;
+          real_t dt_m1 = 1.0 / (1.0/dt_adv + 1.0/dt_diff);
+          if(debug_simulation && Mpi::Root()){
+            std::cout << "DT(adv,diff): (" << dt_adv << ", " << dt_diff << ")" << std::endl;
+            std::cout << "Max specific volume: " << 1.0 / diag.min_dens << std::endl;
+            std::cout << "Effective viscosity: " << nu_eff << std::endl;
+            std::cout << "Max wavespeed: " << max_char_speed << std::endl;
+          }
+          if(variable_dt){
+            dt = cfl / dim * dt_m1;
+          } else {
+            cfl_rep = dim * dt / dt_m1;
+          }
+#else
+          if(variable_dt){
+            dt = cfl / dim * dt_adv;
+          } else {
+            cfl_rep = dt * dim  / dt_adv;
+          }
+#endif
+        }
 
         // Check for completion
         done = (t >= t_final - 1e-8 * dt);
 
         // Check for NaN/Inf values?
+        rho.HostRead();
         if (nancheck && ti % nancheck_steps == 0)
         {
             for (const real_t &val : rho)
@@ -1035,30 +1293,28 @@ void Simulation::Run()
             }
         }
         // Visualize the solution?
-        // if (visualize && (done || ti % vis_steps == 0))
-        if (visualize && (done || t >= next_save_t))
+        if (visualize && (done || t >= next_save_t || ti % vis_steps == 0))
         {
-        
+
 #ifdef AXISYMMETRIC
         Vector U_cons(sol->Size());
         NS->RecoverStateFromWeighted(*sol, U_cons);
         ConservativeToPrimitive(U_cons, *rho_axi, *u, *v, *p);
 #else
+        const real_t *sol_state = sol->HostRead();
         for (int i = 0; i < num_dofs_scalar; i++)
         {       
-                (*u)(i) = mom(i) / rho(i);
-                V_sq = (*u)(i) * (*u)(i);
-                if (dim > 1)
+          Prandtl::DofStateView dofState{sol_state, i};
+          (*u)(i) = gasModel->velocity(dofState, 0);
+          if (dim > 1)
+            {
+              (*v)(i) = gasModel->velocity(dofState, 1);
+              if (dim > 2)
                 {
-                    (*v)(i) = mom(i + num_dofs_scalar) / rho(i);
-                    V_sq += (*v)(i) * (*v)(i);
-                    if (dim > 2)
-                    {
-                        (*w)(i) = mom(i + 2 * num_dofs_scalar) / rho(i);
-                        V_sq += (*w)(i) * (*w)(i);
-                    }
+                  (*w)(i) = gasModel->velocity(dofState, 2);
                 }
-                (*p)(i) = physicsConstants->gammaM1 * (energy(i) - 0.5 * rho(i) * V_sq);
+            }
+          (*p)(i) = gasModel->pressure(dofState);
         }
 #endif
 
@@ -1116,11 +1372,27 @@ void Simulation::Run()
             next_checkpoint_t += checkpoint_dt;
         }
 
-        if (ti % print_interval == 0)
+        if (ti % print_interval == 0 || debug_simulation)
         {
+          real_t ke0 = diag0.ke;
+          if(ke0 == 0.0){ ke0 = 1.0; };
             if (Mpi::Root())
             {
-                std::cout << "time step: " << ti << ", time: " << t << ", dt: " << dt << "\n";
+              std::ostringstream Ostr;
+              Ostr << "time step: " << ti << ", time: " << t;
+              if(variable_dt){
+                Ostr << ", dt: " << dt;
+              } else {
+                Ostr << ", cfl: " << cfl_rep;
+              }
+              Ostr << std::endl
+                   << "rho(" << diag.min_dens << "," << diag.max_dens << "), "
+                   << "p(" << diag.min_press << "," << diag.max_press << "), "
+                   << "T(" << diag.min_temp << "," << diag.max_temp << ")" << std::endl
+                   << "TotalChange: Mass: " << (diag.mass - diag0.mass) / diag0.mass
+                   << ", Energy: " <<  (diag.en - diag0.en) / diag0.en
+                   << ", K.E.: " << (diag.ke - diag0.ke) / ke0 << std::endl;
+              std::cout << Ostr.str();
             }
         }
     }

@@ -66,7 +66,7 @@ while getopts ":n:t:d:b:e:o:p:r:c:l:H:h" opt; do
   case $opt in
       n) NSTEPS="${OPTARG}"; NSTEPS_OVERRIDE=1;;
       t) DT="${OPTARG}"; DT_OVERRIDE=1;;
-      d) echo "ERROR: Fixed CFL mode (-d) is not yet implemented." >&2; exit 2;;
+      d) CFL="${OPTARG}"; echo "Fixed CFL mode not yet implemented!";;
       b) BUILDDIR="${OPTARG}"; EXE="${BUILDDIR}/Prandtl";;
       e) EXE="${OPTARG}";;
       o) RUNDIR="${OPTARG}";;
@@ -177,7 +177,7 @@ else
   ' "${cfg_abs}" > "${patched}"
 fi
 local -a MPI_LAUNCHER="mpiexec -n ${NMPIRANKS}"
-echo "mpi launcher: ${MPI_LAUNCHER}"
+
 # Override MPI_LAUNCHER if required for this platform:
 case "${HOST_SHORT}" in
     tuo*)
@@ -185,6 +185,7 @@ case "${HOST_SHORT}" in
         MPI_LAUNCHER="flux run --exclusive -N ${NHOSTS} -n ${NMPIRANKS}"
         ;;
 esac
+echo "mpi launcher: ${MPI_LAUNCHER}"
 # Run from the per-example dir; keep your “two levels down” invariant
 # Run example (isolate failures; do NOT exit on first error)
 # mpiexec -n "${NMPIRANKS}" 
@@ -195,6 +196,7 @@ set -e
 
 # Basic regression: require ParaView.pvd + Cycle000000 + Cycle00NNNN
 if [[ ${run_rc} -eq 0 ]] && check_outputs "${outdir}" "${NSTEPS}"; then
+
     echo "✓ Regression Test OK: ${exname} (outputs in ${outdir})"
     SUCCEEDED+=("${cfg_rel}")
     return 0

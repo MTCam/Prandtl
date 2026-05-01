@@ -3,37 +3,36 @@
 
 namespace Prandtl
 {
-bool debug_integrator = false;
-
-DGSEMIntegrator::DGSEMIntegrator(
-      std::shared_ptr<ParMesh> pmesh_,
-      std::shared_ptr<ParFiniteElementSpace> fes0_,
-      std::shared_ptr<ParGridFunction> alpha_,
-      std::shared_ptr<LiftingScheme> liftingScheme_,
-      NumericalFlux &rsolver_, int Np, real_t gamma)
-    : NonlinearFormIntegrator(), pmesh(pmesh_), fes0(fes0_), alpha(alpha_), liftingScheme(liftingScheme_),
-      rsolver(rsolver_), fluxFunction(rsolver_.GetFluxFunction()),
+  constexpr bool debug_integrator = false;
+  
+  DGSEMIntegrator::DGSEMIntegrator(std::shared_ptr<mfem::ParMesh> pmesh_,
+                                   std::shared_ptr<mfem::ParFiniteElementSpace> fes0_,
+                                   std::shared_ptr<mfem::ParGridFunction> alpha_,
+                                   std::shared_ptr<LiftingScheme> liftingScheme_,
+                                   NumericalFlux &rsolver_, int Np)
+    : NonlinearFormIntegrator(), pmesh(pmesh_), fes0(fes0_), alpha(alpha_),
+      liftingScheme(liftingScheme_), rsolver(rsolver_), fluxFunction(rsolver_.GetFluxFunction()),
       Np_x(Np), Np_y(fluxFunction.dim > 1 ? Np : 1), Np_z(fluxFunction.dim > 2 ? Np : 1),
-      num_equations(fluxFunction.num_equations), dim(num_equations - 2), num_elements(pmesh->GetNE()),
-      GLIntRules(0, Quadrature1D::GaussLobatto), gammaM1(gamma - 1.0)
-{
+      num_equations(fluxFunction.num_equations), dim(fluxFunction.dim), num_elements(pmesh->GetNE()),
+      GLIntRules(0, mfem::Quadrature1D::GaussLobatto)
+  {
     IntegrationOrder = 2 * Np_x - 3;
 
-    ir = &GLIntRules.Get(Geometry::SEGMENT, IntegrationOrder);
+    ir = &GLIntRules.Get(mfem::Geometry::SEGMENT, IntegrationOrder);
     if (dim == 1)
     {
-        ir_face = &GLIntRules.Get(Geometry::POINT, IntegrationOrder);
-        ir_vol = &GLIntRules.Get(Geometry::SEGMENT, IntegrationOrder);
+      ir_face = &GLIntRules.Get(mfem::Geometry::POINT, IntegrationOrder);
+      ir_vol = &GLIntRules.Get(mfem::Geometry::SEGMENT, IntegrationOrder);
     }
     else if (dim == 2)
     {
-        ir_face = &GLIntRules.Get(Geometry::SEGMENT, IntegrationOrder);
-        ir_vol = &GLIntRules.Get(Geometry::SQUARE, IntegrationOrder);
+      ir_face = &GLIntRules.Get(mfem::Geometry::SEGMENT, IntegrationOrder);
+      ir_vol = &GLIntRules.Get(mfem::Geometry::SQUARE, IntegrationOrder);
     }
     else
-    {
-        ir_face = &GLIntRules.Get(Geometry::SQUARE, IntegrationOrder);
-        ir_vol = &GLIntRules.Get(Geometry::CUBE, IntegrationOrder);
+      {
+      ir_face = &GLIntRules.Get(mfem::Geometry::SQUARE, IntegrationOrder);
+      ir_vol = &GLIntRules.Get(mfem::Geometry::CUBE, IntegrationOrder);
     }
 
     max_char_speed = -1.0;
@@ -42,7 +41,7 @@ DGSEMIntegrator::DGSEMIntegrator(
     Dhat_T.SetSize(Np_x);
     Dhat2_T.SetSize(Np_x);
 
-    Vector wBary(Np_x);
+    mfem::Vector wBary(Np_x);
     wBary = 1.0;
 
     for (int i = 1; i < Np_x; i++)
@@ -89,7 +88,8 @@ DGSEMIntegrator::DGSEMIntegrator(
 
 if (debug_integrator)
 {
-    std::cout << "[DGSEMIntegrator] Np = " << Np_x << ", IntegrationOrder = " << IntegrationOrder << ", dof = " << dof << "\n";
+    std::cout << "[DGSEMIntegrator] Np = " << Np_x << ", IntegrationOrder = "
+              << IntegrationOrder << ", dof = " << dof << "\n";
 }
     state1.SetSize(num_equations);
     state2.SetSize(num_equations);
@@ -141,6 +141,7 @@ if (debug_integrator)
 #endif
 
 #ifdef SUBCELL_FV_BLENDING
+    
     SubcellMetricXi.SetSize(dim, Np_z * Np_y * (Np_x + 1), pmesh->GetNE());
     SubcellMetricEta.SetSize(dim, Np_z * (Np_y + 1) * Np_x, pmesh->GetNE());
     SubcellMetricZeta.SetSize(dim, (Np_z + 1) * Np_y * Np_x, pmesh->GetNE());
@@ -148,99 +149,108 @@ if (debug_integrator)
 #endif
 }
 
-void DGSEMIntegrator::AssembleFaceVector(const FiniteElement &el1, const FiniteElement &el2,
-                                         FaceElementTransformations &Tr, const Vector &el_u,
-                                         Vector &el_dudt)
+void DGSEMIntegrator::AssembleFaceVector(const mfem::FiniteElement &el1, const mfem::FiniteElement &el2,
+                                         mfem::FaceElementTransformations &Tr, const mfem::Vector &el_u,
+                                         mfem::Vector &el_dudt)
 {
-    if (debug_integrator) 
+  if (debug_integrator) 
     {
-        std::cout << "===== Entering DGSEMIntegrator::AssembleFaceVector =====" << std::endl;
+      std::cout << "===== Entering DGSEMIntegrator::AssembleFaceVector =====" << std::endl;
     }
-    el_dudt.SetSize((dof1 + dof2) * num_equations);
-    el_dudt = 0.0;
-
-    const DenseMatrix el_u_mat1(el_u.GetData(), dof1, num_equations);
-    const DenseMatrix el_u_mat2(el_u.GetData() + dof1 * num_equations, dof2, num_equations);
-    
-    DenseMatrix el_dudt_mat1(el_dudt.GetData(), dof1, num_equations);
-    DenseMatrix el_dudt_mat2(el_dudt.GetData() + dof1 * num_equations, dof2, num_equations);
-
-    for (int i = 0; i < ir_face->GetNPoints(); i++)
+  el_dudt.SetSize((dof1 + dof2) * num_equations);
+  el_dudt = 0.0;
+  
+  const mfem::DenseMatrix el_u_mat1(el_u.GetData(), dof1, num_equations);
+  const mfem::DenseMatrix el_u_mat2(el_u.GetData() + dof1 * num_equations, dof2, num_equations);
+  
+  mfem::DenseMatrix el_dudt_mat1(el_dudt.GetData(), dof1, num_equations);
+  mfem::DenseMatrix el_dudt_mat2(el_dudt.GetData() + dof1 * num_equations, dof2, num_equations);
+  
+  for (int i = 0; i < ir_face->GetNPoints(); i++)
     {
-        const IntegrationPoint &ip = ir_face->IntPoint(i);
-        Tr.SetAllIntPoints(&ip);
-        J1 = Tr.GetElement1Transformation().Weight();
-        J2 = Tr.GetElement2Transformation().Weight();
-        el1.CalcShape(Tr.GetElement1IntPoint(), shape1);
-        el2.CalcShape(Tr.GetElement2IntPoint(), shape2);
-
-        el_u_mat1.MultTranspose(shape1, state1);
-        el_u_mat2.MultTranspose(shape2, state2);        
-
-        if (dim == 1)
+      const mfem::IntegrationPoint &ip = ir_face->IntPoint(i);
+      Tr.SetAllIntPoints(&ip);
+      J1 = Tr.GetElement1Transformation().Weight();
+      J2 = Tr.GetElement2Transformation().Weight();
+      el1.CalcShape(Tr.GetElement1IntPoint(), shape1);
+      el2.CalcShape(Tr.GetElement2IntPoint(), shape2);
+      
+      el_u_mat1.MultTranspose(shape1, state1);
+      el_u_mat2.MultTranspose(shape2, state2);        
+      
+      if (dim == 1)
         {
-            nor(0) = (Tr.GetElement1IntPoint().x - 0.5) * 2.0;
+          nor(0) = (Tr.GetElement1IntPoint().x - 0.5) * 2.0;
         }
-        else
+      else
         {
-            CalcOrtho(Tr.Jacobian(), nor);
+          CalcOrtho(Tr.Jacobian(), nor);
         }
-        max_char_speed = std::max(max_char_speed, rsolver.ComputeFaceFlux(state1, state2, nor, flux_num));
-
+      max_char_speed = std::max(max_char_speed, rsolver.ComputeFaceFlux(state1, state2, nor, flux_num));
+      
 #ifdef AXISYMMETRIC
-        Vector phys(dim);
-        Tr.Transform(ip, phys);
-        real_t r = phys[1]; 
-
-
-        if (debug_integrator)
+      mfem::Vector phys(dim);
+      Tr.Transform(ip, phys);
+      real_t r = phys[1]; 
+      
+      
+      if (debug_integrator)
         {
-            std::cout << "[AssembleFace]" << " Elem      =  " << Tr.ElementNo << "\n";
-            std::cout << "[AssembleFace]" << " (x,r)     = (" << phys[0] << ", " << std::round(r) << ")" << "\n";
-            std::cout << "[AssembleFace]" << " faceIP#   =  " << i <<", ip.x = " << ip.x << ", weight = " << ip.weight << ", J1 = " << J1 << ", J2 = " << J2 << "\n";
-            std::cout << "[AssembleFace]" << " state1    = [" << state1[0] << ", " << state1[1] << ", " << state1[2] << ", " << state1[3] << "]\n";
-            std::cout << "[AssembleFace]" << " state2    = [" << state2[0] << ", " << state2[1] << ", " << state2[2] << ", " << state2[3] << "]\n";
-            std::cout << "[AssembleFace]" << " flux_num  = [" << flux_num[0] << ", " << flux_num[1] << ", " << flux_num[2] << ", " << flux_num[3] << "]\n";
+          std::cout << "[AssembleFace]" << " Elem      =  " << Tr.ElementNo << "\n";
+          std::cout << "[AssembleFace]" << " (x,r)     = (" << phys[0] << ", " << std::round(r) << ")" << "\n";
+          std::cout << "[AssembleFace]" << " faceIP#   =  " << i <<", ip.x = " << ip.x << ", weight = " << ip.weight << ", J1 = " << J1 << ", J2 = " << J2 << "\n";
+          std::cout << "[AssembleFace]" << " state1    = [" << state1[0] << ", " << state1[1] << ", " << state1[2] << ", " << state1[3] << "]\n";
+          std::cout << "[AssembleFace]" << " state2    = [" << state2[0] << ", " << state2[1] << ", " << state2[2] << ", " << state2[3] << "]\n";
+          std::cout << "[AssembleFace]" << " flux_num  = [" << flux_num[0] << ", " << flux_num[1] << ", " << flux_num[2] << ", " << flux_num[3] << "]\n";
         }
-
-        flux_num *= r;
-
-         if (debug_integrator)
+      
+      flux_num *= r;
+      
+      if (debug_integrator)
         {
-            std::cout << "[AssembleFace]" << " rflux_num = [" << flux_num[0] << ", " << flux_num[1] << ", " << flux_num[2] << ", " << flux_num[3] << "]\n";
-            std::cout << "________________________________________________________________________________________________________________" << "\n";
+          std::cout << "[AssembleFace]" << " rflux_num = [" << flux_num[0] << ", " << flux_num[1] << ", " << flux_num[2] << ", " << flux_num[3] << "]\n";
+          std::cout << "________________________________________________________________________________________________________________" << "\n";
         }
 #endif
-
-   
-        dU_face1 = dU_face2 = flux_num;
-        dU_face1.Neg();
-
-        AddMult_a_VWt(+1.0 / (ir->IntPoint(0).weight * J1), shape1, dU_face1, el_dudt_mat1);
-        AddMult_a_VWt(+1.0 / (ir->IntPoint(0).weight * J2), shape2, dU_face2, el_dudt_mat2);
+      
+      
+      dU_face1 = dU_face2 = flux_num;
+      dU_face1.Neg();
+      
+      AddMult_a_VWt(+1.0 / (ir->IntPoint(0).weight * J1), shape1, dU_face1, el_dudt_mat1);
+      AddMult_a_VWt(+1.0 / (ir->IntPoint(0).weight * J2), shape2, dU_face2, el_dudt_mat2);
     }
 }
-
-void DGSEMIntegrator::AssembleElementVector(const FiniteElement &el,
-        ElementTransformation &Tr, const Vector &el_u, Vector &el_dudt)
-{
+  
+  void DGSEMIntegrator::AssembleElementVector(const mfem::FiniteElement &el, mfem::ElementTransformation &Tr,
+                                              const mfem::Vector &el_u, mfem::Vector &el_dudt)
+  {
     if (debug_integrator)
-    {
+      {
         std::cout << "===== Entering DGSEMIntegrator::AssembleElementVector =====" << std::endl;
-    }
-
+      }
+    
     fes0->GetElementDofs(Tr.ElementNo, alpha_indx);
+    // This proves alpha has flat storage [0, nelements)
+    // MFEM_ASSERT(alpha_indx[0] == Tr.ElementNo,"alpha / elno skew");
     alpha->GetSubVector(alpha_indx, el_alpha);
 
     el_dudt.SetSize(dof * num_equations);
     el_dudt = 0.0;
-
-    const DenseMatrix el_u_mat(el_u.GetData(), dof, num_equations);
-    DenseMatrix el_dudt_mat(el_dudt.GetData(), dof, num_equations);
-#ifdef SUBCELL_FV_BLENDING    
-    ComputeFVFluxes(el_u_mat, el_alpha(0), Tr, el_dudt_mat);
-#endif
     
+    const mfem::DenseMatrix el_u_mat(el_u.GetData(), dof, num_equations);
+    mfem::DenseMatrix el_dudt_mat(el_dudt.GetData(), dof, num_equations);
+    
+#ifdef SUBCELL_FV_BLENDING
+    real_t alpha0 = el_alpha(0);
+    // const real_t *elalpha = operator_cache->alpha->HostRead();
+    // real_t alpha1 = elalpha[Tr.ElementNo];
+    // MFEM_ASSERT(alpha1 == alpha0, "Alphas mismatch");
+    // ComputeFVFluxesFromCache(el_u_mat, Tr, el_dudt_mat);
+    // el_dudt *= alpha0;
+    ComputeFVFluxes(el_u_mat, alpha0, Tr, el_dudt_mat);
+#endif
+
     for (int k = 0; k < Np_z; k++)
     {
         for (int j = 0; j < Np_y; j++)
@@ -248,7 +258,8 @@ void DGSEMIntegrator::AssembleElementVector(const FiniteElement &el,
             for (int i = 0; i < Np_x; i++)
             {
                 int id1 = k * Np_y * Np_x + j * Np_x + i;
-                const IntegrationPoint &ip1 = ir_vol->IntPoint(id1);
+                const mfem::IntegrationPoint &ip1 = ir_vol->IntPoint(id1);
+
                 Tr.SetIntPoint(&ip1);
                 el_u_mat.GetRow(id1, state1);
                 J = Tr.Weight();
@@ -260,7 +271,8 @@ void DGSEMIntegrator::AssembleElementVector(const FiniteElement &el,
                 for (int m = i + 1; m < Np_x; m++)
                 {
                     int id2 = k * Np_y * Np_x + j * Np_x + m;
-                    const IntegrationPoint &ip2 = ir_vol->IntPoint(id2);
+                    const mfem::IntegrationPoint &ip2 = ir_vol->IntPoint(id2);
+
                     Tr.SetIntPoint(&ip2);
                     el_u_mat.GetRow(id2, state2);
                     adj2 = Tr.AdjugateJacobian();
@@ -269,9 +281,9 @@ void DGSEMIntegrator::AssembleElementVector(const FiniteElement &el,
               
                 max_char_speed = std::max(max_char_speed, rsolver.ComputeVolumeFlux(state1, state2, metric1, metric2, f));
                 
-                IntegrationPoint ipm = ip1;
+                mfem::IntegrationPoint ipm = ip1;
                 ipm.x = 0.5*(ip1.x + ip2.x);
-                Vector phys(dim);
+                mfem::Vector phys(dim);
                 Tr.Transform(ipm, phys);
                 real_t r_hat = phys[1]; 
 
@@ -307,7 +319,8 @@ void DGSEMIntegrator::AssembleElementVector(const FiniteElement &el,
                     for (int m = j + 1; m < Np_y; m++)
                     {
                         int id2 = k * Np_y * Np_x + m * Np_x + i;
-                        const IntegrationPoint &ip3 = ir_vol->IntPoint(id2);
+                        const mfem::IntegrationPoint &ip3 = ir_vol->IntPoint(id2);
+
                         Tr.SetIntPoint(&ip3);
                         el_u_mat.GetRow(id2, state2);  
                         adj2 = Tr.AdjugateJacobian();
@@ -315,9 +328,9 @@ void DGSEMIntegrator::AssembleElementVector(const FiniteElement &el,
 
                 max_char_speed = std::max(max_char_speed, rsolver.ComputeVolumeFlux(state1, state2, metric1, metric2, g));
 
-                IntegrationPoint ipm = ip1;
+                mfem::IntegrationPoint ipm = ip1;
                 ipm.y = 0.5*(ip1.y + ip3.y);
-                Vector phys(dim);
+                mfem::Vector phys(dim);
                 Tr.Transform(ipm, phys);
                 real_t r_hat = phys[1]; 
 
@@ -353,7 +366,8 @@ void DGSEMIntegrator::AssembleElementVector(const FiniteElement &el,
                         for (int m = k + 1; m < Np_z; m++)
                         {
                             int id2 = m * Np_y * Np_x + j * Np_x + i;
-                            const IntegrationPoint &ip4 = ir_vol->IntPoint(id2);
+                            const mfem::IntegrationPoint &ip4 = ir_vol->IntPoint(id2);
+
                             el_u_mat.GetRow(id2, state2);
                             Tr.SetIntPoint(&ip4);
                             adj2 = Tr.AdjugateJacobian();
@@ -392,11 +406,11 @@ void DGSEMIntegrator::AssembleElementVector(const FiniteElement &el,
                  dU_inviscid.Neg();
                 
 #ifdef SUBCELL_FV_BLENDING
-                dU_inviscid *= (1.0 - el_alpha(0));
+                dU_inviscid *= (1.0 - alpha0);
 
                  if (debug_integrator)
                 {
-                    std::cout << "[AssembleElement]" << " alpha = " << el_alpha(0) << "\n";
+                    std::cout << "[AssembleElement]" << " alpha = " << alpha0 << "\n";
                     std::cout << "[AssembleElement]" << " -rdU_inviscid *= 1-a    = [" << dU_inviscid[0] << ", " << dU_inviscid[1] << ", " << dU_inviscid[2] << ", " << dU_inviscid[3] << "]\n";
                 }
 #endif
@@ -408,22 +422,24 @@ void DGSEMIntegrator::AssembleElementVector(const FiniteElement &el,
                     std::cout << "________________________________________________________________________________________________________________" << "\n";
                 }
 
+                // TODO: Axisym source term is misplaced here. Need source term constructs
+                //       to fix. It is a code smell that this bit of physics is leaking out to
+                //       this level.  Currently, we are forced to make a utility in NS object
+                //       to fetch the pressure to code around this breakage of the abstraction.
 #ifdef AXISYMMETRIC
                 
                 {
-                    
-                    const real_t p = PressureFromConservative(state1);
-                    //dU_inviscid(2) += p;
-                    el_dudt_mat(id1, 2) += p;
- 
-                if (debug_integrator)
-                {
-                    const DenseMatrix &Jm = Tr.Jacobian();
-                    const real_t dr_deta_dbg = (Jm.NumRows() > 1 && Jm.NumCols() > 1) ? Jm(1,1) : 0.0;
-                    std::cout << "[AssembleElement]" << " p = " << p << "\n"; //", r = " << r_hat << ", dr/deta = " << dr_deta_dbg << "\n";
-                    std::cout << "[AssembleElement]" << " rdU_inviscid[2]-pJ      = [" << dU_inviscid[0] << ", " << dU_inviscid[1] << ", " << dU_inviscid[2] << ", " << dU_inviscid[3] << "]\n";
-                }
-                    
+                  const real_t p = fluxFunction.pressure(state1.GetData());
+                  el_dudt_mat(id1, 2) += p;
+                  
+                  if (debug_integrator)
+                    {
+                      const mfem::DenseMatrix &Jm = Tr.Jacobian();
+                      const real_t dr_deta_dbg = (Jm.NumRows() > 1 && Jm.NumCols() > 1) ? Jm(1,1) : 0.0;
+                      std::cout << "[AssembleElement]" << " p = " << p << "\n"; //", r = " << r_hat << ", dr/deta = " << dr_deta_dbg << "\n";
+                      std::cout << "[AssembleElement]" << " rdU_inviscid[2]-pJ      = [" << dU_inviscid[0] << ", " << dU_inviscid[1] << ", " << dU_inviscid[2] << ", " << dU_inviscid[3] << "]\n";
+                    }
+                  
                 }            
 #endif
                 AddRow(el_dudt_mat, dU_inviscid, id1);
@@ -432,32 +448,32 @@ void DGSEMIntegrator::AssembleElementVector(const FiniteElement &el,
     }
 }
 
-void DGSEMIntegrator::AssembleFaceVector(const FiniteElement &el1, const FiniteElement &el2,
-                                         FaceElementTransformations &Tr, const Vector &el_u,
-                                         const Vector &el_dudx, const Vector &el_dudy,
-                                         const Vector &el_dudz, Vector &el_dudt)
+void DGSEMIntegrator::AssembleFaceVector(const mfem::FiniteElement &el1, const mfem::FiniteElement &el2,
+                                         mfem::FaceElementTransformations &Tr, const mfem::Vector &el_u,
+                                         const mfem::Vector &el_dudx, const mfem::Vector &el_dudy,
+                                         const mfem::Vector &el_dudz, mfem::Vector &el_dudt)
 {
     el_dudt.SetSize((dof1 + dof2) * num_equations);
     el_dudt = 0.0;
 
-    const DenseMatrix el_u_mat1(el_u.GetData(), dof1, num_equations);
-    const DenseMatrix el_u_mat2(el_u.GetData() + dof1 * num_equations, dof2, num_equations);
+    const mfem::DenseMatrix el_u_mat1(el_u.GetData(), dof1, num_equations);
+    const mfem::DenseMatrix el_u_mat2(el_u.GetData() + dof1 * num_equations, dof2, num_equations);
 
-    const DenseMatrix el_dudx_mat1(el_dudx.GetData(), dof1, num_equations);
-    const DenseMatrix el_dudx_mat2(el_dudx.GetData() + dof1 * num_equations, dof2, num_equations);
+    const mfem::DenseMatrix el_dudx_mat1(el_dudx.GetData(), dof1, num_equations);
+    const mfem::DenseMatrix el_dudx_mat2(el_dudx.GetData() + dof1 * num_equations, dof2, num_equations);
 
-    const DenseMatrix el_dudy_mat1(el_dudy.GetData(), dof1, num_equations);
-    const DenseMatrix el_dudy_mat2(el_dudy.GetData() + dof1 * num_equations, dof2, num_equations);
+    const mfem::DenseMatrix el_dudy_mat1(el_dudy.GetData(), dof1, num_equations);
+    const mfem::DenseMatrix el_dudy_mat2(el_dudy.GetData() + dof1 * num_equations, dof2, num_equations);
 
-    const DenseMatrix el_dudz_mat1(el_dudz.GetData(), dof1, num_equations);
-    const DenseMatrix el_dudz_mat2(el_dudz.GetData() + dof1 * num_equations, dof2, num_equations);
+    const mfem::DenseMatrix el_dudz_mat1(el_dudz.GetData(), dof1, num_equations);
+    const mfem::DenseMatrix el_dudz_mat2(el_dudz.GetData() + dof1 * num_equations, dof2, num_equations);
     
-    DenseMatrix el_dudt_mat1(el_dudt.GetData(), dof1, num_equations);
-    DenseMatrix el_dudt_mat2(el_dudt.GetData() + dof1 * num_equations, dof2, num_equations);
+    mfem::DenseMatrix el_dudt_mat1(el_dudt.GetData(), dof1, num_equations);
+    mfem::DenseMatrix el_dudt_mat2(el_dudt.GetData() + dof1 * num_equations, dof2, num_equations);
 
     for (int i = 0; i < ir_face->GetNPoints(); i++)
     {
-        const IntegrationPoint &ip = ir_face->IntPoint(i);
+        const mfem::IntegrationPoint &ip = ir_face->IntPoint(i);
         Tr.SetAllIntPoints(&ip);
         J1 = Tr.GetElement1Transformation().Weight();
         J2 = Tr.GetElement2Transformation().Weight();
@@ -493,28 +509,28 @@ void DGSEMIntegrator::AssembleFaceVector(const FiniteElement &el1, const FiniteE
     }
 }
 
-void DGSEMIntegrator::AssembleFaceVector(const FiniteElement &el1, const FiniteElement &el2,
-                                         FaceElementTransformations &Tr, const Vector &el_u,
-                                         const Vector &el_dudx, const Vector &el_dudy, Vector &el_dudt)
+void DGSEMIntegrator::AssembleFaceVector(const mfem::FiniteElement &el1, const mfem::FiniteElement &el2,
+                                         mfem::FaceElementTransformations &Tr, const mfem::Vector &el_u,
+                                         const mfem::Vector &el_dudx, const mfem::Vector &el_dudy, mfem::Vector &el_dudt)
 {
     el_dudt.SetSize((dof1 + dof2) * num_equations);
     el_dudt = 0.0;
 
-    const DenseMatrix el_u_mat1(el_u.GetData(), dof1, num_equations);
-    const DenseMatrix el_u_mat2(el_u.GetData() + dof1 * num_equations, dof2, num_equations);
+    const mfem::DenseMatrix el_u_mat1(el_u.GetData(), dof1, num_equations);
+    const mfem::DenseMatrix el_u_mat2(el_u.GetData() + dof1 * num_equations, dof2, num_equations);
 
-    const DenseMatrix el_dudx_mat1(el_dudx.GetData(), dof1, num_equations);
-    const DenseMatrix el_dudx_mat2(el_dudx.GetData() + dof1 * num_equations, dof2, num_equations);
+    const mfem::DenseMatrix el_dudx_mat1(el_dudx.GetData(), dof1, num_equations);
+    const mfem::DenseMatrix el_dudx_mat2(el_dudx.GetData() + dof1 * num_equations, dof2, num_equations);
 
-    const DenseMatrix el_dudy_mat1(el_dudy.GetData(), dof1, num_equations);
-    const DenseMatrix el_dudy_mat2(el_dudy.GetData() + dof1 * num_equations, dof2, num_equations);
+    const mfem::DenseMatrix el_dudy_mat1(el_dudy.GetData(), dof1, num_equations);
+    const mfem::DenseMatrix el_dudy_mat2(el_dudy.GetData() + dof1 * num_equations, dof2, num_equations);
     
-    DenseMatrix el_dudt_mat1(el_dudt.GetData(), dof1, num_equations);
-    DenseMatrix el_dudt_mat2(el_dudt.GetData() + dof1 * num_equations, dof2, num_equations);
+    mfem::DenseMatrix el_dudt_mat1(el_dudt.GetData(), dof1, num_equations);
+    mfem::DenseMatrix el_dudt_mat2(el_dudt.GetData() + dof1 * num_equations, dof2, num_equations);
 
     for (int i = 0; i < ir_face->GetNPoints(); i++)
     {
-        const IntegrationPoint &ip = ir_face->IntPoint(i);
+        const mfem::IntegrationPoint &ip = ir_face->IntPoint(i);
         Tr.SetAllIntPoints(&ip);
         J1 = Tr.GetElement1Transformation().Weight();
         J2 = Tr.GetElement2Transformation().Weight();
@@ -548,25 +564,25 @@ void DGSEMIntegrator::AssembleFaceVector(const FiniteElement &el1, const FiniteE
     }
 }
 
-void DGSEMIntegrator::AssembleFaceVector(const FiniteElement &el1, const FiniteElement &el2,
-                                         FaceElementTransformations &Tr, const Vector &el_u,
-                                         const Vector &el_dudx, Vector &el_dudt)
+void DGSEMIntegrator::AssembleFaceVector(const mfem::FiniteElement &el1, const mfem::FiniteElement &el2,
+                                         mfem::FaceElementTransformations &Tr, const mfem::Vector &el_u,
+                                         const mfem::Vector &el_dudx, mfem::Vector &el_dudt)
 {
     el_dudt.SetSize((dof1 + dof2) * num_equations);
     el_dudt = 0.0;
 
-    const DenseMatrix el_u_mat1(el_u.GetData(), dof1, num_equations);
-    const DenseMatrix el_u_mat2(el_u.GetData() + dof1 * num_equations, dof2, num_equations);
+    const mfem::DenseMatrix el_u_mat1(el_u.GetData(), dof1, num_equations);
+    const mfem::DenseMatrix el_u_mat2(el_u.GetData() + dof1 * num_equations, dof2, num_equations);
 
-    const DenseMatrix el_dudx_mat1(el_dudx.GetData(), dof1, num_equations);
-    const DenseMatrix el_dudx_mat2(el_dudx.GetData() + dof1 * num_equations, dof2, num_equations);
+    const mfem::DenseMatrix el_dudx_mat1(el_dudx.GetData(), dof1, num_equations);
+    const mfem::DenseMatrix el_dudx_mat2(el_dudx.GetData() + dof1 * num_equations, dof2, num_equations);
     
-    DenseMatrix el_dudt_mat1(el_dudt.GetData(), dof1, num_equations);
-    DenseMatrix el_dudt_mat2(el_dudt.GetData() + dof1 * num_equations, dof2, num_equations);
+    mfem::DenseMatrix el_dudt_mat1(el_dudt.GetData(), dof1, num_equations);
+    mfem::DenseMatrix el_dudt_mat2(el_dudt.GetData() + dof1 * num_equations, dof2, num_equations);
 
     for (int i = 0; i < ir_face->GetNPoints(); i++)
     {
-        const IntegrationPoint &ip = ir_face->IntPoint(i);
+        const mfem::IntegrationPoint &ip = ir_face->IntPoint(i);
         Tr.SetAllIntPoints(&ip);
         J1 = Tr.GetElement1Transformation().Weight();
         J2 = Tr.GetElement2Transformation().Weight();
@@ -598,26 +614,32 @@ void DGSEMIntegrator::AssembleFaceVector(const FiniteElement &el1, const FiniteE
     }
 }
 
-void DGSEMIntegrator::AssembleElementVector(const FiniteElement &el, ElementTransformation &Tr, const Vector &el_u, const Vector &el_dudx, const Vector &el_dudy, const Vector &el_dudz, Vector &el_dudt)
+void DGSEMIntegrator::AssembleElementVector(const mfem::FiniteElement &el, mfem::ElementTransformation &Tr,
+                                            const mfem::Vector &el_u, const mfem::Vector &el_dudx,
+                                            const mfem::Vector &el_dudy, const mfem::Vector &el_dudz,
+                                            mfem::Vector &el_dudt)
 {
-    fes0->GetElementDofs(Tr.ElementNo, alpha_indx);
-    alpha->GetSubVector(alpha_indx, el_alpha);
 
     el_dudt.SetSize(dof * num_equations);
     el_dudt = 0.0;
 
-    const DenseMatrix el_u_mat(el_u.GetData(), dof, num_equations);
-    const DenseMatrix el_dudx_mat(el_dudx.GetData(), dof, num_equations);
-    const DenseMatrix el_dudy_mat(el_dudy.GetData(), dof, num_equations);
-    const DenseMatrix el_dudz_mat(el_dudz.GetData(), dof, num_equations);
-    DenseMatrix el_dudt_mat(el_dudt.GetData(), dof, num_equations);
+    const mfem::DenseMatrix el_u_mat(el_u.GetData(), dof, num_equations);
+    const mfem::DenseMatrix el_dudx_mat(el_dudx.GetData(), dof, num_equations);
+    const mfem::DenseMatrix el_dudy_mat(el_dudy.GetData(), dof, num_equations);
+    const mfem::DenseMatrix el_dudz_mat(el_dudz.GetData(), dof, num_equations);
+    mfem::DenseMatrix el_dudt_mat(el_dudt.GetData(), dof, num_equations);
+
 #ifdef SUBCELL_FV_BLENDING
+    fes0->GetElementDofs(Tr.ElementNo, alpha_indx);
+    alpha->GetSubVector(alpha_indx, el_alpha);
     ComputeFVFluxes(el_u_mat, el_alpha(0), Tr, el_dudt_mat);
 #endif
+
     for (int i = 0; i < ir_vol->GetNPoints(); i++)
     {
-        const IntegrationPoint &ip1 = ir_vol->IntPoint(i);
+        const mfem::IntegrationPoint &ip1 = ir_vol->IntPoint(i);
         el_u_mat.GetRow(i, state1);
+
         Tr.SetIntPoint(&ip1);
         adj1 = Tr.AdjugateJacobian();
 
@@ -647,7 +669,8 @@ void DGSEMIntegrator::AssembleElementVector(const FiniteElement &el, ElementTran
             for (int i = 0; i < Np_x; i++)
             {
                 int id1 = k * Np_y * Np_x + j * Np_x + i;
-                const IntegrationPoint &ip1 = ir_vol->IntPoint(id1);
+                const mfem::IntegrationPoint &ip1 = ir_vol->IntPoint(id1);
+
                 el_u_mat.GetRow(id1, state1);
                 Tr.SetIntPoint(&ip1);
                 J = Tr.Weight();
@@ -660,7 +683,7 @@ void DGSEMIntegrator::AssembleElementVector(const FiniteElement &el, ElementTran
                 for (int m = i + 1; m < Np_x; m++)
                 {
                     int id2 = k * Np_y * Np_x + j * Np_x + m;
-                    const IntegrationPoint &ip2 = ir_vol->IntPoint(id2);
+                    const mfem::IntegrationPoint &ip2 = ir_vol->IntPoint(id2);
                     el_u_mat.GetRow(id2, state2);
                     Tr.SetIntPoint(&ip2);
                     adj2 = Tr.AdjugateJacobian();
@@ -676,7 +699,8 @@ void DGSEMIntegrator::AssembleElementVector(const FiniteElement &el, ElementTran
                 for (int m = j + 1; m < Np_y; m++)
                 {
                     int id2 = k * Np_y * Np_x + m * Np_x + i;
-                    const IntegrationPoint &ip3 = ir_vol->IntPoint(id2);
+                    const mfem::IntegrationPoint &ip3 = ir_vol->IntPoint(id2);
+
                     el_u_mat.GetRow(id2, state2);
                     Tr.SetIntPoint(&ip3);
                     adj2 = Tr.AdjugateJacobian();
@@ -692,7 +716,8 @@ void DGSEMIntegrator::AssembleElementVector(const FiniteElement &el, ElementTran
                 for (int m = k + 1; m < Np_z; m++)
                 {
                     int id2 = m * Np_y * Np_x + j * Np_x + i;
-                    const IntegrationPoint &ip4 = ir_vol->IntPoint(id2);
+                    const mfem::IntegrationPoint &ip4 = ir_vol->IntPoint(id2);
+
                     el_u_mat.GetRow(id2, state2);
                     Tr.SetIntPoint(&ip4);
                     adj2 = Tr.AdjugateJacobian();
@@ -749,25 +774,35 @@ void DGSEMIntegrator::AssembleElementVector(const FiniteElement &el, ElementTran
     }    
 }
 
-void DGSEMIntegrator::AssembleElementVector(const FiniteElement &el, ElementTransformation &Tr, const Vector &el_u, const Vector &el_dudx, const Vector &el_dudy, Vector &el_dudt)
+void DGSEMIntegrator::AssembleElementVector(const mfem::FiniteElement &el, mfem::ElementTransformation &Tr,
+                                            const mfem::Vector &el_u, const mfem::Vector &el_dudx,
+                                            const mfem::Vector &el_dudy, mfem::Vector &el_dudt)
 {
-    fes0->GetElementDofs(Tr.ElementNo, alpha_indx);
-    alpha->GetSubVector(alpha_indx, el_alpha);
-
     el_dudt.SetSize(dof * num_equations);
     el_dudt = 0.0;
 
-    const DenseMatrix el_u_mat(el_u.GetData(), dof, num_equations);
-    const DenseMatrix el_dudx_mat(el_dudx.GetData(), dof, num_equations);
-    const DenseMatrix el_dudy_mat(el_dudy.GetData(), dof, num_equations);
-    DenseMatrix el_dudt_mat(el_dudt.GetData(), dof, num_equations);
+    const mfem::DenseMatrix el_u_mat(el_u.GetData(), dof, num_equations);
+    const mfem::DenseMatrix el_dudx_mat(el_dudx.GetData(), dof, num_equations);
+    const mfem::DenseMatrix el_dudy_mat(el_dudy.GetData(), dof, num_equations);
+    mfem::DenseMatrix el_dudt_mat(el_dudt.GetData(), dof, num_equations);
+
 #ifdef SUBCELL_FV_BLENDING
-    ComputeFVFluxes(el_u_mat, el_alpha(0), Tr, el_dudt_mat);
+    int e = Tr.ElementNo;
+    fes0->GetElementDofs(e, alpha_indx);
+    alpha->GetSubVector(alpha_indx, el_alpha);
+    const real_t alpha_fv = el_alpha(0);
+    const real_t alpha_inv = 1.0 - alpha_fv;
+    ComputeFVFluxes(el_u_mat, alpha_fv, Tr, el_dudt_mat);
+    // el_dudt *= 0.0;
+    // ComputeFVFluxesFromCache(el_u_mat, Tr, el_dudt_mat);
+    // el_dudt *= alpha_fv;
 #endif
+
     for (int i = 0; i < ir_vol->GetNPoints(); i++)
     {
-        const IntegrationPoint &ip1 = ir_vol->IntPoint(i);
+        const mfem::IntegrationPoint &ip1 = ir_vol->IntPoint(i);
         el_u_mat.GetRow(i, state1);
+
         Tr.SetIntPoint(&ip1);
         adj1 = Tr.AdjugateJacobian();
 
@@ -790,7 +825,8 @@ void DGSEMIntegrator::AssembleElementVector(const FiniteElement &el, ElementTran
         for (int i = 0; i < Np_x; i++)
         {
             int id1 = j * Np_x + i;
-            const IntegrationPoint &ip1 = ir_vol->IntPoint(id1);
+            const mfem::IntegrationPoint &ip1 = ir_vol->IntPoint(id1);
+
             el_u_mat.GetRow(id1, state1);
             Tr.SetIntPoint(&ip1);
             J = Tr.Weight();
@@ -802,7 +838,8 @@ void DGSEMIntegrator::AssembleElementVector(const FiniteElement &el, ElementTran
             for (int m = i + 1; m < Np_x; m++)
             {
                 int id2 = j * Np_x + m;
-                const IntegrationPoint &ip2 = ir_vol->IntPoint(id2);
+                const mfem::IntegrationPoint &ip2 = ir_vol->IntPoint(id2);
+
                 el_u_mat.GetRow(id2, state2);
                 Tr.SetIntPoint(&ip2);
                 adj2 = Tr.AdjugateJacobian();
@@ -818,7 +855,7 @@ void DGSEMIntegrator::AssembleElementVector(const FiniteElement &el, ElementTran
             for (int m = j + 1; m < Np_y; m++)
             {
                 int id2 = m * Np_x + i;
-                const IntegrationPoint &ip3 = ir_vol->IntPoint(id2);
+                const mfem::IntegrationPoint &ip3 = ir_vol->IntPoint(id2);
                 el_u_mat.GetRow(id2, state2);
                 Tr.SetIntPoint(&ip3);
                 adj2 = Tr.AdjugateJacobian();
@@ -853,9 +890,11 @@ void DGSEMIntegrator::AssembleElementVector(const FiniteElement &el, ElementTran
             }
         
             dU_inviscid.Neg();
+
 #ifdef SUBCELL_FV_BLENDING
-            dU_inviscid *= (1.0 - el_alpha(0));
+            dU_inviscid *= alpha_inv;
 #endif
+
             add(dU_inviscid, dU_viscous, dU_volume);
             dU_volume /= J;
             AddRow(el_dudt_mat, dU_volume, id1);
@@ -863,26 +902,29 @@ void DGSEMIntegrator::AssembleElementVector(const FiniteElement &el, ElementTran
     }   
 }
 
-void DGSEMIntegrator::AssembleElementVector(const FiniteElement &el, ElementTransformation &Tr, const Vector &el_u, const Vector &el_dudx, Vector &el_dudt)
+void DGSEMIntegrator::AssembleElementVector(const mfem::FiniteElement &el, mfem::ElementTransformation &Tr,
+                                            const mfem::Vector &el_u, const mfem::Vector &el_dudx,
+                                            mfem::Vector &el_dudt)
 {
-    fes0->GetElementDofs(Tr.ElementNo, alpha_indx);
-    alpha->GetSubVector(alpha_indx, el_alpha);
 
     el_dudt.SetSize(dof * num_equations);
     el_dudt = 0.0;
 
-    const DenseMatrix el_u_mat(el_u.GetData(), dof, num_equations);
-    const DenseMatrix el_dudx_mat(el_dudx.GetData(), dof, num_equations);
-    DenseMatrix el_dudt_mat(el_dudt.GetData(), dof, num_equations);
+    const mfem::DenseMatrix el_u_mat(el_u.GetData(), dof, num_equations);
+    const mfem::DenseMatrix el_dudx_mat(el_dudx.GetData(), dof, num_equations);
+    mfem::DenseMatrix el_dudt_mat(el_dudt.GetData(), dof, num_equations);
 
 #ifdef SUBCELL_FV_BLENDING
+    fes0->GetElementDofs(Tr.ElementNo, alpha_indx);
+    alpha->GetSubVector(alpha_indx, el_alpha);
     ComputeFVFluxes(el_u_mat, el_alpha(0), Tr, el_dudt_mat);
 #endif
 
     for (int i = 0; i < ir_vol->GetNPoints(); i++)
     {
-        const IntegrationPoint &ip1 = ir_vol->IntPoint(i);
+        const mfem::IntegrationPoint &ip1 = ir_vol->IntPoint(i);
         el_u_mat.GetRow(i, state1);
+
         Tr.SetIntPoint(&ip1);
         adj1 = Tr.AdjugateJacobian();
 
@@ -897,8 +939,9 @@ void DGSEMIntegrator::AssembleElementVector(const FiniteElement &el, ElementTran
     
     for (int i = 0; i < Np_x; i++)
     {
-        const IntegrationPoint &ip1 = ir_vol->IntPoint(i);
+        const mfem::IntegrationPoint &ip1 = ir_vol->IntPoint(i);
         el_u_mat.GetRow(i, state1);
+
         Tr.SetIntPoint(&ip1);
         J = Tr.Weight();
         adj1 = Tr.AdjugateJacobian();
@@ -908,7 +951,7 @@ void DGSEMIntegrator::AssembleElementVector(const FiniteElement &el, ElementTran
 
         for (int m = i + 1; m < Np_x; m++)
         {
-            const IntegrationPoint &ip2 = ir_vol->IntPoint(m);
+            const mfem::IntegrationPoint &ip2 = ir_vol->IntPoint(m);
             el_u_mat.GetRow(m, state2);
             Tr.SetIntPoint(&ip2);
             adj2 = Tr.AdjugateJacobian();
@@ -932,46 +975,61 @@ void DGSEMIntegrator::AssembleElementVector(const FiniteElement &el, ElementTran
         }
     
         dU_inviscid.Neg();
+
 #ifdef SUBCELL_FV_BLENDING
         dU_inviscid *= (1.0 - el_alpha(0));
 #endif
+
         add(dU_inviscid, dU_viscous, dU_volume);
         dU_volume /= J;
         AddRow(el_dudt_mat, dU_volume, i);
-    }
+    }   
 }
 
-void DGSEMIntegrator::AssembleLiftingFaceVector(const FiniteElement &el1, const FiniteElement &el2, FaceElementTransformations &Tr, const Vector &el_u, Vector &el_dudx, Vector &el_dudy, Vector &el_dudz)
+void DGSEMIntegrator::AssembleLiftingFaceVector(const mfem::FiniteElement &el1, const mfem::FiniteElement &el2,
+                                                mfem::FaceElementTransformations &Tr, const mfem::Vector &el_u,
+                                                mfem::Vector &el_dudx, mfem::Vector &el_dudy, mfem::Vector &el_dudz)
 {
     liftingScheme->AssembleLiftingFaceVector(el1, el2, Tr, el_u, el_dudx, el_dudy, el_dudz);
 }
 
-void DGSEMIntegrator::AssembleLiftingFaceVector(const FiniteElement &el1, const FiniteElement &el2, FaceElementTransformations &Tr, const Vector &el_u, Vector &el_dudx, Vector &el_dudy)
+void DGSEMIntegrator::AssembleLiftingFaceVector(const mfem::FiniteElement &el1, const mfem::FiniteElement &el2,
+                                                mfem::FaceElementTransformations &Tr, const mfem::Vector &el_u,
+                                                mfem::Vector &el_dudx, mfem::Vector &el_dudy)
 {
     liftingScheme->AssembleLiftingFaceVector(el1, el2, Tr, el_u, el_dudx, el_dudy);
 }
 
-void DGSEMIntegrator::AssembleLiftingFaceVector(const FiniteElement &el1, const FiniteElement &el2, FaceElementTransformations &Tr, const Vector &el_u, Vector &el_dudx)
+void DGSEMIntegrator::AssembleLiftingFaceVector(const mfem::FiniteElement &el1, const mfem::FiniteElement &el2,
+                                                mfem::FaceElementTransformations &Tr, const mfem::Vector &el_u,
+                                                mfem::Vector &el_dudx)
 {
     liftingScheme->AssembleLiftingFaceVector(el1, el2, Tr, el_u, el_dudx);
 }
 
-void DGSEMIntegrator::AssembleLiftingElementVector(const FiniteElement &el, ElementTransformation &Tr, const Vector &el_u, Vector &el_dudx, Vector &el_dudy, Vector &el_dudz)
+void DGSEMIntegrator::AssembleLiftingElementVector(const mfem::FiniteElement &el, mfem::ElementTransformation &Tr,
+                                                   const mfem::Vector &el_u, mfem::Vector &el_dudx,
+                                                   mfem::Vector &el_dudy, mfem::Vector &el_dudz)
 {
     liftingScheme->AssembleLiftingElementVector(el, Tr, el_u, el_dudx, el_dudy, el_dudz);
 }
 
-void DGSEMIntegrator::AssembleLiftingElementVector(const FiniteElement &el, ElementTransformation &Tr, const Vector &el_u, Vector &el_dudx, Vector &el_dudy)
+void DGSEMIntegrator::AssembleLiftingElementVector(const mfem::FiniteElement &el, mfem::ElementTransformation &Tr,
+                                                   const mfem::Vector &el_u, mfem::Vector &el_dudx,
+                                                   mfem::Vector &el_dudy)
 {
     liftingScheme->AssembleLiftingElementVector(el, Tr, el_u, el_dudx, el_dudy);
 }
 
-void DGSEMIntegrator::AssembleLiftingElementVector(const FiniteElement &el, ElementTransformation &Tr, const Vector &el_u, Vector &el_dudx)
+void DGSEMIntegrator::AssembleLiftingElementVector(const mfem::FiniteElement &el, mfem::ElementTransformation &Tr,
+                                                   const mfem::Vector &el_u, mfem::Vector &el_dudx)
 {
     liftingScheme->AssembleLiftingElementVector(el, Tr, el_u, el_dudx);
 }
 
-void DGSEMIntegrator::ComputeFVFluxes(const DenseMatrix &el_u_mat, real_t alpha_value, ElementTransformation &Tr, DenseMatrix &el_dudt_mat)
+#ifdef SUBCELL_FV_BLENDING
+void DGSEMIntegrator::ComputeFVFluxes(const mfem::DenseMatrix &el_u_mat, real_t alpha_value,
+                                      mfem::ElementTransformation &Tr, mfem::DenseMatrix &el_dudt_mat)
 {
     if (debug_integrator)
     {
@@ -980,10 +1038,10 @@ void DGSEMIntegrator::ComputeFVFluxes(const DenseMatrix &el_u_mat, real_t alpha_
     
     auto mid_r = [&](int idL, int idR, int dir) -> real_t
     {
-        IntegrationPoint ipL = ir_vol->IntPoint(idL);
-        IntegrationPoint ipR = ir_vol->IntPoint(idR);
+        mfem::IntegrationPoint ipL = ir_vol->IntPoint(idL);
+        mfem::IntegrationPoint ipR = ir_vol->IntPoint(idR);
 
-        IntegrationPoint ipm = ipL;
+        mfem::IntegrationPoint ipm = ipL;
         if (dir == 0) {
             ipm.x = 0.5 * (ipL.x + ipR.x);
         }
@@ -994,7 +1052,7 @@ void DGSEMIntegrator::ComputeFVFluxes(const DenseMatrix &el_u_mat, real_t alpha_
             ipm.z = 0.5 * (ipL.z + ipR.z);
         }
 
-        Vector phys(dim);
+        mfem::Vector phys(dim);
         Tr.Transform(ipm, phys);
 
         return phys[1]; 
@@ -1197,21 +1255,47 @@ void DGSEMIntegrator::ComputeFVFluxes(const DenseMatrix &el_u_mat, real_t alpha_
     el_dudt_mat *= alpha_value;
 }
 
+void DGSEMIntegrator::ComputeFVFluxesFromCache(const mfem::DenseMatrix &el_u_mat, mfem::ElementTransformation &Tr,
+                                               mfem::DenseMatrix &el_dudt_mat)
+{
+  const int e = Tr.ElementNo;
+  real_t *el_dudt = el_dudt_mat.GetData();
+  const real_t *el_u = el_u_mat.GetData();
+  const int dim = device_cache.dim;
+  const int Np_x = device_cache.Np_x;
+  const int Np_y = device_cache.Np_y;
+  const int Np_z = device_cache.Np_z;
+  const int neq = device_cache.num_equations;
+  const int npe = Np_x * Np_y * Np_z;
+  const int ndofe = npe * neq;
+  const int npe_metric_xi = (Np_x + 1)*Np_y*Np_z;
+  const int npe_metric_eta = Np_x*(Np_y + 1)*Np_z;
+  const int npe_metric_zeta = Np_x * Np_y * (Np_z + 1);
+
+  const real_t *el_metric_xi = device_cache.subcell_metric_xi_d + e*npe_metric_xi*dim;
+  const real_t *el_metric_eta = (dim > 1 ? device_cache.subcell_metric_eta_d + e*npe_metric_eta*dim :
+                                 nullptr);
+  const real_t *el_metric_zeta = (dim > 2 ? device_cache.subcell_metric_zeta_d + e*npe_metric_zeta*dim :
+                                  nullptr);
+  const real_t *elJac = device_cache.elJac_d + e*npe;
+
+  max_char_speed = ComputeFVFluxesKernel(device_cache, el_u, elJac, el_metric_xi, el_metric_eta, el_metric_zeta, el_dudt);
+}
 
 void DGSEMIntegrator::ComputeSubcellMetrics()
 {
     for (int el = 0; el < pmesh->GetNE(); el++)
     {
-        ElementTransformation *Tr = pmesh->GetElementTransformation(el);
-        DenseMatrix &nor_mat_xi = SubcellMetricXi(el);
-        DenseMatrix &nor_mat_eta = SubcellMetricEta(el);
-        DenseMatrix &nor_mat_zeta = SubcellMetricZeta(el);
-        Vector tmp(dim);
+        mfem::ElementTransformation *Tr = pmesh->GetElementTransformation(el);
+        mfem::DenseMatrix &nor_mat_xi = SubcellMetricXi(el);
+        mfem::DenseMatrix &nor_mat_eta = SubcellMetricEta(el);
+        mfem::DenseMatrix &nor_mat_zeta = SubcellMetricZeta(el);
+        mfem::Vector tmp(dim);
         for (int k = 0; k < Np_z; k++)
         {
             for (int j = 0; j < Np_y; j++)
             {
-                const IntegrationPoint &ip = ir_vol->IntPoint(k * Np_y * Np_x + j * Np_x); // left xi-face
+              const mfem::IntegrationPoint &ip = ir_vol->IntPoint(k * Np_y * Np_x + j * Np_x); // left xi-face
                 Tr->SetIntPoint(&ip);
                 Tr->AdjugateJacobian().GetRow(0, metric1);
                 for (int i = 0; i < Np_x + 1; i++)
@@ -1243,7 +1327,7 @@ void DGSEMIntegrator::ComputeSubcellMetrics()
             {
                 for (int i = 0; i < Np_x; i++)
                 {
-                    const IntegrationPoint &ip = ir_vol->IntPoint(k * Np_y * Np_x + i); // bottom eta-face
+                    const mfem::IntegrationPoint &ip = ir_vol->IntPoint(k * Np_y * Np_x + i); // bottom eta-face
                     Tr->SetIntPoint(&ip);
                     Tr->AdjugateJacobian().GetRow(1, metric1);
                     for (int j = 0; j < Np_y + 1; j++)
@@ -1275,7 +1359,7 @@ void DGSEMIntegrator::ComputeSubcellMetrics()
                 {
                     for (int i = 0; i < Np_x; i++)
                     {
-                        const IntegrationPoint &ip = ir_vol->IntPoint(j * Np_x + i); // bottom zeta-face
+                      const mfem::IntegrationPoint &ip = ir_vol->IntPoint(j * Np_x + i); // bottom zeta-face
                         Tr->SetIntPoint(&ip);
                         Tr->AdjugateJacobian().GetRow(2, metric1);
                         for (int k = 0; k < Np_z + 1; k++)
@@ -1302,20 +1386,7 @@ void DGSEMIntegrator::ComputeSubcellMetrics()
                 }
             }
         }
-    }   
-}
-
-#ifdef AXISYMMETRIC
-inline real_t DGSEMIntegrator::PressureFromConservative(const Vector& U) const
-{
-    const real_t rho = U(0);
-    const real_t mz  = U(1);
-    const real_t mr  = U(2);
-    const real_t E   = U(3);
-    const real_t ke = 0.5 * ((mz*mz + mr*mr) / rho);
-    return gammaM1 * (E - ke);
+    }
 }
 #endif
-
-
 }

@@ -415,6 +415,7 @@ def main():
     ]
     user_excludes = [f.strip() for f in args.exclude_fields.split(",") if f.strip()]
     excludes = list(dict.fromkeys(default_excludes + user_excludes))
+
     overall_ok = True
     all_results: List[Dict] = []
 
@@ -446,6 +447,7 @@ def main():
                 file=sys.stderr,
             )
             return 2
+
         overall_ok = overall_ok and ok
         all_results.append({"file0": f0, "file1": f1, "results": results})
 

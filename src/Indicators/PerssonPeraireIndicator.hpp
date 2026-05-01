@@ -2,6 +2,7 @@
 
 #include "Indicator.hpp"
 #include "ModalBasis.hpp"
+#include "GasModel.hpp"
 
 namespace Prandtl
 {
@@ -9,15 +10,16 @@ namespace Prandtl
 class PerssonPeraireIndicator : public Indicator
 {
 private:
-    std::shared_ptr<ModalBasis> modalBasis;
-    Vector rho_p, modes, modesM1, modesM2;
-    Array2D<int> ubdegs;
-    Array<int> ubdegs_row;
-
-    real_t gammaM1;
+  std::shared_ptr<ModalBasis> modalBasis;
+  const IdealGasModel gasModel;
+  Vector rho_p, modes, modesM1, modesM2;
+  Array2D<int> ubdegs;
+  Array<int> ubdegs_row;
+  
 public:
-    PerssonPeraireIndicator(std::shared_ptr<ParFiniteElementSpace> vfes, std::shared_ptr<ParFiniteElementSpace> fes0, std::shared_ptr<ParGridFunction> eta, std::shared_ptr<ModalBasis> modalBasis, real_t gamma);
-    virtual void CheckSmoothness(const Vector &x) override;
+  PerssonPeraireIndicator(std::shared_ptr<ParFiniteElementSpace> vfes, std::shared_ptr<ParFiniteElementSpace> fes0, std::shared_ptr<ParGridFunction> eta, std::shared_ptr<ModalBasis> modalBasis, const IdealGasModel &gasModel_);
+  virtual void CheckSmoothness(const Vector &x) override;
+  virtual void CheckIndicatorSmoothness(const Vector &indicator) override;
 };
 
 }

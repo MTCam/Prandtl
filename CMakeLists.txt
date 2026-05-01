@@ -6,11 +6,13 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 project(Prandtl)
 
-set(BUILD_TESTING OFF CACHE BOOL "Build unit tests (currently disabled: no test wiring is configured)")
+option(BUILD_TESTING "Build unit tests" ON)
 option(PARABOLIC "Enable Compressible Navier-Stokes Solver" OFF)
 option(SUBCELL_FV_BLENDING "Enable subcell blending" ON)
 option(AXISYMMETRIC "Enable Axisymmetric domain solver" OFF)
 option(SUTHERLAND "Enable Sutherland transport model" OFF)
+option(ENABLE_TIMERS "Enable performance timers." OFF)
+option(PRANDTL_USE_CUDA "Compile CUDA kernels" OFF)
 
 find_package(MFEM REQUIRED CONFIG) 
 if (TARGET MFEM::mfem)
@@ -21,9 +23,27 @@ else()
   message(FATAL_ERROR "MFEM package found, but no MFEM target (MFEM::mfem or mfem) was provided.")
 endif()
 
-find_package(MPI REQUIRED)
+find_package(MPI REQUIRED COMPONENTS CXX)
 
 add_executable(${PROJECT_NAME} main.cpp)
+
+if (PRANDTL_USE_CUDA)
+   message(STATUS "Building Prandtl for CUDA platform.")
+   set(CMAKE_CUDA_HOST_COMPILER ${MPI_CXX_COMPILER})
+   enable_language(CUDA)
+   set_source_files_properties(
+     src/Operators/DGSEMOperator.cpp
+     src/Operators/NonlinearForm/DGSEMNonlinearForm.cpp
+     PROPERTIES LANGUAGE CUDA
+   )
+   set_property(TARGET ${PROJECT_NAME} PROPERTY CUDA_ARCHITECTURES 80)
+   target_include_directories(${PROJECT_NAME} PRIVATE
+     $<$<COMPILE_LANGUAGE:CUDA>:${MPI_CXX_INCLUDE_DIRS}>
+   )
+   target_compile_options(${PROJECT_NAME} PRIVATE
+     $<$<COMPILE_LANGUAGE:CUDA>:--expt-extended-lambda --expt-relaxed-constexpr>
+   )
+endif()
 
 # --- Python Script for Compile Definitions ---
 set(CONFIG_FILE "${CONFIG_FILE}" CACHE STRING "Path to config file")
@@ -49,6 +69,11 @@ if(NOT "${CONFIG_FILE}" STREQUAL "")
     )
 else()
     message(STATUS "No configuration file given.")
+endif()
+
+if(ENABLE_TIMERS)
+  message(STATUS "Enabling performance timers.")
+  target_compile_definitions(${PROJECT_NAME} PRIVATE ENABLE_TIMERS)
 endif()
 
 if(PARABOLIC)

@@ -3,21 +3,24 @@
 namespace Prandtl
 {
 
-// Constructor for SupersonicInflowBdrFaceIntegrator with a variable (space- and/or time-dependent) conservative state
-SupersonicInflowBdrFaceIntegrator::SupersonicInflowBdrFaceIntegrator(
-    std::shared_ptr<LiftingScheme> liftingScheme, const NumericalFlux &rsolver, const int Np,
-    const real_t &time, real_t gamma, VectorFunctionCoefficient &conserv_state_fun, bool t_dependent)
-    : BdrFaceIntegrator(liftingScheme, rsolver, Np, time, gamma, false, t_dependent),
+  // Constructor for SupersonicInflowBdrFaceIntegrator with a variable (space- and/or time-dependent) conservative state
+  SupersonicInflowBdrFaceIntegrator::SupersonicInflowBdrFaceIntegrator(std::shared_ptr<LiftingScheme> liftingScheme,
+                                                                       const IdealGasModel &gasModel_,
+                                                                       const NumericalFlux &rsolver, const int Np,
+                                                                       const real_t &time,
+                                                                       VectorFunctionCoefficient &conserv_state_fun, bool t_dependent)
+  : BdrFaceIntegrator(liftingScheme, gasModel_, rsolver, Np, time, false, t_dependent),
     conserv_state_fun(conserv_state_fun) {}
-
-// Constructor for SupersonicInflowBdrFaceIntegrator with a constant (space- and/or time-dependent) conservative state
-SupersonicInflowBdrFaceIntegrator::SupersonicInflowBdrFaceIntegrator(
-    std::shared_ptr<LiftingScheme> liftingScheme, const NumericalFlux &rsolver, const int Np,
-    const real_t &time, real_t gamma, const Vector &conserv_state)
-    : BdrFaceIntegrator(liftingScheme,rsolver, Np, time, gamma, true, false),
+  
+  // Constructor for SupersonicInflowBdrFaceIntegrator with a constant (space- and/or time-dependent) conservative state
+  SupersonicInflowBdrFaceIntegrator::SupersonicInflowBdrFaceIntegrator(std::shared_ptr<LiftingScheme> liftingScheme,
+                                                                       const IdealGasModel &gasModel_,
+                                                                       const NumericalFlux &rsolver, const int Np,
+                                                                       const real_t &time, const Vector &conserv_state)
+  : BdrFaceIntegrator(liftingScheme, gasModel_, rsolver, Np, time, true, false),
     const_state(conserv_state), conserv_state_fun(num_equations, std::function<void(const Vector&, Vector&)>())
-{
-}
+  {
+  }
 
 void SupersonicInflowBdrFaceIntegrator::ComputeOuterInviscidState(const Vector &state1, Vector &state2, FaceElementTransformations &Tr, const IntegrationPoint &ip)
 {
