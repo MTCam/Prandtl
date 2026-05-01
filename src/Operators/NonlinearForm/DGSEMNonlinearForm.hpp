@@ -29,6 +29,15 @@ namespace Prandtl
     Prandtl::DGSEMOperatorCache *cache = nullptr;
     Prandtl::DGSEMDeviceCache device_cache;
 
+  public:
+
+    DGSEMNonlinearForm(mfem::ParFiniteElementSpace *pfes);
+
+    // Device path Interfaces
+    real_t MultEuler(const mfem::Vector &pu, mfem::Vector &pdudt) const;
+    real_t MultCNS(const mfem::Vector &u, const std::vector<mfem::Vector *> &grad_prim, mfem::Vector &dudt) const;
+    void GradOperator(const mfem::Vector &u, std::vector<mfem::Vector *> &grad_u) const;
+
     // Device path helpers
     real_t MultEuler_Volume(const mfem::Vector &pu, mfem::Vector &pdudt) const;
     real_t MultEuler_InteriorFaces(const mfem::Vector &pu, mfem::Vector &pdudt) const;
@@ -43,15 +52,6 @@ namespace Prandtl
     void GradOperator_Volume(const Vector &pu, std::vector<mfem::Vector *> &p_grad_u) const;
     void GradOperator_InteriorFaces(const mfem::Vector &pu, std::vector<mfem::Vector *> &p_grad_u) const;
     void GradOperator_BoundaryFaces(const mfem::Vector &pu, std::vector<mfem::Vector *> &p_grad_u) const;
-
-  public:
-
-    DGSEMNonlinearForm(mfem::ParFiniteElementSpace *pfes);
-
-    // Device path Interfaces
-    real_t MultEuler(const mfem::Vector &pu, mfem::Vector &pdudt) const;
-    real_t MultCNS(const mfem::Vector &u, const std::vector<mfem::Vector *> &grad_prim, mfem::Vector &dudt) const;
-    void GradOperator(const mfem::Vector &u, std::vector<mfem::Vector *> &grad_u) const;
 
     // Host Path Interfaces
     void MultLifting(const mfem::Vector &u, mfem::Vector &dudx,
