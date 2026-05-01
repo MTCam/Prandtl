@@ -57,3 +57,25 @@ target_include_directories(state_tests
 target_link_libraries(state_tests PRIVATE ${PRANDTL_MFEM_TARGET})
 
 add_test(NAME StateTestingSuite COMMAND state_tests)
+
+# Riemann solvers tests
+add_executable(rflux_tests
+   unit_test_main.cpp
+   test_riemann_fluxes.cpp
+   ${PROJECT_SOURCE_DIR}/src/RiemannSolvers/ChandrashekarFlux.cpp
+   ${PROJECT_SOURCE_DIR}/src/RiemannSolvers/LaxFriedrichsFlux.cpp
+   ${PROJECT_SOURCE_DIR}/src/RiemannSolvers/HLLFlux.cpp
+   ${PROJECT_SOURCE_DIR}/src/Fluxes/NavierStokesFlux.cpp
+)
+
+target_include_directories(rflux_tests
+    PRIVATE ${PROJECT_SOURCE_DIR}/src/Physics
+    PRIVATE ${PROJECT_SOURCE_DIR}/src/Device
+    PRIVATE ${PROJECT_SOURCE_DIR}/src/RiemannSolvers
+    PRIVATE ${PROJECT_SOURCE_DIR}/src/Fluxes
+    PRIVATE ${PROJECT_SOURCE_DIR}/src/BasicOperations
+)
+
+target_link_libraries(rflux_tests PRIVATE ${PRANDTL_MFEM_TARGET})
+
+add_test(NAME RiemannTestingSuite COMMAND rflux_tests)
