@@ -819,7 +819,7 @@ namespace Prandtl {
     device_cache.bc_scalar_d = cache.bc_scalar_data.Read();
     device_cache.bc_vector_d = cache.bc_vector_data.Read();
     device_cache.bc_descr_d = cache.bc_descriptors.Read();
- 
+
     // Updated every step by the compute device
     device_cache.elWaveSpeed_d = cache.elWaveSpeed.ReadWrite();
     device_cache.ifWaveSpeed_d = cache.ifWaveSpeed.ReadWrite();

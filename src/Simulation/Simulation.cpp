@@ -1,4 +1,6 @@
 #include "Simulation.hpp"
+#include "EulerOperator.hpp"
+
 #include "ConditionFactory.hpp"
 
 #include "LidDrivenCavity.hpp"
@@ -31,6 +33,13 @@
 #include <mpi.h>
 namespace Prandtl
 {
+
+struct SimPhysics {
+  using GasModel = ActiveGasModel;
+  using InviscidFlux = ChandrashekarFlux::InviscidFlux;
+};
+
+
 
   Simulation& Simulation::SimulationCreate(std::string device_cfg)
 {
@@ -99,7 +108,7 @@ Simulation::~Simulation()
     }
 }
 
-constexpr bool debug_simulation = false;
+constexpr bool debug_simulation = true;
 
 void Simulation::LoadConfig(const std::string &config_file_path)
 {
@@ -392,14 +401,13 @@ void Simulation::LoadConfig(const std::string &config_file_path)
 
     stateLayout = std::make_shared<StateLayout>(dim, num_dofs_scalar);
     gasModel = std::make_shared<ActiveGasModel>(*physicsConstants, *stateLayout);
-
     // DEVICE: numerical flux must be set at *compile* time
     //         
     // HOST-ONLY: numerical flux type selection at runtime with:
     flux = std::make_shared<NavierStokesFlux>(*gasModel);
     std::string numflux_type(runtime["numerical_flux"].get<std::string>());
     if (numflux_type == "Chandrashekar"){
-      numericalFlux = std::make_shared<ChandrashekarFlux>(*flux, *gasModel);
+      numericalFlux = std::make_shared<ChandrashekarFlux>(*flux, *gasModel);        
     } else if (numflux_type == "LLF"){
       numericalFlux = std::make_shared<LaxFriedrichsFlux>(*flux, *gasModel);
     } else if (numflux_type == "HLL"){
@@ -564,12 +572,16 @@ void Simulation::LoadConfig(const std::string &config_file_path)
       std::make_unique<Prandtl::DGSEMIntegrator>(pmesh, fes0, alpha, liftingScheme, *numericalFlux, order+1);
 
     auto indicator =
-      std::make_unique<Prandtl::PerssonPeraireIndicator>(vfes, fes0, eta,
+      std::make_shared<Prandtl::PerssonPeraireIndicator>(vfes, fes0, eta,
                                                          std::make_unique<Prandtl::ModalBasis>(*fec, gtype, order, dim),
                                                          *gasModel);
 
     NS = std::make_unique<DGSEMOperator>(vfes, fes0, pmesh, eta, alpha, grad_u, std::move(integrator),
-                                         std::move(indicator), *gasModel, r_gf, alpha_max);
+                                         indicator, *gasModel, r_gf, alpha_max);
+    Euler = std::make_unique<EulerOperator<SimPhysics> >(vfes, fes0, pmesh, eta, alpha,
+                                                         indicator, *gasModel, r_gf, alpha_max);
+    auto EulerOp = dynamic_cast<EulerOperator<SimPhysics> *>(Euler.get());
+
     NS->UseDevice(use_device_path);
 
     if(myRank == 0 && debug_simulation){
@@ -621,7 +633,8 @@ void Simulation::LoadConfig(const std::string &config_file_path)
               {
                 auto symmetry = std::make_unique<SymmetryBdrFaceIntegrator>(liftingScheme, *gasModel, *numericalFlux,
                                                                             order + 1, NS->GetTimeRef(), true, false);
-                
+
+                EulerOp->AddBdrFaceIntegrator(symmetry.release(), bdr_marker_vector.back());
                 NS->AddBdrFaceIntegrator(symmetry.release(), bdr_marker_vector.back());
                 bc_descr.type = int(Prandtl::BCType::Symmetry);
                 bc_descr.data_kind = int(Prandtl::BCDataKind::None);
@@ -645,6 +658,7 @@ void Simulation::LoadConfig(const std::string &config_file_path)
                 auto slip = std::make_unique<SlipWallBdrFaceIntegrator>(liftingScheme, *gasModel, *numericalFlux,
                                                                         order + 1, NS->GetTimeRef(), true, false);
                 
+                EulerOp->AddBdrFaceIntegrator(slip.release(), bdr_marker_vector.back());
                 NS->AddBdrFaceIntegrator(slip.release(), bdr_marker_vector.back());
                 bc_descr.type = int(Prandtl::BCType::SlipWall);
                 bc_descr.data_kind = int(Prandtl::BCDataKind::None);
@@ -681,11 +695,13 @@ void Simulation::LoadConfig(const std::string &config_file_path)
                       Ostr << bc_vector_data[ivec] << " ";
                     }
                     Ostr << "]" << std::endl;
+                    auto nsawbfi = new NoSlipAdiabWallBdrFaceIntegrator(liftingScheme, *gasModel, *numericalFlux, order + 1, NS->GetTimeRef(),
+                                                                        ConditionFactory::Instance().GetScalarBoundaryCondition(heatBC_key),
+                                                                        ConditionFactory::Instance().GetVectorBoundaryCondition(velBC_key));
+                    
                     // std::cout << Ostr.str();
-                    NS->AddBdrFaceIntegrator(
-                                             new NoSlipAdiabWallBdrFaceIntegrator(liftingScheme, *gasModel, *numericalFlux, order + 1, NS->GetTimeRef(),
-                                                                                  ConditionFactory::Instance().GetScalarBoundaryCondition(heatBC_key),
-                                                                                  ConditionFactory::Instance().GetVectorBoundaryCondition(velBC_key)), bdr_marker_vector.back());
+                    EulerOp->AddBdrFaceIntegrator(nsawbfi, bdr_marker_vector.back());
+                    NS->AddBdrFaceIntegrator(nsawbfi, bdr_marker_vector.back());
                   }
                 else if (bc_props["velocity"].contains("function"))
                   {
@@ -765,12 +781,11 @@ void Simulation::LoadConfig(const std::string &config_file_path)
                         std::cerr << "Error: Invalid boundary condition signature." << std::endl;
                         return;
                     }
-
-                    NS->AddBdrFaceIntegrator(
-                                             new NoSlipAdiabWallBdrFaceIntegrator(liftingScheme, *gasModel,
-                                                                                  *numericalFlux, order + 1, NS->GetTimeRef(),
-                                                                                  *heatBC, *velBC, td),
-                                             bdr_marker_vector.back());
+                    auto nsawbfi = new NoSlipAdiabWallBdrFaceIntegrator(liftingScheme, *gasModel,
+                                                                        *numericalFlux, order + 1, NS->GetTimeRef(),
+                                                                        *heatBC, *velBC, td);
+                    NS->AddBdrFaceIntegrator(nsawbfi, bdr_marker_vector.back());
+                    EulerOp->AddBdrFaceIntegrator(nsawbfi, bdr_marker_vector.back());
                     
                 }
                 else
@@ -789,6 +804,7 @@ void Simulation::LoadConfig(const std::string &config_file_path)
                                                                                  *numericalFlux, order + 1, NS->GetTimeRef());
 
                 NS->AddBdrFaceIntegrator(outlet.release(), bdr_marker_vector.back());
+                EulerOp->AddBdrFaceIntegrator(outlet.release(), bdr_marker_vector.back());
                 bc_descr.type = int(Prandtl::BCType::SupersonicOutflow);
                 bc_descr.data_kind = int(Prandtl::BCDataKind::None);
             }
@@ -802,6 +818,7 @@ void Simulation::LoadConfig(const std::string &config_file_path)
                                                               liftingScheme, *gasModel, 
                                                               *numericalFlux, order + 1, NS->GetTimeRef(), bc_state);
                 NS->AddBdrFaceIntegrator(inlet.release(), bdr_marker_vector.back());
+                EulerOp->AddBdrFaceIntegrator(inlet.release(), bdr_marker_vector.back());
                 const int data_offset = Prandtl::AppendBCVectorPayload(bc_vector_data, bc_state);
                 bc_descr.type = int(Prandtl::BCType::SupersonicInflow);
                 bc_descr.data_kind = int(Prandtl::BCDataKind::VectorConstant);
@@ -867,6 +884,7 @@ void Simulation::LoadConfig(const std::string &config_file_path)
                                                                                      order + 1, NS->GetTimeRef(), *stateBC, td);
 
                     NS->AddBdrFaceIntegrator(inlet.release(), bdr_marker_vector.back());
+                    EulerOp->AddBdrFaceIntegrator(inlet.release(), bdr_marker_vector.back());
 
                 }
             }
@@ -954,8 +972,10 @@ void Simulation::LoadConfig(const std::string &config_file_path)
 
     // Set up the operator cache
     NS->SetBCDescriptorData(bc_descriptors, bc_scalar_data, bc_vector_data);
+    EulerOp->SetBCDescriptorData(bc_descriptors, bc_scalar_data, bc_vector_data);
     //    NS->SetTime(t); // Finalize does this.
     NS->Finalize(t);
+    EulerOp->Finalize(t);
 
     if(myRank == 0 && debug_simulation){
       std::cout << "DGSEMOperator finalized." << std::endl;
@@ -965,15 +985,17 @@ void Simulation::LoadConfig(const std::string &config_file_path)
     {
       std::cout << "The Number of Equations being Solved: " << num_equations << std::endl;
       std::cout << "The Total Number of Order " << order << " Elements in the Simulation: " << num_elements << std::endl;
+      std::cout << "The Total Number of DOFs per Equation per Element: " << points_per_element << std::endl;
       std::cout << "The Total Number of DOFs in the Simulation (All Eqns/All Ranks): "
                 << num_elements*points_per_element*num_equations << std::endl;
-      std::cout << "The Total Number of DOFs per Equation per Element: " << points_per_element << std::endl;
-      std::cout << "The Average Number of Elements per Rank: " << num_elements / numProcs << std::endl;
-      std::cout << "The Number of DOFs per Equation per Rank: " << num_dofs_scalar << std::endl;
-      std::cout << "The Number of DOFs (System) per Rank: " << num_dofs_system << std::endl;
+      std::cout << "Per Rank Averages:" << std::endl
+                << "  Number of Elements:     " << num_elements / numProcs << std::endl
+                << "  Number of DOFs per Enq: " << num_dofs_scalar << std::endl
+                << "  Total DOFs (all eqns):  " << num_dofs_system << std::endl;
     }
 
-    ode_solver->Init(*NS);
+    // ode_solver->Init(*NS);
+    ode_solver->Init(*Euler);
 
     rho.MakeRef(fes.get(), *sol, offset_mass(*stateLayout));
     mom.MakeRef(dfes.get(), *sol, offset_momentum(*stateLayout));
@@ -1054,6 +1076,8 @@ void Simulation::LoadConfig(const std::string &config_file_path)
 
 void Simulation::Run()
 {
+    auto EulerOp = dynamic_cast<EulerOperator<SimPhysics> *>(Euler.get());
+
     if (Mpi::Root())
     {
         std::cout << "================================================" << std::endl;
@@ -1079,10 +1103,10 @@ void Simulation::Run()
     ConservativeToPrimitive(U_cons, *rho_axi, *u, *v, *p);
     NS->ComputeIntegralMeasures(U_cons, diag);
 #else
-    NS->ComputeIntegralMeasures(*sol, diag);
+    EulerOp->ComputeIntegralMeasures(*sol, diag);
 #endif
 
-    IntegralMeasures diag0 = NS->GetIntegralMeasuresBaseline();
+    IntegralMeasures diag0 = EulerOp->GetIntegralMeasuresBaseline();
 
     // Get the minimum characteristic element size and compute the initial time step if time step is variable
     real_t heff = infinity();
@@ -1091,7 +1115,9 @@ void Simulation::Run()
       {
         hmin = std::min(pmesh->GetElementSize(i, 1), hmin);
       }
-
+    if(Mpi::Root() && debug_simulation){
+      std::cout << "Found minimum cell size: " << hmin << std::endl;
+    }
     MPI_Allreduce(MPI_IN_PLACE, &hmin, 1, MPITypeMap<real_t>::mpi_type, MPI_MIN, pmesh->GetComm());
     // Asymptotically should be hmin / (p+1)^2 due to node clustering, but is pretty wrong at low
     // order.  This form attempts to smoothly transition to asymptotic form with increasing order
@@ -1100,23 +1126,37 @@ void Simulation::Run()
     heff = hmin / ((1.0 - alpha1) * p1 + alpha1 * p1 * p1);
 
     if (debug_simulation && Mpi::Root()){
-      std::cout << "Mesh h_min: " << heff << std::endl;
+      std::cout << "Mesh min spacing (h_eff): " << heff << std::endl;
     }
     const real_t nuscale = \
       std::max(1.0, physicsConstants->gamma/physicsConstants->Pr);
-
+#ifdef PARABOLIC
+    if (debug_simulation && Mpi::Root()){
+      std::cout << "Viscosity scale (nuscale): " << nuscale << std::endl;
+    }
+#endif
     if (variable_dt && cfl > 0.0)
     {        
         Vector z(sol->Size());
-        NS->Mult(*sol, z);
-        real_t max_char_speed = NS->GetMaxCharSpeed();
+        EulerOp->Mult(*sol, z);
+        real_t max_char_speed = EulerOp->GetMaxCharSpeed();
         MPI_Allreduce(MPI_IN_PLACE, &max_char_speed, 1,  MPITypeMap<real_t>::mpi_type, MPI_MAX, pmesh->GetComm());
         real_t dt_adv = heff / max_char_speed;
         dt = cfl / dim * dt_adv;
+        if(debug_simulation && Mpi::Root()){
+          std::cout << "Found max_char_speed = " << max_char_speed << std::endl
+                    << "Advective timestep = " << dt_adv << std::endl
+                    << "Inviscid DT = " << dt << std::endl;
+        }
 #ifdef PARABOLIC
         real_t nu_eff = nuscale * physicsConstants->mu / diag0.min_dens;
         real_t dt_diff = heff * heff / nu_eff;
         dt = cfl / dim / (1.0/dt_adv + 1.0/dt_diff);
+        if(debug_simulation && Mpi::Root()){
+          std::cout << "Found minimum density: " << diag0.min_dens << std::endl
+                    << "Found effective visc: " << nu_eff << std::endl
+                    << "Diffusive timestep: " << dt_diff << std::endl;
+        }
 #endif
         if(Mpi::Root()){
           std::cout << "Fixed CFL: " << cfl << std::endl
@@ -1258,13 +1298,13 @@ void Simulation::Run()
           NS->RecoverStateFromWeighted(*sol, U_cons);
           NS->ComputeIntegralMeasures(U_cons, diag);
 #else
-          NS->ComputeIntegralMeasures(*sol, diag);
+          EulerOp->ComputeIntegralMeasures(*sol, diag);
 #endif
         }
         // Update the time step size with CFL?
         if ((variable_dt && cfl > 0) || (ti%print_interval == 0) || debug_simulation)
         {
-          real_t max_char_speed = NS->GetMaxCharSpeed();
+          real_t max_char_speed = EulerOp->GetMaxCharSpeed();
           MPI_Allreduce(MPI_IN_PLACE, &max_char_speed, 1, MPITypeMap<real_t>::mpi_type, MPI_MAX, pmesh->GetComm());
           real_t dt_adv = heff / max_char_speed;
           real_t dt_est = dt_adv;
@@ -1285,14 +1325,14 @@ void Simulation::Run()
             std::cout << "DT(adv, diff, sim): (" << dt_adv << ", " << dt_diff << ", " << dt << ")" << std::endl;
             std::cout << "Effective viscosity: " << nu_eff << std::endl;
 #else
-            std::cout << "DT: " << dt_adv << std::endl;
+            std::cout << "DT(adv, sim): (" << dt_adv << ", " << dt << ")" << std::endl;
 #endif
             std::cout << "Max wavespeed: " << max_char_speed << std::endl;
             std::cout << "Max specific volume: " << 1.0 / diag.min_dens << std::endl;
           }
           
         }
-        
+
         // Check for completion
         done = (t >= t_final - 1e-8 * dt);
 

@@ -12,17 +12,6 @@
 
 namespace Prandtl
 {
-  struct IntegralMeasures {
-    real_t mass = 0.0;
-    real_t ke = 0.0;
-    real_t en = 0.0;
-    real_t max_press = 0.0;
-    real_t min_press = 0.0;
-    real_t max_temp = 0.0;
-    real_t min_temp = 0.0;
-    real_t max_dens = 0.0;
-    real_t min_dens = 0.0;
-  };
 
 using namespace mfem;
   
@@ -37,7 +26,7 @@ private:
     std::vector<std::shared_ptr<ParGridFunction> > grad_u;
     std::shared_ptr<ParGridFunction> r_gf;
     std::unique_ptr<DGSEMIntegrator> integrator;
-    std::unique_ptr<Indicator> indicator;
+    std::shared_ptr<Indicator> indicator;
     const ActiveGasModel gasModel;
     std::unique_ptr<DGSEMNonlinearForm> nonlinearForm; 
 
@@ -105,7 +94,7 @@ public:
                   std::shared_ptr<ParGridFunction> alpha,
                   std::vector<std::shared_ptr<ParGridFunction> > &grad_u_,
                   std::unique_ptr<DGSEMIntegrator> integrator,
-                  std::unique_ptr<Indicator> indicator,
+                  std::shared_ptr<Indicator> indicator,
                   const ActiveGasModel &gasModel_,
                   std::shared_ptr<ParGridFunction> r_gf = nullptr,
                   const real_t alpha_max = 0.5, const real_t alpha_min = 0.001);

@@ -109,7 +109,8 @@ private:
   
   std::shared_ptr<ODESolver> ode_solver;
   std::unique_ptr<DGSEMOperator> NS;
-  
+  std::unique_ptr<mfem::TimeDependentOperator> Euler;
+
   int signature;
   
   std::shared_ptr<BdrFaceIntegrator> bdr_face_integrator;

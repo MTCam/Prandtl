@@ -155,8 +155,6 @@ TEST(RiemannFlux_Consistency_2D)
   Prandtl::ActiveGasModel gasModel(phys, layout);
   Prandtl::NavierStokesFlux physicalFlux(gasModel);
   
-  // Adjust this construction to your actual current constructors.
-
   Prandtl::ChandrashekarFlux chan(physicalFlux, gasModel);
   Prandtl::LaxFriedrichsFlux llf(physicalFlux, gasModel);
   Prandtl::HLLFlux           hll(physicalFlux, gasModel);
