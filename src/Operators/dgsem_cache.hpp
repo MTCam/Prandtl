@@ -67,9 +67,11 @@ namespace Prandtl
     mfem::Vector face_wt_minus;
     mfem::Vector face_wt_plus;
 
-    // Volume temporaries
+    // Temporaries/aux storage
     mfem::Vector pdudt;
+    mfem::Vector sVol;
     mfem::Vector uVol;
+    mfem::Vector volAux;
     mfem::Vector rhsVol;
     mfem::Vector uInt;
     mfem::Vector rhsInt;
@@ -77,7 +79,14 @@ namespace Prandtl
     mfem::Vector uBnd;
     mfem::Vector rhsBnd;
     mfem::Vector dudtBnd;
+    mfem::Vector entropyState;
+    mfem::Vector duBnd;
+    mfem::Vector duInt;
 
+    std::vector<mfem::Vector> gradVol;
+    std::vector<mfem::Vector> pGrad;
+    std::vector<mfem::Vector> gradInt;
+    std::vector<mfem::Vector> gradBnd;
     
     // Domain boundary device arrays
     mfem::Vector bnd_normals;
@@ -106,7 +115,8 @@ namespace Prandtl
     mfem::Vector subcellMetricXi;
     mfem::Vector subcellMetricEta;
     mfem::Vector subcellMetricZeta;
-    mfem::Vector subcellWeights;
+    mfem::Vector subcellWeights;    
+    mfem::Vector indicatorField;
     std::shared_ptr<mfem::ParGridFunction> alpha;
 #endif
 

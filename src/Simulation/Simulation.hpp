@@ -110,6 +110,7 @@ private:
   std::shared_ptr<ODESolver> ode_solver;
   std::unique_ptr<DGSEMOperator> NS;
   std::unique_ptr<mfem::TimeDependentOperator> Euler;
+  std::unique_ptr<mfem::TimeDependentOperator> CNS;
 
   int signature;
   

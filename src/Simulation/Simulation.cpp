@@ -1,5 +1,6 @@
 #include "Simulation.hpp"
 #include "EulerOperator.hpp"
+#include "NSOperator.hpp"
 
 #include "ConditionFactory.hpp"
 
@@ -34,18 +35,18 @@
 namespace Prandtl
 {
 
-struct SimPhysics {
-  using GasModel = ActiveGasModel;
-  using InviscidFlux = ChandrashekarFlux::InviscidFlux;
-};
+  struct SimPhysics {
+    using GasModel = ActiveGasModel;
+    using InviscidFlux = ChandrashekarFlux::InviscidFlux;
+  };
 
 
 
   Simulation& Simulation::SimulationCreate(std::string device_cfg)
-{
-  static Simulation sim(device_cfg);
-  return sim;
-}
+  {
+    static Simulation sim(device_cfg);
+    return sim;
+  }
 
   void Simulation::InitDevice(std::string device_cfg)
   {
@@ -69,7 +70,7 @@ struct SimPhysics {
 
   Simulation::Simulation(std::string device_cfg)
     : r_coef([](const Vector &X){ return X[1];}), z_coef([](const Vector &X){ return X[0];})
-{
+  {
     Mpi::Init();
     numProcs = Mpi::WorldSize();
     myRank = Mpi::WorldRank();
@@ -77,11 +78,11 @@ struct SimPhysics {
     InitDevice(device_cfg);
 
     if (Mpi::Root())
-    {
+      {
         std::cout << "================================================" << std::endl;
         std::cout << "DGSEM Simulation Starting with " << numProcs << " Processors!" << std::endl;
-        std::cout << "================================================" << std::endl;       
-        
+        std::cout << "================================================" << std::endl;
+
 #ifdef PARABOLIC
         std::cout << "The Navier-Stokes Equations will be Solved!" << std::endl;
 #else
@@ -93,34 +94,34 @@ struct SimPhysics {
 #endif
 
 #ifdef SUBCELL_FV_BLENDING
-        std::cout << "Subcell Finite Volume Blending will be Activated!" << std::endl; 
+        std::cout << "Subcell Finite Volume Blending will be Activated!" << std::endl;
 #endif
-    }
-}
+      }
+  }
 
-Simulation::~Simulation()
-{
+  Simulation::~Simulation()
+  {
     if (Mpi::Root())
-    {
+      {
         std::cout << "================================================" << std::endl;
         std::cout << "DGSEM Simulation Destroyed!" << std::endl;
         std::cout << "================================================" << std::endl;
-    }
-}
+      }
+  }
 
-constexpr bool debug_simulation = true;
+  constexpr bool debug_simulation = true;
 
-void Simulation::LoadConfig(const std::string &config_file_path)
-{
+  void Simulation::LoadConfig(const std::string &config_file_path)
+  {
     /*
-    Load the configuration file and parse the settings
+      Load the configuration file and parse the settings
     */
     std::ifstream config_file(config_file_path);
     if (!config_file.is_open())
-    {
+      {
         std::cerr << "Error Opening Configuration File at " << config_file_path << std::endl;
         return;
-    }
+      }
 
     // Parse the JSON configuration file
     nlohmann::json config;
@@ -142,14 +143,14 @@ void Simulation::LoadConfig(const std::string &config_file_path)
     checkpoints_folder = output_file_path + "/" + runtime.value("checkpoints_folder", "Checkpoints");
     checkpoint_load = runtime.value("checkpoint_load", false);
     checkpoint_save = runtime.value("checkpoint_save", false);
-    if (checkpoint_save) 
-    {
+    if (checkpoint_save)
+      {
         std::filesystem::create_directories(checkpoints_folder);
-    }
-    
+      }
+
     visualize = runtime["visualize"].get<bool>();
     if (visualize)
-    {
+      {
         save_dt1 = runtime.value("initial_save_dt", 0.01);
         save_dt2 = runtime.value("refined_save_dt", save_dt1);
         trigger_t = runtime.value("refined_trigger", 2.0);
@@ -158,134 +159,134 @@ void Simulation::LoadConfig(const std::string &config_file_path)
         paraview = runtime["paraview"].get<bool>();
         visit = runtime["visit"].get<bool>();
         if (!paraview && !visit)
-        {
+          {
             std::cerr << "Error: Both ParaView and VisIt visualization options are disabled. Please choose at least one." << std::endl;
             return;
-        }
-    }
+          }
+      }
 
     nancheck = runtime["nancheck"].get<bool>();
     if(debug_simulation)
       nancheck = true;
     if (nancheck)
-    {
-      nancheck_steps = runtime.value("nancheck_steps", debug_simulation ? 1 : 1000);
-      if(Mpi::Root()){
-        std::cout << "Checking for NANs every " << nancheck_steps << " steps" << std::endl;
+      {
+        nancheck_steps = runtime.value("nancheck_steps", debug_simulation ? 1 : 1000);
+        if(Mpi::Root()){
+          std::cout << "Checking for NANs every " << nancheck_steps << " steps" << std::endl;
+        }
       }
-    }
 
     clock_simulation = runtime["clock_simulation"].get<bool>();
     variable_dt = runtime["variable_dt"].get<bool>();
 
     if (runtime.contains("dt") && !variable_dt)
-    {
+      {
         dt = runtime.value("dt", 1e-4);
-    }
+      }
     t_final = runtime["final_time"].get<real_t>();
 
     physicsConstants = std::make_shared<PhysicsConstants>(
-        runtime.value("gamma", 1.4),
-        runtime.value("Pr", 0.72),
-        runtime.value("R_gas", 287.05),
-        runtime.value("mu", 0.02));
+                                                          runtime.value("gamma", 1.4),
+                                                          runtime.value("Pr", 0.72),
+                                                          runtime.value("R_gas", 287.05),
+                                                          runtime.value("mu", 0.02));
 
-    
+
     if (runtime.contains("lifting_scheme"))
-    {
+      {
         if (runtime["lifting_scheme"].get<std::string>() == "BR1")
-        {
+          {
             liftingScheme = std::make_shared<LiftingBR1>();
-        }
+          }
         else
-        {
+          {
             std::cerr << "Error: Invalid lifting scheme specified." << std::endl;
             return;
-        }
-    }
+          }
+      }
     else
-    {
+      {
         liftingScheme = nullptr;
-    }
+      }
 
     std::string ode_solver_string = runtime["ode_solver"].get<std::string>();
     if (ode_solver_string == "ForwardEuler")
-    {
+      {
         ode_solver = std::make_shared<ForwardEulerSolver>();
-    }
+      }
     else if (ode_solver_string == "RK2")
-    {
+      {
         ode_solver = std::make_shared<RK2Solver>();
-    }
+      }
     else if (ode_solver_string == "RK3SSP")
-    {
+      {
         ode_solver = std::make_shared<RK3SSPSolver>();
-    }
+      }
     else if (ode_solver_string == "RK4")
-    {
+      {
         ode_solver = std::make_shared<RK4Solver>();
-    }
+      }
     else if (ode_solver_string == "RK6")
-    {
+      {
         ode_solver = std::make_shared<RK6Solver>();
-    }
+      }
     else if (ode_solver_string == "RK8")
-    {
+      {
         ode_solver = std::make_shared<RK8Solver>();
-    }
+      }
     else
-    {
+      {
         std::cerr << "Error: Invalid ODE solver specified." << std::endl;
         return;
-    }
+      }
 
     signature = runtime["conditions"]["initial_conditions"].value("signature", 0);
     std::string IC_key = runtime["conditions"]["initial_conditions"].value("function", "LidDrivenCavityIC");
 
     if (signature == 0)
-    {
+      {
         u0 = std::make_unique<VectorFunctionCoefficient>(num_equations, ConditionFactory::Instance().GetInitialCondition0(IC_key)());
-    }
+      }
     else if (signature == 1)
-    {
+      {
         real_t x1 = runtime["conditions"]["initial_conditions"]["params"].value("x1", 0.0);
         u0 = std::make_unique<VectorFunctionCoefficient>(num_equations, ConditionFactory::Instance().GetInitialCondition1(IC_key)(x1));
-    }
+      }
     else if (signature == 2)
-    {
+      {
         real_t x1 = runtime["conditions"]["initial_conditions"]["params"].value("x1", 0.0);
         real_t x2 = runtime["conditions"]["initial_conditions"]["params"].value("x2", 0.0);
         u0 = std::make_unique<VectorFunctionCoefficient>(num_equations, ConditionFactory::Instance().GetInitialCondition2(IC_key)(x1, x2));
-    }
+      }
     else if (signature == 3)
-    {
+      {
         real_t x1 = runtime["conditions"]["initial_conditions"]["params"].value("x1", 0.0);
         real_t x2 = runtime["conditions"]["initial_conditions"]["params"].value("x2", 0.0);
         real_t x3 = runtime["conditions"]["initial_conditions"]["params"].value("x3", 0.0);
         u0 = std::make_unique<VectorFunctionCoefficient>(num_equations, ConditionFactory::Instance().GetInitialCondition3(IC_key)(x1, x2, x3));
-    }
+      }
     else if (signature == 4)
-    {
+      {
         real_t x1 = runtime["conditions"]["initial_conditions"]["params"].value("x1", 0.0);
         real_t x2 = runtime["conditions"]["initial_conditions"]["params"].value("x2", 0.0);
         real_t x3 = runtime["conditions"]["initial_conditions"]["params"].value("x3", 0.0);
         real_t x4 = runtime["conditions"]["initial_conditions"]["params"].value("x4", 0.0);
         u0 = std::make_unique<VectorFunctionCoefficient>(num_equations, ConditionFactory::Instance().GetInitialCondition4(IC_key)(x1, x2, x3, x4));
-    }
+      }
     else if (signature == 5)
-    {
+      {
         real_t x1 = runtime["conditions"]["initial_conditions"]["params"].value("x1", 0.0);
         real_t x2 = runtime["conditions"]["initial_conditions"]["params"].value("x2", 0.0);
         real_t x3 = runtime["conditions"]["initial_conditions"]["params"].value("x3", 0.0);
         real_t x4 = runtime["conditions"]["initial_conditions"]["params"].value("x4", 0.0);
         real_t x5 = runtime["conditions"]["initial_conditions"]["params"].value("x5", 0.0);
         u0 = std::make_unique<VectorFunctionCoefficient>(num_equations, ConditionFactory::Instance().GetInitialCondition5(IC_key)(x1, x2, x3, x4, x5));
-    }
+      }
     else
-    {
+      {
         std::cerr << "Error: Invalid initial condition signature." << std::endl;
         return;
-    }
+      }
 
     Mesh *mesh;
     std::string mesh_file_name(runtime["mesh_file"].get<std::string>());
@@ -293,26 +294,26 @@ void Simulation::LoadConfig(const std::string &config_file_path)
       ScopedTimer timer("ReadMesh");
       mesh = new Mesh(mesh_file_name);
     }
- 
+
     bool periodic;
     if (runtime.contains("periodic"))
-    {
+      {
         periodic = runtime["periodic"].get<bool>();
-    }
+      }
     else
-    {
+      {
         periodic = false;
-    }
+      }
 
     if (dim == 1 && !periodic)
-    {
+      {
         Array<int> left;
         Array<int> right;
         left.Append(1);
         right.Append(2);
         mesh->bdr_attribute_sets.SetAttributeSet("left", left);
         mesh->bdr_attribute_sets.SetAttributeSet("right", right);
-    }
+      }
     if (!periodic && mesh->GetNBE() == 0){
       mesh->GenerateBoundaryElements();
     }
@@ -323,30 +324,30 @@ void Simulation::LoadConfig(const std::string &config_file_path)
           std::cout << "Serial mesh refinement levels: " << ref_levels << std::endl;
         }
         for (int lev = 0; lev < ref_levels; lev++)
-        {
+          {
             mesh->UniformRefinement();
-        }
-    }
+          }
+      }
     mesh->FinalizeTopology();
 
     if (mesh->GetNE() < Mpi::WorldSize())
-    {
+      {
         std::cerr << "Error: Number of elements is less than number of processors." << std::endl;
         return;
-    }
+      }
 
     if (runtime.contains("mesh_ordering"))
-    {
+      {
         if (runtime["mesh_ordering"].get<std::string>() == "Hilbert")
-        {
+          {
             mesh->GetHilbertElementOrdering(mesh_ordering);
-        }
+          }
         else if (runtime["mesh_ordering"].get<std::string>() == "Gecko")
-        {
+          {
             mesh->GetGeckoElementOrdering(mesh_ordering);
-        }
+          }
         mesh->ReorderElements(mesh_ordering);
-    }
+      }
 
     // TODO: Let's gate this for now
     if (dim > 1 && runtime.value("use_nc_mesh", true))
@@ -363,16 +364,16 @@ void Simulation::LoadConfig(const std::string &config_file_path)
       std::cout << "Mesh distributed" << std::endl;
     }
     if (runtime.contains("par_ref_levels"))
-    {
+      {
         ref_levels = runtime.value("par_ref_levels", 0);
         if(Mpi::Root()){
           std::cout << "Parallel mesh refinement levels: " << ref_levels << std::endl;
         }
         for (int lev = 0; lev < ref_levels; lev++)
-        {
+          {
             pmesh->UniformRefinement();
-        }
-    }
+          }
+      }
 
     pmesh->ExchangeFaceNbrData();
     fec0 = std::make_shared<DG_FECollection>(0, dim);
@@ -402,12 +403,12 @@ void Simulation::LoadConfig(const std::string &config_file_path)
     stateLayout = std::make_shared<StateLayout>(dim, num_dofs_scalar);
     gasModel = std::make_shared<ActiveGasModel>(*physicsConstants, *stateLayout);
     // DEVICE: numerical flux must be set at *compile* time
-    //         
+    //
     // HOST-ONLY: numerical flux type selection at runtime with:
     flux = std::make_shared<NavierStokesFlux>(*gasModel);
     std::string numflux_type(runtime["numerical_flux"].get<std::string>());
     if (numflux_type == "Chandrashekar"){
-      numericalFlux = std::make_shared<ChandrashekarFlux>(*flux, *gasModel);        
+      numericalFlux = std::make_shared<ChandrashekarFlux>(*flux, *gasModel);
     } else if (numflux_type == "LLF"){
       numericalFlux = std::make_shared<LaxFriedrichsFlux>(*flux, *gasModel);
     } else if (numflux_type == "HLL"){
@@ -422,26 +423,26 @@ void Simulation::LoadConfig(const std::string &config_file_path)
     if(myRank == 0 && debug_simulation){
       std::cout << "StateLayout and GasModel created." << std::endl;
     }
- 
+
     if (checkpoint_load)
-    {
+      {
         real_t root_t = 0.0;
         int root_ti = 0;
- 
+
         if (Mpi::Root())
-        {
+          {
             checkpoint_cycle = runtime.value("checkpoint_cycle", 0);
             MFEM_VERIFY(checkpoint_cycle > 0, "Invalid or missing cycle number in JSON");
-                std::string meta_file = checkpoints_folder + "/Cycle" + std::to_string(checkpoint_cycle) + "/checkpoint_cycle_" + std::to_string(checkpoint_cycle) + ".json";
-                
-                std::ifstream meta(meta_file);
-                MFEM_VERIFY(meta, "Failed to open meta file " << meta_file);
-                    nlohmann::json J;
-                    meta >> J;
-                    root_t = J.value("time", 0.0);
-                    root_ti = J.value("cycle", 0);
-                    MFEM_VERIFY(root_ti == checkpoint_cycle, "Mismatch between provided cycle number and value in meta file");
-        }
+            std::string meta_file = checkpoints_folder + "/Cycle" + std::to_string(checkpoint_cycle) + "/checkpoint_cycle_" + std::to_string(checkpoint_cycle) + ".json";
+
+            std::ifstream meta(meta_file);
+            MFEM_VERIFY(meta, "Failed to open meta file " << meta_file);
+            nlohmann::json J;
+            meta >> J;
+            root_t = J.value("time", 0.0);
+            root_ti = J.value("cycle", 0);
+            MFEM_VERIFY(root_ti == checkpoint_cycle, "Mismatch between provided cycle number and value in meta file");
+          }
 
         MPI_Bcast(&root_t, 1, MPI_DOUBLE, 0, pmesh->GetComm());
         MPI_Bcast(&root_ti, 1, MPI_INT, 0, pmesh->GetComm());
@@ -465,9 +466,9 @@ void Simulation::LoadConfig(const std::string &config_file_path)
           std::cout << "Checkpoint loaded @ (" << ti << ", " << t << ")"
                     << std::endl;
         }
-    }
-    else 
-    {
+      }
+    else
+      {
         sol = std::make_shared<ParGridFunction>(vfes.get());
         sol->ProjectCoefficient(*u0);
 
@@ -477,27 +478,27 @@ void Simulation::LoadConfig(const std::string &config_file_path)
         if(myRank == 0 && debug_simulation){
           std::cout << "Run is not a restart: (step=0, t=0)" << std::endl;
         }
-    }
+      }
 
 #ifdef AXISYMMETRIC
     r_coef = FunctionCoefficient([](const Vector &X){
-        return X[1]; });
+      return X[1]; });
     r_gf = std::make_shared<ParGridFunction>(fes.get());
     r_gf->ProjectCoefficient(r_coef);
-    
+
     real_t *r_data = r_gf->GetData();
     real_t *sol_data = sol->GetData();
 
     for (int i = 0; i < num_dofs_scalar; ++i)
-        {
-            for (int j=0; j < num_equations ; ++j)
-            {
-               sol_data[j*num_dofs_scalar+i] *= r_data[i]; 
-            }
-        }
+      {
+        for (int j=0; j < num_equations ; ++j)
+          {
+            sol_data[j*num_dofs_scalar+i] *= r_data[i];
+          }
+      }
 
     if (debug_simulation)
-    {
+      {
         real_t *sol_state = sol->GetData();
         Prandtl::FieldStateView fields{sol_state};
         std::vector<std::pair<real_t, real_t>> zr(num_dofs_scalar, {0.0, 0.0});
@@ -505,7 +506,7 @@ void Simulation::LoadConfig(const std::string &config_file_path)
         std::cout << "\n === sol state rU values after weighting by r ===\n";
 
         for (int e = 0; e < pmesh->GetNE(); e++)
-        {
+          {
             const FiniteElement &fe = *fes->GetFE(e);
             ElementTransformation &Tr = *fes->GetElementTransformation(e);
 
@@ -514,37 +515,37 @@ void Simulation::LoadConfig(const std::string &config_file_path)
 
             const IntegrationRule &fe_nodes = fe.GetNodes();
             if (fe_nodes.GetNPoints() == fe.GetDof())
-            {
+              {
                 for (int ldof = 0; ldof < fe.GetDof(); ldof++)
-                {
+                  {
                     const IntegrationPoint &ip = fe_nodes.IntPoint(ldof);
                     Vector X(dim);
                     Tr.Transform(ip, X);
                     const int gdof = ldofs[ldof];
                     zr[gdof] = {static_cast<real_t>(X(0)), static_cast<real_t>(X(1))};
-                }
-            }
-        }
+                  }
+              }
+          }
 
         for (int i = 0; i < num_dofs_scalar; ++i)
-        {
-          real_t rho = fields.mass(*stateLayout, i);
-          real_t rhoU = fields.momentum_x(*stateLayout, i);
-          real_t rhoV = fields.momentum_y(*stateLayout, i);
-          real_t E = fields.energy(*stateLayout, i);
-          real_t z = zr[i].first;
-          real_t r = zr[i].second;
+          {
+            real_t rho = fields.mass(*stateLayout, i);
+            real_t rhoU = fields.momentum_x(*stateLayout, i);
+            real_t rhoV = fields.momentum_y(*stateLayout, i);
+            real_t E = fields.energy(*stateLayout, i);
+            real_t z = zr[i].first;
+            real_t r = zr[i].second;
 
-          std::cout << " DOF#" << std::setw(2) << i 
-                    << " (z, r) = ("<< std::fixed << std::setprecision(2) << std::setw(4) << z //std::round(z*100)/100.0
-                    << ", " << std::setw(4) << std::round(r*100)/100.0 << "),  state = ["
-                    << std::setw(4) << std::round(rho*100)/100.0 << ", "
-                    << std::setw(4) << std::round(rhoU*100)/100.0 << ", "
-                    << std::setw(4) << std::round(rhoV*100)/100.0 << ", "
-                    << std::setw(5) << std::round(E*100)/100.0 << "]\n";
-        }
-       
-    }
+            std::cout << " DOF#" << std::setw(2) << i
+                      << " (z, r) = ("<< std::fixed << std::setprecision(2) << std::setw(4) << z //std::round(z*100)/100.0
+                      << ", " << std::setw(4) << std::round(r*100)/100.0 << "),  state = ["
+                      << std::setw(4) << std::round(rho*100)/100.0 << ", "
+                      << std::setw(4) << std::round(rhoU*100)/100.0 << ", "
+                      << std::setw(4) << std::round(rhoV*100)/100.0 << ", "
+                      << std::setw(5) << std::round(E*100)/100.0 << "]\n";
+          }
+
+      }
 #endif
 
     next_checkpoint_t = t + checkpoint_dt;
@@ -560,13 +561,13 @@ void Simulation::LoadConfig(const std::string &config_file_path)
     Geometry::Type gtype = vfes->GetFE(0)->GetGeomType();
 
     if (runtime.contains("alpha_max"))
-    {
+      {
         alpha_max = runtime["alpha_max"].get<real_t>();
-    }
+      }
     else
-    {
+      {
         alpha_max = 0.5;
-    }
+      }
 
     auto integrator =
       std::make_unique<Prandtl::DGSEMIntegrator>(pmesh, fes0, alpha, liftingScheme, *numericalFlux, order+1);
@@ -576,13 +577,17 @@ void Simulation::LoadConfig(const std::string &config_file_path)
                                                          std::make_unique<Prandtl::ModalBasis>(*fec, gtype, order, dim),
                                                          *gasModel);
 
-    NS = std::make_unique<DGSEMOperator>(vfes, fes0, pmesh, eta, alpha, grad_u, std::move(integrator),
-                                         indicator, *gasModel, r_gf, alpha_max);
+    // NS = std::make_unique<DGSEMOperator>(vfes, fes0, pmesh, eta, alpha, grad_u, std::move(integrator),
+    //                                      indicator, *gasModel, r_gf, alpha_max);
     Euler = std::make_unique<EulerOperator<SimPhysics> >(vfes, fes0, pmesh, eta, alpha,
                                                          indicator, *gasModel, r_gf, alpha_max);
-    auto EulerOp = dynamic_cast<EulerOperator<SimPhysics> *>(Euler.get());
+    CNS = std::make_unique<NSOperator<SimPhysics> >(vfes, fes0, pmesh, eta, alpha, grad_u,
+                                                    indicator, *gasModel, r_gf, alpha_max);
 
-    NS->UseDevice(use_device_path);
+    auto EulerOp = dynamic_cast<EulerOperator<SimPhysics> *>(Euler.get());
+    auto NSOp = dynamic_cast<NSOperator<SimPhysics> *>(CNS.get());
+
+    // NS->UseDevice(use_device_path);
 
     if(myRank == 0 && debug_simulation){
       std::cout << "DGSEMOperator created." << std::endl;
@@ -593,30 +598,30 @@ void Simulation::LoadConfig(const std::string &config_file_path)
     mfem::Array<Prandtl::BCDescriptor> bc_descriptors;
 
     if (runtime["conditions"].contains("boundary_conditions"))
-    {
-        max_bdr_attr = pmesh->bdr_attributes.Max();  
+      {
+        max_bdr_attr = pmesh->bdr_attributes.Max();
         bdr_marker_vector.reserve(max_bdr_attr + 1);
         auto boundaries = runtime["conditions"]["boundary_conditions"];
         for (auto& boundary : boundaries.items())
-        {
+          {
             std::string boundaryName = boundary.key();
             if (!pmesh->bdr_attribute_sets.AttributeSetExists(boundaryName))
-            {
+              {
                 // This rank has no faces with this boundary name; skip
                 continue;
-            }
+              }
             Array<int> marker(max_bdr_attr);
             marker = 0;
             // bdr_marker_vector.push_back(Array<int>(max_bdr_attr));
             set_marker = pmesh->bdr_attribute_sets.GetAttributeSetMarker(boundaryName);
             for (int b = 0; b < max_bdr_attr; b++)
-            {
+              {
                 if (set_marker[b])
-                {
+                  {
                     // bdr_marker_vector.back()[b] = 1;
                     marker[b] = 1;
-                }
-            }
+                  }
+              }
             bdr_marker_vector.push_back(marker);
 
             Prandtl::BCDescriptor bc_descr{};
@@ -628,14 +633,14 @@ void Simulation::LoadConfig(const std::string &config_file_path)
 
             auto bc_props = boundary.value();  // This is a JSON object.
             std::string type = bc_props["type"].get<std::string>();
-            
+
             if (type == "symmetry")
               {
                 auto symmetry = std::make_unique<SymmetryBdrFaceIntegrator>(liftingScheme, *gasModel, *numericalFlux,
-                                                                            order + 1, NS->GetTimeRef(), true, false);
+                                                                            order + 1, NSOp->GetTimeRef(), true, false);
 
                 EulerOp->AddBdrFaceIntegrator(symmetry.release(), bdr_marker_vector.back());
-                NS->AddBdrFaceIntegrator(symmetry.release(), bdr_marker_vector.back());
+                NSOp->AddBdrFaceIntegrator(symmetry.release(), bdr_marker_vector.back());
                 bc_descr.type = int(Prandtl::BCType::Symmetry);
                 bc_descr.data_kind = int(Prandtl::BCDataKind::None);
               }
@@ -646,20 +651,20 @@ void Simulation::LoadConfig(const std::string &config_file_path)
 #else
                 // bc_descr.type = int(Prandtl::BCType::Axis);
                 auto symmetry = std::make_unique<SymmetryBdrFaceIntegrator>(liftingScheme, *gasModel, *numericalFlux,
-                                                                            order + 1, NS->GetTimeRef(), true, false);
-                
-                NS->AddBdrFaceIntegrator(symmetry.release(), bdr_marker_vector.back());
-                NS->SetAxisBoundaryMarker(bdr_marker_vector.back());
-                NS->SetLowOrderAxis(true);
+                                                                            order + 1, NSOp->GetTimeRef(), true, false);
+
+                NSOp->AddBdrFaceIntegrator(symmetry.release(), bdr_marker_vector.back());
+                // NS->SetAxisBoundaryMarker(bdr_marker_vector.back());
+                // NS->SetLowOrderAxis(true);
 #endif
               }
             else if (type == "slip")
               {
                 auto slip = std::make_unique<SlipWallBdrFaceIntegrator>(liftingScheme, *gasModel, *numericalFlux,
-                                                                        order + 1, NS->GetTimeRef(), true, false);
-                
+                                                                        order + 1, NSOp->GetTimeRef(), true, false);
+
                 EulerOp->AddBdrFaceIntegrator(slip.release(), bdr_marker_vector.back());
-                NS->AddBdrFaceIntegrator(slip.release(), bdr_marker_vector.back());
+                NSOp->AddBdrFaceIntegrator(slip.release(), bdr_marker_vector.back());
                 bc_descr.type = int(Prandtl::BCType::SlipWall);
                 bc_descr.data_kind = int(Prandtl::BCDataKind::None);
               }
@@ -688,293 +693,295 @@ void Simulation::LoadConfig(const std::string &config_file_path)
                     Ostr << ">" << std::endl;
                     Ostr << "Heat: " << heat_bc << std::endl;
                     bc_data[vel_bc.Size()] = heat_bc;
-                    bc_descr.data_index = Prandtl::AppendBCVectorPayload(bc_vector_data, bc_data);                    
+                    bc_descr.data_index = Prandtl::AppendBCVectorPayload(bc_vector_data, bc_data);
                     Ostr << "bc_vector_data index: " << bc_descr.data_index << std::endl
                          << "BC Data So Far: [";
                     for(int ivec=0;ivec < bc_vector_data.Size();ivec++){
                       Ostr << bc_vector_data[ivec] << " ";
                     }
                     Ostr << "]" << std::endl;
-                    auto nsawbfi = new NoSlipAdiabWallBdrFaceIntegrator(liftingScheme, *gasModel, *numericalFlux, order + 1, NS->GetTimeRef(),
+                    auto nsawbfi = new NoSlipAdiabWallBdrFaceIntegrator(liftingScheme, *gasModel, *numericalFlux, order + 1, NSOp->GetTimeRef(),
                                                                         ConditionFactory::Instance().GetScalarBoundaryCondition(heatBC_key),
                                                                         ConditionFactory::Instance().GetVectorBoundaryCondition(velBC_key));
-                    
+
                     // std::cout << Ostr.str();
                     EulerOp->AddBdrFaceIntegrator(nsawbfi, bdr_marker_vector.back());
-                    NS->AddBdrFaceIntegrator(nsawbfi, bdr_marker_vector.back());
+                    NSOp->AddBdrFaceIntegrator(nsawbfi, bdr_marker_vector.back());
                   }
                 else if (bc_props["velocity"].contains("function"))
                   {
                     std::shared_ptr<VectorFunctionCoefficient> velBC;
                     std::shared_ptr<FunctionCoefficient> heatBC;
-                    
+
                     std::string velBC_key = bc_props["velocity"]["function"].get<std::string>();
                     std::string heatBC_key = bc_props["heat"]["function"].get<std::string>();
-                    
+
                     bool td;
                     if (bc_props["velocity"].contains("time_dependent"))
-                    {
+                      {
                         td = bc_props["velocity"]["time_dependent"].get<bool>();
-                    }
+                      }
                     else
-                    {
+                      {
                         td = false;
-                    }
+                      }
 
                     signature = bc_props["velocity"]["signature"].get<int>();
                     if (signature == 0)
-                    {
+                      {
                         velBC = std::make_shared<VectorFunctionCoefficient>(dim, ConditionFactory::Instance().GetVectorFunctionBoundaryCondition0(velBC_key)());
-                    }
+                      }
                     else if (signature == 1)
-                    {
+                      {
                         real_t x1 = bc_props["velocity"]["params"].value("x1", 0.0);
                         velBC = std::make_shared<VectorFunctionCoefficient>(dim, ConditionFactory::Instance().GetVectorFunctionBoundaryCondition1(velBC_key)(x1));
-                    }
+                      }
                     else if (signature == 2)
-                    {
+                      {
                         real_t x1 = bc_props["velocity"]["params"].value("x1", 0.0);
                         real_t x2 = bc_props["velocity"]["params"].value("x2", 0.0);
                         velBC = std::make_shared<VectorFunctionCoefficient>(dim, ConditionFactory::Instance().GetVectorFunctionBoundaryCondition2(velBC_key)(x1, x2));
-                    }
+                      }
                     else
-                    {
+                      {
                         std::cerr << "Error: Invalid boundary condition signature." << std::endl;
                         return;
-                    }
+                      }
 
                     signature = bc_props["heat"]["signature"].get<int>();
                     if (signature == 0)
-                    {
+                      {
                         if (td)
-                        {
+                          {
                             heatBC = std::make_shared<FunctionCoefficient>(ConditionFactory::Instance().GetScalarTDFunctionBoundaryCondition0(heatBC_key)());
-                        }
+                          }
                         else
-                        {
+                          {
                             heatBC = std::make_shared<FunctionCoefficient>(ConditionFactory::Instance().GetScalarFunctionBoundaryCondition0(heatBC_key)());
-                        }
-                    }
+                          }
+                      }
                     else if (signature == 1)
-                    {
+                      {
                         real_t x1 = bc_props["heat"]["params"].value("x1", 0.0);
                         if (td)
-                            heatBC = std::make_shared<FunctionCoefficient>(ConditionFactory::Instance().GetScalarTDFunctionBoundaryCondition1(heatBC_key)(x1));
+                          heatBC = std::make_shared<FunctionCoefficient>(ConditionFactory::Instance().GetScalarTDFunctionBoundaryCondition1(heatBC_key)(x1));
                         else
-                        {
+                          {
                             heatBC = std::make_shared<FunctionCoefficient>(ConditionFactory::Instance().GetScalarFunctionBoundaryCondition1(heatBC_key)(x1));
-                        }
-                    }
+                          }
+                      }
                     else if (signature == 2)
-                    {
+                      {
                         real_t x1 = bc_props["heat"]["params"].value("x1", 0.0);
                         real_t x2 = bc_props["heat"]["params"].value("x2", 0.0);
                         if (td)
-                            heatBC = std::make_shared<FunctionCoefficient>(ConditionFactory::Instance().GetScalarTDFunctionBoundaryCondition2(heatBC_key)(x1, x2));
+                          heatBC = std::make_shared<FunctionCoefficient>(ConditionFactory::Instance().GetScalarTDFunctionBoundaryCondition2(heatBC_key)(x1, x2));
                         else
-                        {
+                          {
                             heatBC = std::make_shared<FunctionCoefficient>(ConditionFactory::Instance().GetScalarFunctionBoundaryCondition2(heatBC_key)(x1, x2));
-                        }
-                    }
+                          }
+                      }
                     else
-                    {
+                      {
                         std::cerr << "Error: Invalid boundary condition signature." << std::endl;
                         return;
-                    }
+                      }
                     auto nsawbfi = new NoSlipAdiabWallBdrFaceIntegrator(liftingScheme, *gasModel,
-                                                                        *numericalFlux, order + 1, NS->GetTimeRef(),
+                                                                        *numericalFlux, order + 1, NSOp->GetTimeRef(),
                                                                         *heatBC, *velBC, td);
-                    NS->AddBdrFaceIntegrator(nsawbfi, bdr_marker_vector.back());
+                    NSOp->AddBdrFaceIntegrator(nsawbfi, bdr_marker_vector.back());
                     EulerOp->AddBdrFaceIntegrator(nsawbfi, bdr_marker_vector.back());
-                    
-                }
+
+                  }
                 else
-                {
+                  {
                     std::cerr << "Error: Invalid boundary condition type specified." << std::endl;
                     return;
-                }
-            }
+                  }
+              }
             else if (type == "no-slip-isothermal")
-            {
+              {
 
-            }
+              }
             else if (type == "supersonic-outflow")
-            {
-              auto outlet = std::make_unique<SupersonicOutflowBdrFaceIntegrator>(liftingScheme, *gasModel,
-                                                                                 *numericalFlux, order + 1, NS->GetTimeRef());
+              {
+                auto outlet = std::make_unique<SupersonicOutflowBdrFaceIntegrator>(liftingScheme, *gasModel,
+                                                                                   *numericalFlux, order + 1, NSOp->GetTimeRef());
 
-                NS->AddBdrFaceIntegrator(outlet.release(), bdr_marker_vector.back());
+                NSOp->AddBdrFaceIntegrator(outlet.release(), bdr_marker_vector.back());
                 EulerOp->AddBdrFaceIntegrator(outlet.release(), bdr_marker_vector.back());
                 bc_descr.type = int(Prandtl::BCType::SupersonicOutflow);
                 bc_descr.data_kind = int(Prandtl::BCDataKind::None);
-            }
+              }
             else if (type == "supersonic-inflow")
-            {
+              {
                 if (bc_props.contains("vector"))
-                {
-                std::string state_key = bc_props["vector"].get<std::string>();
-                mfem::Vector bc_state = ConditionFactory::Instance().GetVectorBoundaryCondition(state_key);
-                auto inlet = std::make_unique<SupersonicInflowBdrFaceIntegrator>(
-                                                              liftingScheme, *gasModel, 
-                                                              *numericalFlux, order + 1, NS->GetTimeRef(), bc_state);
-                NS->AddBdrFaceIntegrator(inlet.release(), bdr_marker_vector.back());
-                EulerOp->AddBdrFaceIntegrator(inlet.release(), bdr_marker_vector.back());
-                const int data_offset = Prandtl::AppendBCVectorPayload(bc_vector_data, bc_state);
-                bc_descr.type = int(Prandtl::BCType::SupersonicInflow);
-                bc_descr.data_kind = int(Prandtl::BCDataKind::VectorConstant);
-                bc_descr.data_index = data_offset;
-                }
+                  {
+                    std::string state_key = bc_props["vector"].get<std::string>();
+                    mfem::Vector bc_state = ConditionFactory::Instance().GetVectorBoundaryCondition(state_key);
+                    auto inlet = std::make_unique<SupersonicInflowBdrFaceIntegrator>(
+                                                                                     liftingScheme, *gasModel,
+                                                                                     *numericalFlux, order + 1, NSOp->GetTimeRef(), bc_state);
+                    NSOp->AddBdrFaceIntegrator(inlet.release(), bdr_marker_vector.back());
+                    EulerOp->AddBdrFaceIntegrator(inlet.release(), bdr_marker_vector.back());
+                    const int data_offset = Prandtl::AppendBCVectorPayload(bc_vector_data, bc_state);
+                    bc_descr.type = int(Prandtl::BCType::SupersonicInflow);
+                    bc_descr.data_kind = int(Prandtl::BCDataKind::VectorConstant);
+                    bc_descr.data_index = data_offset;
+                  }
                 else
-                {
+                  {
                     std::string state_key = bc_props["function"].get<std::string>();
                     signature = bc_props["signature"].get<int>();
                     std::shared_ptr<VectorFunctionCoefficient> stateBC;
                     bool td;
                     if (bc_props.contains("time_dependent"))
-                    {
+                      {
                         td = bc_props["time_dependent"].get<bool>();
-                    }
+                      }
                     else
-                    {
+                      {
                         td = false;
-                    }
+                      }
 
                     if (signature == 0)
-                    {
+                      {
                         if (td)
-                        {
+                          {
                             stateBC = std::make_shared<VectorFunctionCoefficient>(num_equations, ConditionFactory::Instance().GetVectorTDFunctionBoundaryCondition0(state_key)());
-                        }
+                          }
                         else
-                        {
+                          {
                             stateBC = std::make_shared<VectorFunctionCoefficient>(num_equations, ConditionFactory::Instance().GetVectorFunctionBoundaryCondition0(state_key)());
-                        }
-                        
-                    }
+                          }
+
+                      }
                     else if (signature == 1)
-                    {
+                      {
                         real_t x1 = bc_props["params"].value("x1", 0.0);
                         if (td)
-                            stateBC = std::make_shared<VectorFunctionCoefficient>(num_equations, ConditionFactory::Instance().GetVectorTDFunctionBoundaryCondition1(state_key)(x1));
+                          stateBC = std::make_shared<VectorFunctionCoefficient>(num_equations, ConditionFactory::Instance().GetVectorTDFunctionBoundaryCondition1(state_key)(x1));
                         else
-                        {
+                          {
                             stateBC = std::make_shared<VectorFunctionCoefficient>(num_equations, ConditionFactory::Instance().GetVectorFunctionBoundaryCondition1(state_key)(x1));
-                        }
-                    }
+                          }
+                      }
                     else if (signature == 2)
-                    {
+                      {
                         real_t x1 = bc_props["params"].value("x1", 0.0);
                         real_t x2 = bc_props["params"].value("x2", 0.0);
                         if (td)
-                        {
+                          {
                             stateBC = std::make_shared<VectorFunctionCoefficient>(num_equations, ConditionFactory::Instance().GetVectorTDFunctionBoundaryCondition2(state_key)(x1, x2));
-                        }
+                          }
                         else
-                        {
+                          {
                             stateBC = std::make_shared<VectorFunctionCoefficient>(num_equations, ConditionFactory::Instance().GetVectorFunctionBoundaryCondition2(state_key)(x1, x2));
-                        }
-                    
-                    }
+                          }
+
+                      }
                     else
-                    {
+                      {
                         std::cerr << "Error: Invalid boundary condition signature." << std::endl;
                         return;
-                    }
+                      }
                     auto inlet = std::make_unique<SupersonicInflowBdrFaceIntegrator>(liftingScheme, *gasModel, *numericalFlux,
-                                                                                     order + 1, NS->GetTimeRef(), *stateBC, td);
+                                                                                     order + 1, NSOp->GetTimeRef(), *stateBC, td);
 
-                    NS->AddBdrFaceIntegrator(inlet.release(), bdr_marker_vector.back());
+                    NSOp->AddBdrFaceIntegrator(inlet.release(), bdr_marker_vector.back());
                     EulerOp->AddBdrFaceIntegrator(inlet.release(), bdr_marker_vector.back());
 
-                }
-            }
+                  }
+              }
             else if (type == "specified-state")
-            {
+              {
                 if (bc_props.contains("vector"))
-                {
+                  {
                     std::string state_key = bc_props["vector"].get<std::string>();
-                    NS->AddBdrFaceIntegrator(new SpecifiedStateBdrFaceIntegrator(liftingScheme, *gasModel, *numericalFlux,
-                                                                                 order + 1, NS->GetTimeRef(),
-                        ConditionFactory::Instance().GetVectorBoundaryCondition(state_key)), bdr_marker_vector.back());
-                }
+                    NSOp->AddBdrFaceIntegrator(new SpecifiedStateBdrFaceIntegrator(liftingScheme, *gasModel, *numericalFlux,
+                                                                                   order + 1, NSOp->GetTimeRef(),
+                                                                                 ConditionFactory::Instance().GetVectorBoundaryCondition(state_key)), bdr_marker_vector.back());
+                  }
                 else
-                {
+                  {
                     std::string state_key = bc_props["function"].get<std::string>();
                     signature = bc_props["signature"].get<int>();
                     std::shared_ptr<VectorFunctionCoefficient> stateBC;
                     bool td;
                     if (bc_props.contains("time_dependent"))
-                    {
+                      {
                         td = bc_props["time_dependent"].get<bool>();
-                    }
+                      }
                     else
-                    {
+                      {
                         td = false;
-                    }
+                      }
 
                     if (signature == 0)
-                    {
+                      {
                         if (td)
-                        {
+                          {
                             stateBC = std::make_shared<VectorFunctionCoefficient>(num_equations, ConditionFactory::Instance().GetVectorTDFunctionBoundaryCondition0(state_key)());
-                        }
+                          }
                         else
-                        {
+                          {
                             stateBC = std::make_shared<VectorFunctionCoefficient>(num_equations, ConditionFactory::Instance().GetVectorFunctionBoundaryCondition0(state_key)());
-                        }
-                        
-                    }
+                          }
+
+                      }
                     else if (signature == 1)
-                    {
+                      {
                         real_t x1 = bc_props["params"].value("x1", 0.0);
                         if (td)
-                            stateBC = std::make_shared<VectorFunctionCoefficient>(num_equations, ConditionFactory::Instance().GetVectorTDFunctionBoundaryCondition1(state_key)(x1));
+                          stateBC = std::make_shared<VectorFunctionCoefficient>(num_equations, ConditionFactory::Instance().GetVectorTDFunctionBoundaryCondition1(state_key)(x1));
                         else
-                        {
+                          {
                             stateBC = std::make_shared<VectorFunctionCoefficient>(num_equations, ConditionFactory::Instance().GetVectorFunctionBoundaryCondition1(state_key)(x1));
-                        }
-                    }
+                          }
+                      }
                     else if (signature == 2)
-                    {
+                      {
                         real_t x1 = bc_props["params"].value("x1", 0.0);
                         real_t x2 = bc_props["params"].value("x2", 0.0);
                         if (td)
-                        {
-                            stateBC = std::make_shared<VectorFunctionCoefficient>(num_equations, ConditionFactory::Instance().GetVectorTDFunctionBoundaryCondition2(state_key)(x1, x2));
-                        }
+                          {
+                            stateBC = std::make_shared<VectorFunctionCoefficient>(num_equations,
+                                                                                  ConditionFactory::Instance().GetVectorTDFunctionBoundaryCondition2(state_key)(x1, x2));
+                          }
                         else
-                        {
-                            stateBC = std::make_shared<VectorFunctionCoefficient>(num_equations, ConditionFactory::Instance().GetVectorFunctionBoundaryCondition2(state_key)(x1, x2));
-                        }
-                    
-                    }
+                          {
+                            stateBC = std::make_shared<VectorFunctionCoefficient>(num_equations,
+                                                                                  ConditionFactory::Instance().GetVectorFunctionBoundaryCondition2(state_key)(x1, x2));
+                          }
+
+                      }
                     else
-                    {
+                      {
                         std::cerr << "Error: Invalid boundary condition signature." << std::endl;
                         return;
-                    }
-                    NS->AddBdrFaceIntegrator(new SpecifiedStateBdrFaceIntegrator(liftingScheme, *gasModel, *numericalFlux, order + 1, NS->GetTimeRef(),
-                                                                                 *stateBC, td), bdr_marker_vector.back());
-                }
-            }
+                      }
+                    NSOp->AddBdrFaceIntegrator(new SpecifiedStateBdrFaceIntegrator(liftingScheme, *gasModel, *numericalFlux, order + 1,
+                                                                                   NSOp->GetTimeRef(), *stateBC, td), bdr_marker_vector.back());
+                  }
+              }
             else
-            {
+              {
                 std::cerr << "Error: Invalid boundary condition type specified." << std::endl;
                 return;
-            }
+              }
             bc_descriptors.Append(bc_descr);
-        }
-    }
+          }
+      }
 
     if(myRank == 0 && debug_simulation){
       std::cout << "Boundary conditions configured." << std::endl;
     }
 
     // Set up the operator cache
-    NS->SetBCDescriptorData(bc_descriptors, bc_scalar_data, bc_vector_data);
+    NSOp->SetBCDescriptorData(bc_descriptors, bc_scalar_data, bc_vector_data);
     EulerOp->SetBCDescriptorData(bc_descriptors, bc_scalar_data, bc_vector_data);
     //    NS->SetTime(t); // Finalize does this.
-    NS->Finalize(t);
+    NSOp->Finalize(t);
     EulerOp->Finalize(t);
 
     if(myRank == 0 && debug_simulation){
@@ -982,20 +989,21 @@ void Simulation::LoadConfig(const std::string &config_file_path)
     }
 
     if (Mpi::Root())
-    {
-      std::cout << "The Number of Equations being Solved: " << num_equations << std::endl;
-      std::cout << "The Total Number of Order " << order << " Elements in the Simulation: " << num_elements << std::endl;
-      std::cout << "The Total Number of DOFs per Equation per Element: " << points_per_element << std::endl;
-      std::cout << "The Total Number of DOFs in the Simulation (All Eqns/All Ranks): "
-                << num_elements*points_per_element*num_equations << std::endl;
-      std::cout << "Per Rank Averages:" << std::endl
-                << "  Number of Elements:     " << num_elements / numProcs << std::endl
-                << "  Number of DOFs per Enq: " << num_dofs_scalar << std::endl
-                << "  Total DOFs (all eqns):  " << num_dofs_system << std::endl;
-    }
+      {
+        std::cout << "The Number of Equations being Solved: " << num_equations << std::endl;
+        std::cout << "The Total Number of Order " << order << " Elements in the Simulation: " << num_elements << std::endl;
+        std::cout << "The Total Number of DOFs per Equation per Element: " << points_per_element << std::endl;
+        std::cout << "The Total Number of DOFs in the Simulation (All Eqns/All Ranks): "
+                  << num_elements*points_per_element*num_equations << std::endl;
+        std::cout << "Per Rank Averages:" << std::endl
+                  << "  Number of Elements:     " << num_elements / numProcs << std::endl
+                  << "  Number of DOFs per Enq: " << num_dofs_scalar << std::endl
+                  << "  Total DOFs (all eqns):  " << num_dofs_system << std::endl;
+      }
 
     // ode_solver->Init(*NS);
-    ode_solver->Init(*Euler);
+    // ode_solver->Init(*Euler);
+    ode_solver->Init(*CNS);
 
     rho.MakeRef(fes.get(), *sol, offset_mass(*stateLayout));
     mom.MakeRef(dfes.get(), *sol, offset_momentum(*stateLayout));
@@ -1003,24 +1011,24 @@ void Simulation::LoadConfig(const std::string &config_file_path)
 
     u = std::make_unique<ParGridFunction>(fes.get());
     if (dim > 1)
-    {
-        v = std::make_unique<ParGridFunction>(fes.get()); 
+      {
+        v = std::make_unique<ParGridFunction>(fes.get());
         if (dim > 2)
-        {
+          {
             w = std::make_unique<ParGridFunction>(fes.get());
-        }
-    }
+          }
+      }
     p = std::make_unique<ParGridFunction>(fes.get());
 
 #ifdef AXISYMMETRIC
     rho_axi = std::make_unique<ParGridFunction>(fes.get());
 #endif
-    
-    
+
+
     if (visualize)
-    {
+      {
         if (paraview)
-        {
+          {
             pd = std::make_unique<ParaViewDataCollection>(paraview_folder, pmesh.get());
             pd->SetPrefixPath(output_file_path);
 #ifdef AXISYMMETRIC
@@ -1030,13 +1038,13 @@ void Simulation::LoadConfig(const std::string &config_file_path)
 #endif
             pd->RegisterField("Horizontal V", u.get());
             if (dim > 1)
-            {
+              {
                 pd->RegisterField("Vertical V", v.get());
                 if (dim > 2)
-                {
+                  {
                     pd->RegisterField("Normal V", w.get());
-                }
-            }
+                  }
+              }
             pd->RegisterField("Pressure", p.get());
 #ifdef SUBCELL_FV_BLENDING
             pd->RegisterField("Blending Coeff", alpha.get());
@@ -1044,9 +1052,9 @@ void Simulation::LoadConfig(const std::string &config_file_path)
             pd->SetLevelsOfDetail(order);
             pd->SetDataFormat(VTKFormat::BINARY);
             pd->SetHighOrderOutput(true);
-        }
+          }
         else if (visit)
-        {
+          {
             vd = std::make_unique<VisItDataCollection>("VisIt", pmesh.get());
             vd->SetPrefixPath(output_file_path);
             vd->SetPrecision(precision);
@@ -1059,31 +1067,32 @@ void Simulation::LoadConfig(const std::string &config_file_path)
 #endif
             vd->RegisterField("Horizontal V", u.get());
             if (dim > 1)
-            {
+              {
                 vd->RegisterField("Vertical V", v.get());
                 if (dim > 2)
-                {
+                  {
                     vd->RegisterField("Normal V", w.get());
-                }
-            }
+                  }
+              }
             vd->RegisterField("Pressure", p.get());
 #ifdef SUBCELL_FV_BLENDING
             vd->RegisterField("Blending Coeff", alpha.get());
 #endif
-        }
-    }
-}
+          }
+      }
+  }
 
-void Simulation::Run()
-{
+  void Simulation::Run()
+  {
     auto EulerOp = dynamic_cast<EulerOperator<SimPhysics> *>(Euler.get());
+    auto NSOp = dynamic_cast<NSOperator<SimPhysics> *>(CNS.get());
 
     if (Mpi::Root())
-    {
+      {
         std::cout << "================================================" << std::endl;
         std::cout << "DGSEM Simulation Running Now!" << std::endl;
         std::cout << "================================================" << std::endl;
-    }
+      }
 
     IntegralMeasures diag;
     diag.mass = 0.0;
@@ -1099,14 +1108,17 @@ void Simulation::Run()
     // print the first node:
 #ifdef AXISYMMETRIC
     Vector U_cons(sol->Size());
-    NS->RecoverStateFromWeighted(*sol, U_cons);
+    // Axi is DISABLED for a minute
+    // NS->RecoverStateFromWeighted(*sol, U_cons);
     ConservativeToPrimitive(U_cons, *rho_axi, *u, *v, *p);
-    NS->ComputeIntegralMeasures(U_cons, diag);
+    NSOp->ComputeIntegralMeasures(U_cons, diag);
 #else
-    EulerOp->ComputeIntegralMeasures(*sol, diag);
+    // EulerOp->ComputeIntegralMeasures(*sol, diag);
+    NSOp->ComputeIntegralMeasures(*sol, diag);
 #endif
 
-    IntegralMeasures diag0 = EulerOp->GetIntegralMeasuresBaseline();
+    // IntegralMeasures diag0 = EulerOp->GetIntegralMeasuresBaseline();
+    IntegralMeasures diag0 = NSOp->GetIntegralMeasuresBaseline();
 
     // Get the minimum characteristic element size and compute the initial time step if time step is variable
     real_t heff = infinity();
@@ -1136,10 +1148,12 @@ void Simulation::Run()
     }
 #endif
     if (variable_dt && cfl > 0.0)
-    {        
+      {
         Vector z(sol->Size());
-        EulerOp->Mult(*sol, z);
-        real_t max_char_speed = EulerOp->GetMaxCharSpeed();
+        // EulerOp->Mult(*sol, z);
+        NSOp->Mult(*sol, z);
+        // real_t max_char_speed = EulerOp->GetMaxCharSpeed();
+        real_t max_char_speed = NSOp->GetMaxCharSpeed();
         MPI_Allreduce(MPI_IN_PLACE, &max_char_speed, 1,  MPITypeMap<real_t>::mpi_type, MPI_MAX, pmesh->GetComm());
         real_t dt_adv = heff / max_char_speed;
         dt = cfl / dim * dt_adv;
@@ -1162,7 +1176,7 @@ void Simulation::Run()
           std::cout << "Fixed CFL: " << cfl << std::endl
                     << "Initial Timestep DT: " << dt << std::endl;
         }
-    } else {
+      } else {
       if(Mpi::Root()){
         std::cout << "Fixed Timestep DT: " << dt << std::endl;
       }
@@ -1170,71 +1184,71 @@ void Simulation::Run()
 
     // Clock the simulation?
     if (clock_simulation)
-    {
+      {
         tic_toc.Clear();
         tic_toc.Start();
-    }
+      }
 
     if (Mpi::Root())
-        {
-          int i = 0;
+      {
+        int i = 0;
 #ifdef AXISYMMETRIC
-          real_t rhoi = (*rho_axi)(i);
-          real_t ui = (*u)(i);               
-          real_t vi = (*v)(i);
-          real_t pi = (*p)(i);
-          
-          NS->SetAxisFloorsFromFreestream(rhoi, pi);
+        real_t rhoi = (*rho_axi)(i);
+        real_t ui = (*u)(i);
+        real_t vi = (*v)(i);
+        real_t pi = (*p)(i);
+
+        NS->SetAxisFloorsFromFreestream(rhoi, pi);
 #else
-          real_t *sol_state = sol->GetData();
-          Prandtl::DofStateView dofState{sol_state, i};
-          real_t rhoi = gasModel->density(dofState);
-          real_t ui = gasModel->velocity(dofState, 0);
-          real_t vi = dim > 1 ? gasModel->velocity(dofState, 1) : 0.0;
-          real_t wi = dim > 2 ? gasModel->velocity(dofState, 2) : 0.0;
-          real_t pi = gasModel->pressure(dofState);
-          // bug: incorrect calculation of kinetic energy
-          //real_t pi = physicsConstants->gammaM1 * (energy(i) - 0.5*rhoi*ui*ui);
+        real_t *sol_state = sol->GetData();
+        Prandtl::DofStateView dofState{sol_state, i};
+        real_t rhoi = gasModel->density(dofState);
+        real_t ui = gasModel->velocity(dofState, 0);
+        real_t vi = dim > 1 ? gasModel->velocity(dofState, 1) : 0.0;
+        real_t wi = dim > 2 ? gasModel->velocity(dofState, 2) : 0.0;
+        real_t pi = gasModel->pressure(dofState);
+        // bug: incorrect calculation of kinetic energy
+        //real_t pi = physicsConstants->gammaM1 * (energy(i) - 0.5*rhoi*ui*ui);
 #endif
-          std::cout << "***  initial at dof #" << i << ":  "
-                    << "rho = " << std::round(rhoi*10000)/10000 << ",  velocity = <"
-                    << std::round(ui*100)/100;
-          if(dim > 1){
-            std::cout << ", " << std::round(vi*100)/100;
-            if(dim > 2){
-              std::cout << ", " << std::round(wi*100)/100;
-            }
+        std::cout << "***  initial at dof #" << i << ":  "
+                  << "rho = " << std::round(rhoi*10000)/10000 << ",  velocity = <"
+                  << std::round(ui*100)/100;
+        if(dim > 1){
+          std::cout << ", " << std::round(vi*100)/100;
+          if(dim > 2){
+            std::cout << ", " << std::round(wi*100)/100;
           }
-          std::cout << ">, p = " << std::round(pi*100)/100 << std::endl;
-          std::cout << "Total Mass:           " << diag0.mass << std::endl 
-                    << "Total Energy:         " << diag0.en << std::endl
-                    << "Total Kinetic Energy: " << diag0.ke << std::endl;
         }
+        std::cout << ">, p = " << std::round(pi*100)/100 << std::endl;
+        std::cout << "Total Mass:           " << diag0.mass << std::endl
+                  << "Total Energy:         " << diag0.en << std::endl
+                  << "Total Kinetic Energy: " << diag0.ke << std::endl;
+      }
     // Visualize the initial condition?
     if (visualize)
-    {
-      if(Mpi::Root()){
-        std::cout << "Writing initial soln..." << std::endl;
-      }
-      ScopedTimer timer("VisInit");
+      {
+        if(Mpi::Root()){
+          std::cout << "Writing initial soln..." << std::endl;
+        }
+        ScopedTimer timer("VisInit");
 
 #ifdef AXISYMMETRIC
 
         if (debug_simulation)
-        {
+          {
             for (int i = 0; i < num_dofs_scalar; i++)
-            {
-                std::cout << " DOF#" << std::setw(2) << i 
-                        << "    primitive state =["
-                        << std::setw(4) << std::round((*rho_axi)(i)*100)/100.0 << ", "
-                        << std::setw(4) << std::round((*u)(i)*100)/100.0 << ", "
-                        << std::setw(4) << std::round((*v)(i)*100)/100.0 << ", "
-                        << std::setw(5) << std::round((*p)(i)*100)/100.0 << "]\n";
-            }
-       
-        }
+              {
+                std::cout << " DOF#" << std::setw(2) << i
+                          << "    primitive state =["
+                          << std::setw(4) << std::round((*rho_axi)(i)*100)/100.0 << ", "
+                          << std::setw(4) << std::round((*u)(i)*100)/100.0 << ", "
+                          << std::setw(4) << std::round((*v)(i)*100)/100.0 << ", "
+                          << std::setw(5) << std::round((*p)(i)*100)/100.0 << "]\n";
+              }
 
-        
+          }
+
+
 #else
         const real_t *sol_state = sol->HostRead();
         for (int i = 0; i < num_dofs_scalar; i++)
@@ -1242,44 +1256,44 @@ void Simulation::Run()
             Prandtl::DofStateView dofState{sol_state, i};
             (*u)(i) = gasModel->velocity(dofState, 0);
             if (dim > 1)
-            {
-              (*v)(i) = gasModel->velocity(dofState, 1);
-              if (dim > 2)
-                {
-                  (*w)(i) = gasModel->velocity(dofState, 2);
-                }
-            }
+              {
+                (*v)(i) = gasModel->velocity(dofState, 1);
+                if (dim > 2)
+                  {
+                    (*w)(i) = gasModel->velocity(dofState, 2);
+                  }
+              }
             (*p)(i) = gasModel->pressure(dofState);
-        }
+          }
 #endif
 
         if (paraview)
-        {
+          {
             pd->SetCycle(ti);
             pd->SetTime(t);
             pd->Save();
-        }
+          }
         else if (visit)
-        {
+          {
             vd->SetCycle(ti);
             vd->SetTime(t);
             vd->Save();
-        }
-    }
-
-    
-    while (!done)
-    {
- 
-      if (debug_simulation)
-        {
-          MPI_Barrier(pmesh->GetComm());
-          if(Mpi::Root()){
-            std::cout << "################################################################################" << "\n";
-            std::cout << "######################### [TIME STEP = " << ti << ", TIME = " << t << "] #########################" << "\n";
-            std::cout << "################################################################################" << "\n";
           }
-        }
+      }
+
+
+    while (!done)
+      {
+
+        if (debug_simulation)
+          {
+            MPI_Barrier(pmesh->GetComm());
+            if(Mpi::Root()){
+              std::cout << "################################################################################" << "\n";
+              std::cout << "######################### [TIME STEP = " << ti << ", TIME = " << t << "] #########################" << "\n";
+              std::cout << "################################################################################" << "\n";
+            }
+          }
 
         // Compute the time step size
         dt_real = std::min(dt, t_final - t);
@@ -1295,43 +1309,46 @@ void Simulation::Run()
         if (ti % print_interval == 0 || (variable_dt && cfl > 0) || debug_simulation){
 #ifdef AXISYMMETRIC
           Vector U_cons(sol->Size());
-          NS->RecoverStateFromWeighted(*sol, U_cons);
-          NS->ComputeIntegralMeasures(U_cons, diag);
+          // AXI temporarily DISABLED
+          // NS->RecoverStateFromWeighted(*sol, U_cons);
+          // NS->ComputeIntegralMeasures(U_cons, diag);
 #else
-          EulerOp->ComputeIntegralMeasures(*sol, diag);
+          //EulerOp->ComputeIntegralMeasures(*sol, diag);
+          NSOp->ComputeIntegralMeasures(*sol, diag);
 #endif
         }
         // Update the time step size with CFL?
         if ((variable_dt && cfl > 0) || (ti%print_interval == 0) || debug_simulation)
-        {
-          real_t max_char_speed = EulerOp->GetMaxCharSpeed();
-          MPI_Allreduce(MPI_IN_PLACE, &max_char_speed, 1, MPITypeMap<real_t>::mpi_type, MPI_MAX, pmesh->GetComm());
-          real_t dt_adv = heff / max_char_speed;
-          real_t dt_est = dt_adv;
+          {
+            // real_t max_char_speed = EulerOp->GetMaxCharSpeed();
+            real_t max_char_speed = NSOp->GetMaxCharSpeed();
+            MPI_Allreduce(MPI_IN_PLACE, &max_char_speed, 1, MPITypeMap<real_t>::mpi_type, MPI_MAX, pmesh->GetComm());
+            real_t dt_adv = heff / max_char_speed;
+            real_t dt_est = dt_adv;
 #ifdef PARABOLIC
-          real_t nu_eff = nuscale * physicsConstants->mu / diag.min_dens;
-          real_t dt_diff = heff * heff / nu_eff;
-          real_t dt_m1 = 1.0 / (1.0/dt_adv + 1.0/dt_diff);
-          dt_est = dt_m1;
+            real_t nu_eff = nuscale * physicsConstants->mu / diag.min_dens;
+            real_t dt_diff = heff * heff / nu_eff;
+            real_t dt_m1 = 1.0 / (1.0/dt_adv + 1.0/dt_diff);
+            dt_est = dt_m1;
 #endif
-          if(variable_dt){
-            dt = cfl / dim * dt_est;
-          } else {
-            cfl_rep = dim * dt / dt_est;
-          }
+            if(variable_dt){
+              dt = cfl / dim * dt_est;
+            } else {
+              cfl_rep = dim * dt / dt_est;
+            }
 
-          if(debug_simulation && Mpi::Root()){
+            if(debug_simulation && Mpi::Root()){
 #ifdef PARABOLIC
-            std::cout << "DT(adv, diff, sim): (" << dt_adv << ", " << dt_diff << ", " << dt << ")" << std::endl;
-            std::cout << "Effective viscosity: " << nu_eff << std::endl;
+              std::cout << "DT(adv, diff, sim): (" << dt_adv << ", " << dt_diff << ", " << dt << ")" << std::endl;
+              std::cout << "Effective viscosity: " << nu_eff << std::endl;
 #else
-            std::cout << "DT(adv, sim): (" << dt_adv << ", " << dt << ")" << std::endl;
+              std::cout << "DT(adv, sim): (" << dt_adv << ", " << dt << ")" << std::endl;
 #endif
-            std::cout << "Max wavespeed: " << max_char_speed << std::endl;
-            std::cout << "Max specific volume: " << 1.0 / diag.min_dens << std::endl;
+              std::cout << "Max wavespeed: " << max_char_speed << std::endl;
+              std::cout << "Max specific volume: " << 1.0 / diag.min_dens << std::endl;
+            }
+
           }
-          
-        }
 
         // Check for completion
         done = (t >= t_final - 1e-8 * dt);
@@ -1339,64 +1356,64 @@ void Simulation::Run()
         // Check for NaN/Inf values?
         rho.HostRead();
         if (nancheck && ti % nancheck_steps == 0)
-        {
+          {
             for (const real_t &val : rho)
-            {
+              {
                 if (std::isnan(val) || std::isinf(val))
-                {
+                  {
                     MFEM_ABORT("NaN/Inf Detected at Time Step " + std::to_string(ti) + " on Rank " + std::to_string(myRank));
                     break;
-                }
-            }
-        }
+                  }
+              }
+          }
         // Visualize the solution?
         if (visualize && (done || t >= next_save_t || ti % vis_steps == 0))
-        {
+          {
 
 #ifdef AXISYMMETRIC
-        Vector U_cons(sol->Size());
-        NS->RecoverStateFromWeighted(*sol, U_cons);
-        ConservativeToPrimitive(U_cons, *rho_axi, *u, *v, *p);
+            Vector U_cons(sol->Size());
+            //            NS->RecoverStateFromWeighted(*sol, U_cons);
+            ConservativeToPrimitive(U_cons, *rho_axi, *u, *v, *p);
 #else
-        const real_t *sol_state = sol->HostRead();
-        for (int i = 0; i < num_dofs_scalar; i++)
-        {       
-          Prandtl::DofStateView dofState{sol_state, i};
-          (*u)(i) = gasModel->velocity(dofState, 0);
-          if (dim > 1)
-            {
-              (*v)(i) = gasModel->velocity(dofState, 1);
-              if (dim > 2)
-                {
-                  (*w)(i) = gasModel->velocity(dofState, 2);
-                }
-            }
-          (*p)(i) = gasModel->pressure(dofState);
-        }
+            const real_t *sol_state = sol->HostRead();
+            for (int i = 0; i < num_dofs_scalar; i++)
+              {
+                Prandtl::DofStateView dofState{sol_state, i};
+                (*u)(i) = gasModel->velocity(dofState, 0);
+                if (dim > 1)
+                  {
+                    (*v)(i) = gasModel->velocity(dofState, 1);
+                    if (dim > 2)
+                      {
+                        (*w)(i) = gasModel->velocity(dofState, 2);
+                      }
+                  }
+                (*p)(i) = gasModel->pressure(dofState);
+              }
 #endif
 
             if (paraview)
-            {
+              {
                 pd->SetCycle(ti);
                 pd->SetTime(t);
                 pd->Save();
-            }
+              }
             else if (visit)
-            {
+              {
                 vd->SetCycle(ti);
                 vd->SetTime(t);
                 vd->Save();
-            }
+              }
 
 
             save_dt = (t < trigger_t) ? save_dt1 : save_dt2;
             next_save_t += save_dt;
 
-        }
+          }
 
 
         if (checkpoint_save && (done || t >= next_checkpoint_t))
-        {
+          {
             // writing the solution to a checkpoint file in a subfolder
 
             std::string cycle_dir = checkpoints_folder + "/Cycle" + std::to_string(ti);
@@ -1413,68 +1430,68 @@ void Simulation::Run()
             checkpoint_save.close();
 
             if (Mpi::Root())
-                {
+              {
                 // writing time and cycle data to a json file
                 std::string meta_file = cycle_dir + "/checkpoint_cycle_" + std::to_string(ti)+".json";
                 std::ofstream meta(meta_file);
                 MFEM_VERIFY(meta, "Failed to open meta file for writing: " << meta_file);
 
                 meta << std::fixed << "{" << "\n" << " \"time\": " << t << "," << "\n"
-                                    << " \"cycle\": " << ti << "\n"
-                                    << "}" << "\n";
-                meta.close();             
-                }
-            MPI_Barrier(pmesh->GetComm());   
-            
+                     << " \"cycle\": " << ti << "\n"
+                     << "}" << "\n";
+                meta.close();
+              }
+            MPI_Barrier(pmesh->GetComm());
+
             next_checkpoint_t += checkpoint_dt;
-        }
+          }
 
         if (ti % print_interval == 0 || debug_simulation)
-        {
-          real_t ke0 = diag0.ke;
-          if(ke0 == 0.0){ ke0 = 1.0; };
+          {
+            real_t ke0 = diag0.ke;
+            if(ke0 == 0.0){ ke0 = 1.0; };
             if (Mpi::Root())
-            {
-              std::ostringstream Ostr;
-              Ostr << "time step: " << ti << ", time: " << t;
-              if(variable_dt){
-                Ostr << ", dt: " << dt;
-              } else {
-                Ostr << ", cfl: " << cfl_rep;
+              {
+                std::ostringstream Ostr;
+                Ostr << "time step: " << ti << ", time: " << t;
+                if(variable_dt){
+                  Ostr << ", dt: " << dt;
+                } else {
+                  Ostr << ", cfl: " << cfl_rep;
+                }
+                Ostr << std::endl
+                     << "rho(" << diag.min_dens << "," << diag.max_dens << "), "
+                     << "p(" << diag.min_press << "," << diag.max_press << "), "
+                     << "T(" << diag.min_temp << "," << diag.max_temp << ")" << std::endl
+                     << "TotalChange: Mass: " << (diag.mass - diag0.mass) / diag0.mass
+                     << ", Energy: " <<  (diag.en - diag0.en) / diag0.en
+                     << ", K.E.: " << (diag.ke - diag0.ke) / ke0 << std::endl;
+                std::cout << Ostr.str();
               }
-              Ostr << std::endl
-                   << "rho(" << diag.min_dens << "," << diag.max_dens << "), "
-                   << "p(" << diag.min_press << "," << diag.max_press << "), "
-                   << "T(" << diag.min_temp << "," << diag.max_temp << ")" << std::endl
-                   << "TotalChange: Mass: " << (diag.mass - diag0.mass) / diag0.mass
-                   << ", Energy: " <<  (diag.en - diag0.en) / diag0.en
-                   << ", K.E.: " << (diag.ke - diag0.ke) / ke0 << std::endl;
-              std::cout << Ostr.str();
-            }
-        }
-    }
+          }
+      }
 
 #ifdef AXISYMMETRIC
 
     auto stats = NS->GetAxisReconStats(true);
 
     if (Mpi::Root())
-    {
+      {
         const double denom = (stats.calls > 0) ? (double)stats.calls : 1.0;
         const double highOrder_shape_percentage = 100.0 * (double)stats.highOrder_shape / denom;
         const double lowOrder_ray2_percentage = 100.0 * (double)stats.lowOrder_ray2 / denom;
         const double lowOrder_ray1_percentage = 100.0 * (double)stats.lowOrder_ray1 / denom;
         const double lowOrder_copy_percentage = 100.0 * (double)stats.lowOrder_copy / denom;
-        std::cout << "[Axis Reconstruction]" << "\n" 
-                  << "High Order [shape] : " << std::round(highOrder_shape_percentage*1000)/1000.0 << "%" << "\n" 
-                  << "Low  Order [ray2]  : " << std::round(lowOrder_ray2_percentage*1000)/1000.0 << "%" << "\n" 
-                  << "Low  Order [ray1]  : " << std::round(lowOrder_ray1_percentage*1000)/1000.0 << "%" << "\n" 
+        std::cout << "[Axis Reconstruction]" << "\n"
+                  << "High Order [shape] : " << std::round(highOrder_shape_percentage*1000)/1000.0 << "%" << "\n"
+                  << "Low  Order [ray2]  : " << std::round(lowOrder_ray2_percentage*1000)/1000.0 << "%" << "\n"
+                  << "Low  Order [ray1]  : " << std::round(lowOrder_ray1_percentage*1000)/1000.0 << "%" << "\n"
                   << "Low  Order [copy]  : " << std::round(lowOrder_copy_percentage*1000)/1000.0 << "%" << std::endl;
-    }
+      }
 
 #endif
 
-    // VectorFunctionCoefficient u_final(num_equations, ConditionFactory::Instance().GetVectorTDFunctionBoundaryCondition1("AcousticWaveExactSolution")(1.4)); 
+    // VectorFunctionCoefficient u_final(num_equations, ConditionFactory::Instance().GetVectorTDFunctionBoundaryCondition1("AcousticWaveExactSolution")(1.4));
     // u_final.SetTime(1.0);
     // ParGridFunction u_final_gf(vfes.get());
     // u_final_gf.ProjectCoefficient(u_final);
@@ -1490,35 +1507,35 @@ void Simulation::Run()
 
     // Stop the clock if enabled
     if (clock_simulation)
-    {
+      {
         tic_toc.Stop();
         if (Mpi::Root())
-        {
+          {
             std::cout << "================================================" << std::endl;
             std::cout << "DGSEM Simulation Completed in " << tic_toc.RealTime() << " seconds!" << std::endl;
             std::cout << "================================================" << std::endl;
-        }
-    }
+          }
+      }
     else
-    {
+      {
         if (Mpi::Root())
-        {
+          {
             std::cout << "================================================" << std::endl;
             std::cout << "DGSEM Simulation Completed!" << std::endl;
             std::cout << "================================================" << std::endl;
-        }
-    }
-}
+          }
+      }
+  }
 
 #ifdef AXISYMMETRIC
-void Simulation::ConservativeToPrimitive(const Vector &U_cons,
-                                ParGridFunction &rho_out,
-                                ParGridFunction &uz_out,
-                                ParGridFunction &ur_out,
-                                ParGridFunction &p_out) const
-{
+  void Simulation::ConservativeToPrimitive(const Vector &U_cons,
+                                           ParGridFunction &rho_out,
+                                           ParGridFunction &uz_out,
+                                           ParGridFunction &ur_out,
+                                           ParGridFunction &p_out) const
+  {
     for (int i = 0; i < num_dofs_scalar; i++)
-    {
+      {
         const real_t rho = U_cons[i];
         const real_t mz  = U_cons[i + num_dofs_scalar];
         const real_t mr  = U_cons[i + 2*num_dofs_scalar];
@@ -1530,13 +1547,13 @@ void Simulation::ConservativeToPrimitive(const Vector &U_cons,
         ur = mr / rho;
         const real_t Vsq = uz*uz + ur*ur;
         p = physicsConstants->gammaM1 * (E - 0.5 * rho * Vsq);
-    
+
         rho_out(i) = rho;
         uz_out(i)  = uz;
         ur_out(i)  = ur;
         p_out(i)   = p;
-    }
-}
+      }
+  }
 #endif
 
 
