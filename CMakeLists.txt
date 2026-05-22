@@ -13,6 +13,7 @@ option(AXISYMMETRIC "Enable Axisymmetric domain solver" OFF)
 option(SUTHERLAND "Enable Sutherland transport model" OFF)
 option(ENABLE_TIMERS "Enable performance timers." OFF)
 option(PRANDTL_USE_CUDA "Compile CUDA kernels" OFF)
+option(LTE_EOS "Enable LTE EOS" OFF)
 
 find_package(MFEM REQUIRED CONFIG) 
 if (TARGET MFEM::mfem)
