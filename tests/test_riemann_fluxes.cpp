@@ -1,4 +1,5 @@
 // tests/riemann_flux_tests.cpp
+#include "mfem.hpp"
 #include "unit_test.hpp"
 #include "GasModel.hpp"
 #include "ChandrashekarFlux.hpp"
