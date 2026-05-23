@@ -7,3 +7,7 @@
 [submodule "libs/hypre"]
 	path = libs/hypre
 	url = https://github.com/hypre-space/hypre.git
+[submodule "libs/plato"]
+	path = libs/plato
+	url = https://github.com/chess-uiuc/plato.git
+	branch = main

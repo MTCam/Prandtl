@@ -47,6 +47,10 @@ private:
   std::shared_ptr<PhysicsConstants> physicsConstants;
   std::shared_ptr<StateLayout> stateLayout;
   std::shared_ptr<ActiveGasModel> gasModel;
+  HostThermoTables thermoTables;
+  int N_rho, N_T;
+  real_t rho_min, rho_max, T_min, T_max, e_min, e_max;
+  std::string solver, mixture, path, rho_dist, T_dist;
 
   std::string output_file_path;
   std::string paraview_folder;

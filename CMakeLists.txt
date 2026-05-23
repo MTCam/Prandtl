@@ -26,6 +26,8 @@ endif()
 
 find_package(MPI REQUIRED COMPONENTS CXX)
 
+set(PLATO_DIR "${CMAKE_SOURCE_DIR}/libs/plato/install")
+
 add_executable(${PROJECT_NAME} main.cpp)
 
 if (PRANDTL_USE_CUDA)
@@ -94,6 +96,11 @@ endif()
 if(SUTHERLAND)
   message(STATUS "Building Prandtl with: Sutherland transport model enabled")
   target_compile_definitions(${PROJECT_NAME} PRIVATE SUTHERLAND)
+endif()
+
+if(LTE_EOS)
+  message(STATUS "Building Prandtl with: LTE EOS enabled")
+  target_compile_definitions(${PROJECT_NAME} PRIVATE LTE_EOS)
 endif()
 
 if(AXISYMMETRIC)
@@ -233,10 +240,20 @@ target_include_directories(${PROJECT_NAME}
     PUBLIC ${CMAKE_SOURCE_DIR}/TestCases/Euler/2D/Nagashima_Ramjet
     )
 
+target_include_directories(${PROJECT_NAME}
+    PRIVATE ${PLATO_DIR}/include
+)
+
+target_link_directories(${PROJECT_NAME}
+    PRIVATE ${PLATO_DIR}/lib
+)
+
 target_link_libraries(${PROJECT_NAME}
     PRIVATE
     ${PRANDTL_MFEM_TARGET}
     MPI::MPI_CXX
+    plato
+    gfortran
 )
 
 if (BUILD_TESTING)

@@ -208,6 +208,24 @@ namespace Prandtl
     }
   };
 
+  struct HostThermoTables
+  {
+    mfem::Vector lte_table;
+    mfem::Vector inv_table;
+    mfem::Vector rho_grid;
+    mfem::Vector T_grid;
+    mfem::Vector e_grid;
+  };
+
+  struct DeviceThermoTables
+  {
+    const real_t *lte_table;
+    const real_t *inv_table;
+    const real_t *rho_grid;
+    const real_t *T_grid;
+    const real_t *e_grid;
+  };
+
   using IdealGasModel = GasModel<IdealSingleGasEOS, Transport>;
   using ActiveGasModel = IdealGasModel;
   // Bridge helper so old call-sites that only have PhysicsConstants can move over

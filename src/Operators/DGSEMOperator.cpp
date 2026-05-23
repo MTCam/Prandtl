@@ -11,6 +11,7 @@ namespace Prandtl
                                std::unique_ptr<DGSEMIntegrator> integrator_,
                                std::unique_ptr<Indicator> indicator_,
                                const ActiveGasModel &gasModel_,
+                               const HostThermoTables &thermoTables_,
                                std::shared_ptr<ParGridFunction> r_gf_,
                                const real_t alpha_max, const real_t alpha_min)
   : TimeDependentOperator(vfes_->GetTrueVSize()),
@@ -18,6 +19,7 @@ namespace Prandtl
     eta(eta_), alpha(alpha_), grad_u(grad_u_),
     integrator(std::move(integrator_)), indicator(std::move(indicator_)),
     gasModel(gasModel_),
+    thermoTables(thermoTables_),
     num_equations(vfes->GetVDim()), dim(pmesh->SpaceDimension()),
     order(vfes->GetElementOrder(0)), num_elements(pmesh->GetNE()),
     Ndofs(vfes->GetFE(0)->GetDof()),
@@ -62,6 +64,7 @@ namespace Prandtl
 #endif
     // Important that gasModel is POD for host<->device
     operator_cache.gas = gasModel;
+    operator_cache.thermoTables = thermoTables;
     operator_cache.alpha = alpha;
     operator_cache.bc_descriptors = bc_descriptors;
     operator_cache.bc_scalar_data = bc_scalar_data;

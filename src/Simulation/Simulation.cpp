@@ -390,7 +390,62 @@ void Simulation::LoadConfig(const std::string &config_file_path)
       std::cout << "Initial exchanges complete." << std::endl;
     }
 
+#ifdef LTE_EOS
+    mixture  = runtime.value("gas_mixture", "air5");
+    solver   = runtime.value("plato_solver", "LTE_table_rhoT_(air5)");
+    path     = runtime.value("database_path", "");
+    N_rho    = runtime.value("N_rho", 101);
+    N_T      = runtime.value("N_T", 101);
+    rho_min  = runtime.value("rho_min", 0.1);
+    rho_max  = runtime.value("rho_max", 1.1);
+    T_min    = runtime.value("T_min", 250.0);
+    T_max    = runtime.value("T_max", 35.0);
+    rho_dist = runtime.value("rho_dist", "log");
+    T_dist   = runtime.value("T_dist", "log");
+    int num_properties = 9; // CL NOTE : Check LTE EOS
+
+    thermoTables.lte_table.SetSize(N_rho * N_T * num_properties);
+    thermoTables.inv_table.SetSize(N_rho * N_T);
+    if(rho_dist == "log")
+    {
+        log_grid(N_rho, rho_min, rho_max, thermoTables.rho_grid);
+    }
+    else
+    {
+        uniform_grid(N_rho, rho_min, rho_max, thermoTables.rho_grid);
+    }
+
+    if(T_dist == "log")
+    {
+        log_grid(N_T, T_min, T_max, thermoTables.T_grid);
+    }
+    else
+    {
+        uniform_grid(N_T, T_min, T_max, thermoTables.T_grid);
+    }
+
+    stateLayout = std::make_shared<StateLayout>(dim, num_dofs_scalar, N_rho, N_T);
+    if(Mpi::Root())
+    {
+        std::cout << "Constructing LTE table for " << mixture << " with solver " << solver << std::endl;
+        std::string empty_str = "empty";
+        plato_initialize(solver.c_str(), mixture.c_str(), empty_str.c_str(), empty_str.c_str(), path.c_str());
+        fill_lte_table(*stateLayout, thermoTables.rho_grid.GetData(), thermoTables.T_grid.GetData(),
+                        thermoTables.lte_table.GetData(), e_min, e_max);
+        std::cout << "Constructing inverse table T = T(rho, e)" << std::endl;
+        uniform_grid(N_T, e_min, e_max, thermoTables.e_grid);
+        fill_inv_table(*stateLayout, thermoTables.rho_grid.GetData(), thermoTables.e_grid.GetData(),
+                        thermoTables.T_grid.GetData(), thermoTables.inv_table.GetData());
+        plato_finalize();
+    }
+
+    MPI_Bcast(thermoTables.lte_table.GetData(), N_rho * N_T * num_properties, MPI_DOUBLE, 0, pmesh->GetComm());
+    MPI_Bcast(thermoTables.inv_table.GetData(), N_rho * N_T, MPI_DOUBLE, 0, pmesh->GetComm());
+    MPI_Bcast(thermoTables.e_grid.GetData(), N_T, MPI_DOUBLE, 0, pmesh->GetComm());
+#else
     stateLayout = std::make_shared<StateLayout>(dim, num_dofs_scalar);
+#endif
+
     gasModel = std::make_shared<ActiveGasModel>(*physicsConstants, *stateLayout);
 
     // DEVICE: numerical flux must be set at *compile* time
@@ -569,7 +624,7 @@ void Simulation::LoadConfig(const std::string &config_file_path)
                                                          *gasModel);
 
     NS = std::make_unique<DGSEMOperator>(vfes, fes0, pmesh, eta, alpha, grad_u, std::move(integrator),
-                                         std::move(indicator), *gasModel, r_gf, alpha_max);
+                                         std::move(indicator), *gasModel, thermoTables, r_gf, alpha_max);
     NS->UseDevice(use_device_path);
 
     if(myRank == 0 && debug_simulation){

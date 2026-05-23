@@ -69,6 +69,7 @@ namespace Prandtl
       mutable mfem::Vector ifWaveSpeed; // size ninterior faces
       mutable mfem::Vector bndWaveSpeed; // size nbnd faces
       ActiveGasModel gas;
+      HostThermoTables thermoTables;
       //ActivePhysics::InviscidFlux iflux;
       // Prandtl::ChandrashekarFlux::InviscidFlux iflux;
       Prandtl::LaxFriedrichsFlux::InviscidFlux iflux;
@@ -139,6 +140,7 @@ namespace Prandtl
     real_t *ifWaveSpeed_d = nullptr;
     real_t *bndWaveSpeed_d = nullptr;
     IdealGasModel gas;
+    DeviceThermoTables thermoTables;
     //ActivePhysics::InviscidFlux iflux;
 
     // Prandtl::ChandrashekarFlux::InviscidFlux iflux;

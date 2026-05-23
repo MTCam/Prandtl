@@ -827,6 +827,11 @@ namespace Prandtl {
 
     // POD gas model
     device_cache.gas = cache.gas;
+    device_cache.thermoTables.lte_table = cache.thermoTables.lte_table.Read();
+    device_cache.thermoTables.inv_table = cache.thermoTables.inv_table.Read();
+    device_cache.thermoTables.rho_grid  = cache.thermoTables.rho_grid.Read();
+    device_cache.thermoTables.T_grid    = cache.thermoTables.T_grid.Read();
+    device_cache.thermoTables.e_grid    = cache.thermoTables.e_grid.Read();
     device_cache.iflux = cache.iflux;
 
 #ifdef SUBCELL_FV_BLENDING

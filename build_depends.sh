@@ -43,6 +43,22 @@ cmake ../ -DMFEM_USE_METIS_5=YES -DMFEM_USE_MPI=YES
 make -j 4
 cd ../../../
 
+# --- Build Plato ---
+echo "--- Building Parallel Plato ---"
+cd libs/plato
+rm -rf install
+mkdir -p install
+make distclean || true
+./autogen.sh
+./configure \
+    FC="${FC:=gfortran}" \
+    CC="${CC:=gcc}" \
+    CXX="${CXX:=g++}" \
+    --prefix="$(pwd)/install"
+make
+make install
+cd "$PROJECT_ROOT"
+
 # --- Step 4: Build GLVis ---
 if [ "$IS_HPC" = false ]; then
 echo "--- Building GLVis ---"
