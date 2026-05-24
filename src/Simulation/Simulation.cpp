@@ -423,6 +423,7 @@ void Simulation::LoadConfig(const std::string &config_file_path)
     {
         uniform_grid(N_T, T_min, T_max, thermoTables.T_grid);
     }
+    thermoTables.e_grid.SetSize(N_T);
 
     stateLayout = std::make_shared<StateLayout>(dim, num_dofs_scalar, N_rho, N_T);
     if(Mpi::Root())

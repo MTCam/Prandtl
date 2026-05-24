@@ -39,7 +39,6 @@ private:
     std::unique_ptr<DGSEMIntegrator> integrator;
     std::unique_ptr<Indicator> indicator;
     const ActiveGasModel gasModel;
-    const HostThermoTables thermoTables;
     std::unique_ptr<DGSEMNonlinearForm> nonlinearForm; 
 
     mutable Array<int> vdof_indices;
@@ -108,7 +107,7 @@ public:
                   std::unique_ptr<DGSEMIntegrator> integrator,
                   std::unique_ptr<Indicator> indicator,
                   const ActiveGasModel &gasModel_,
-                  const HostThermoTables &thermoTables_,
+                  const ThermoTablesData &thermoTabData_,
                   std::shared_ptr<ParGridFunction> r_gf = nullptr,
                   const real_t alpha_max = 0.5, const real_t alpha_min = 0.001);
     

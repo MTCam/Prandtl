@@ -208,7 +208,7 @@ namespace Prandtl
     }
   };
 
-  struct HostThermoTables
+  struct ThermoTablesData
   {
     mfem::Vector lte_table;
     mfem::Vector inv_table;
@@ -217,7 +217,7 @@ namespace Prandtl
     mfem::Vector e_grid;
   };
 
-  struct DeviceThermoTables
+  struct ThermoTablesView
   {
     const real_t *lte_table;
     const real_t *inv_table;
