@@ -17,9 +17,13 @@ namespace Prandtl
       : Prandtl::NumericalFlux(fluxFunction), gasModel(gasModel_)
   {}
     real_t ComputeFaceFlux(const mfem::Vector &state1, const mfem::Vector &state2,
-                           const mfem::Vector &nor, mfem::Vector &flux) const override;
-    real_t ComputeVolumeFlux(const mfem::Vector &state1, const Vector &state2, const Vector &metric1,
-                             const mfem::Vector &metric2, mfem::Vector &F_tilde) override;
+                           const mfem::Vector &nor,
+                           const ThermoTablesView &thermoTables,
+                           mfem::Vector &flux) const override;
+    real_t ComputeVolumeFlux(const mfem::Vector &state1, const Vector &state2,
+                             const Vector &metric1, const mfem::Vector &metric2,
+                             const ThermoTablesView &thermoTables,
+                             mfem::Vector &F_tilde) override;
   
 public:
   
@@ -28,6 +32,7 @@ public:
   template<typename GasT>
   MFEM_HOST_DEVICE
   inline static real_t ComputeVolumeFluxKernel(const GasT &gas,
+                                               const ThermoTablesView &thermoTables,
                                                const real_t* q1,
                                                const real_t* q2,
                                                const real_t* met1,
@@ -46,8 +51,8 @@ public:
     real_t inv_flux_2[Prandtl::MAXEQ][Prandtl::MAXDIM];
     real_t inv_flux_bar[Prandtl::MAXEQ];
 
-    NavierStokesFlux::ComputeInviscidFluxKernel(gas, q1, inv_flux_1);
-    NavierStokesFlux::ComputeInviscidFluxKernel(gas, q2, inv_flux_2);
+    NavierStokesFlux::ComputeInviscidFluxKernel(gas, thermoTables, q1, inv_flux_1);
+    NavierStokesFlux::ComputeInviscidFluxKernel(gas, thermoTables, q2, inv_flux_2);
     for(int ieq=0;ieq < neq;ieq++){
       inv_flux_bar[ieq] = 0;
       for(int idim = 0;idim < dim;idim++){
@@ -60,8 +65,8 @@ public:
     real_t mnorm = 0;
     for (int d=0; d<dim; ++d)
       {
-        const real_t v1 = gas.velocity(S1, d);
-        const real_t v2 = gas.velocity(S2, d);
+        const real_t v1 = gas.velocity(S1, d, thermoTables);
+        const real_t v2 = gas.velocity(S2, d, thermoTables);
         vn_1 += v1*met[d];
         vn_2 += v2*met[d];
         mnorm += met[d]*met[d];
@@ -69,8 +74,8 @@ public:
     vn_1 = Prandtl::Kernels::rabs(vn_1);
     vn_2 = Prandtl::Kernels::rabs(vn_2);
     mnorm = Prandtl::Kernels::rsqrt(mnorm);
-    const real_t c1 = gas.sound_speed(S1)*mnorm;
-    const real_t c2 = gas.sound_speed(S2)*mnorm;
+    const real_t c1 = gas.sound_speed(S1, thermoTables)*mnorm;
+    const real_t c2 = gas.sound_speed(S2, thermoTables)*mnorm;
     const real_t lambda_max = Kernels::rmax(vn_1 + c1, vn_2 + c2);
 
     for(int ieq = 0;ieq < neq;ieq++){
@@ -83,6 +88,7 @@ public:
   template<typename GasModelT>
   MFEM_HOST_DEVICE inline static real_t
   ComputeFaceFluxKernel(const GasModelT &gasModel,
+                        const ThermoTablesView &thermoTables,
                         const real_t *state1,
                         const real_t *state2,
                         const real_t *nor,
@@ -97,8 +103,8 @@ public:
     real_t inv_flux_1[Prandtl::MAXEQ][Prandtl::MAXDIM];
     real_t inv_flux_2[Prandtl::MAXEQ][Prandtl::MAXDIM];
 
-    NavierStokesFlux::ComputeInviscidFluxKernel(gasModel, state1, inv_flux_1);
-    NavierStokesFlux::ComputeInviscidFluxKernel(gasModel, state2, inv_flux_2);
+    NavierStokesFlux::ComputeInviscidFluxKernel(gasModel, thermoTables, state1, inv_flux_1);
+    NavierStokesFlux::ComputeInviscidFluxKernel(gasModel, thermoTables, state2, inv_flux_2);
 
     real_t vn1 = 0.0;
     real_t vn2 = 0.0;
@@ -106,8 +112,8 @@ public:
 
     for (int d = 0; d < dim; ++d)
       {
-        vn1 += gasModel.velocity(S1, d) * nor[d];
-        vn2 += gasModel.velocity(S2, d) * nor[d];
+        vn1 += gasModel.velocity(S1, d, thermoTables) * nor[d];
+        vn2 += gasModel.velocity(S2, d, thermoTables) * nor[d];
         nor_mag2 += nor[d] * nor[d];
       }
 
@@ -116,8 +122,8 @@ public:
     vn1 = Prandtl::Kernels::rabs(vn1);
     vn2 = Prandtl::Kernels::rabs(vn2);
 
-    const real_t c1 = gasModel.sound_speed(S1);
-    const real_t c2 = gasModel.sound_speed(S2);
+    const real_t c1 = gasModel.sound_speed(S1, thermoTables);
+    const real_t c2 = gasModel.sound_speed(S2, thermoTables);
     const real_t lambda_max =
       Prandtl::Kernels::rmax(vn1 + c1 * nor_mag,
                              vn2 + c2 * nor_mag);
@@ -144,16 +150,17 @@ public:
   struct InviscidFlux {
     template<typename GasModelT>
     MFEM_HOST_DEVICE inline real_t ComputeVolumeFlux(const GasModelT &gasModel,
+                                                     const ThermoTablesView &thermoTables,
                                                      const real_t *q1, const real_t *q2,
                                                      const real_t *met1, const real_t *met2,
                                                      real_t *F_tilde) const{
-      return ComputeVolumeFluxKernel(gasModel, q1, q2, met1, met2, F_tilde); 
+      return ComputeVolumeFluxKernel(gasModel, thermoTables, q1, q2, met1, met2, F_tilde); 
     }
     template<typename GasModelT>
-    MFEM_HOST_DEVICE inline real_t ComputeFaceFlux(const GasModelT &gasModel,const real_t *qminus,
-                                                   const real_t *qplus, const real_t *nor,
+    MFEM_HOST_DEVICE inline real_t ComputeFaceFlux(const GasModelT &gasModel,const ThermoTablesView &thermoTables,
+                                                   const real_t *qminus, const real_t *qplus, const real_t *nor,
                                                    real_t *flux) const {
-      return ComputeFaceFluxKernel(gasModel, qminus, qplus, nor, flux); 
+      return ComputeFaceFluxKernel(gasModel, thermoTables, qminus, qplus, nor, flux); 
     }
   };
 };

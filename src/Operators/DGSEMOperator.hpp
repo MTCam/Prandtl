@@ -118,7 +118,7 @@ public:
   }
 
 #ifdef SUBCELL_FV_BLENDING
-    void ComputeBlendingCoefficient(const Vector &u) const;
+    void ComputeBlendingCoefficient(const Vector &u, const ThermoTablesView &thermoTables) const;
     void ComputeBlendingCoefficientFromIndicator(const Vector &indicator_field) const;
     void ComputeIndicatorField(const Vector &u, Vector &indicator_field) const;
 #endif

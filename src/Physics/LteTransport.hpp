@@ -8,32 +8,34 @@ namespace Prandtl
 {
 
   // ============================================================================
-  // Transport: Simple transport, also support Sutherland model (for now)
+  // Transport: LTE lookup for transport properties
   // ============================================================================
   
-  struct Transport
+  struct LTETransport
   {
     
     template<typename EOSType, typename StateViewType, typename TabStruct>
     MFEM_HOST_DEVICE
     inline real_t viscosity(const PhysicsConstants &phys, const StateLayout &L,
-                            const EOSType &eos, const StateViewType &S, const TabStruct &tables) const
+                            const EOSType &eos, const StateViewType &S,
+                            const TabStruct &thermoTables) const
     {
 #ifdef SUTHERLAND
       // mu0 * T0pTs / (T + Ts) * (T / T0) * std::sqrt(T / T0);
-      const real_t temptr = eos.temperature(phys, L, S, tables);
+      const real_t temptr = eos.temperature(phys, L, S, thermoTables);
       const real_t Trel = temptr / phys.T0;
       const real_t T0pTs = phys.T0 + phys.Ts;
       return phys.mu0 * T0pTs * Trel * std::sqrt(Trel) / (temptr + phys.Ts);
 #else
-      return phys.mu;
+      return eos.property_lookup(L.mu_idx, phys, L, S, thermoTables);
 #endif
     }
 
     template<typename EOSType, typename StateViewType, typename TabStruct>
     MFEM_HOST_DEVICE
     inline real_t bulk_viscosity(const PhysicsConstants &phys, const StateLayout &L,
-                                 const EOSType &eos, const StateViewType &S, const TabStruct &tables) const
+                                 const EOSType &eos, const StateViewType &S,
+                                 const TabStruct &thermoTables) const
     {
       return phys.mu_bulk;
     }
@@ -42,9 +44,10 @@ namespace Prandtl
     template<typename EOSType, typename StateViewType, typename TabStruct>
     MFEM_HOST_DEVICE
     inline real_t thermal_conductivity(const PhysicsConstants &phys, const StateLayout &L,
-                                       const EOSType &eos, const StateViewType &S, const TabStruct &tables) const
+                                       const EOSType &eos, const StateViewType &S,
+                                       const TabStruct &thermoTables) const
     {
-      return viscosity(phys, L, eos, S, tables) * eos.cp(phys, L, S, tables) * phys.PrInverse;
+      return eos.property_lookup(L.lambda_idx, phys, L, S, thermoTables);
     }
   };
   // TODO: Consider refactoring; would be better (explicit) design

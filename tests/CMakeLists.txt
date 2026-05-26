@@ -87,22 +87,29 @@ add_executable(table_lookup_tests
     table_lookup_test.cpp
 )
 
+# PLATO local install prefix
+set(PLATO_DIR "${PROJECT_SOURCE_DIR}/libs/plato/install")
+
 target_include_directories(table_lookup_tests
     PRIVATE
     ${PROJECT_SOURCE_DIR}/src/BasicOperations
     ${PROJECT_SOURCE_DIR}/src/Physics
     ${PROJECT_SOURCE_DIR}/src/Device
+    ${PLATO_DIR}/include
 )
 
 target_link_directories(table_lookup_tests
     PUBLIC ${PROJECT_SOURCE_DIR}/libs/mfem
     PUBLIC ${PROJECT_SOURCE_DIR}/libs/hypre/src/lib
     PUBLIC ${PROJECT_SOURCE_DIR}/libs/metis-5.1.0/lib
+    PUBLIC ${PLATO_DIR}/lib
 )
 
 target_link_libraries(table_lookup_tests
     PRIVATE
     ${PRANDTL_MFEM_TARGET}
+    plato
+    gfortran
 )
 
 add_test(NAME TableLookupTestingSuite COMMAND table_lookup_tests)

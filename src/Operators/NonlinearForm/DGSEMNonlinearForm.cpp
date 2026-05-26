@@ -199,7 +199,7 @@ void DGSEMNonlinearForm::MultLifting(const Vector &u, Vector &dudx) const
                     if (bfnfi_marker[k] &&
                         (*bfnfi_marker[k])[bdr_attr-1] == 0) { continue; }
 
-                    bfnfi[k]->AssembleLiftingFaceVector(*fe1, *fe2, *tr, el_u, el_dudx);
+                    bfnfi[k]->AssembleLiftingFaceVector(*fe1, *fe2, *tr, el_u, cache->thermoTables, el_dudx);
                     pdudx.AddElementVector(vdofs, el_dudx);
                 }
             }
@@ -708,7 +708,7 @@ void DGSEMNonlinearForm::MultLifting(const Vector &u, Vector &dudx, Vector &dudy
                   if (bfnfi_marker[k] &&
                       (*bfnfi_marker[k])[bdr_attr-1] == 0) { continue; }
 
-                  bfnfi[k]->AssembleLiftingFaceVector(*fe1, *fe2, *tr, el_u, el_dudx, el_dudy);
+                  bfnfi[k]->AssembleLiftingFaceVector(*fe1, *fe2, *tr, el_u, cache->thermoTables, el_dudx, el_dudy);
                   pdudx.AddElementVector(vdofs, el_dudx);
                   pdudy.AddElementVector(vdofs, el_dudy);
                 }
@@ -925,7 +925,7 @@ void DGSEMNonlinearForm::MultLifting(const Vector &u, Vector &dudx, Vector &dudy
                   if (bfnfi_marker[k] &&
                       (*bfnfi_marker[k])[bdr_attr-1] == 0) { continue; }
 
-                  bfnfi[k]->AssembleLiftingFaceVector(*fe1, *fe2, *tr, el_u, el_dudx, el_dudy, el_dudz);
+                  bfnfi[k]->AssembleLiftingFaceVector(*fe1, *fe2, *tr, el_u, cache->thermoTables, el_dudx, el_dudy, el_dudz);
                   pdudx.AddElementVector(vdofs, el_dudx);
                   pdudy.AddElementVector(vdofs, el_dudy);
                   pdudz.AddElementVector(vdofs, el_dudz);
@@ -2019,7 +2019,7 @@ void DGSEMNonlinearForm::Mult(const Vector &u, const Vector &dudx, Vector &dudt)
                   if (bfnfi_marker[k] &&
                       (*bfnfi_marker[k])[bdr_attr-1] == 0) { continue; }
 
-                  bfnfi[k]->AssembleFaceVector(*fe1, *fe2, *tr, el_u, el_dudx, el_dudt);
+                  bfnfi[k]->AssembleFaceVector(*fe1, *fe2, *tr, el_u, el_dudx, cache->thermoTables, el_dudt);
                   pdudt.AddElementVector(vdofs, el_dudt);
                 }
             }
@@ -2254,7 +2254,7 @@ void DGSEMNonlinearForm::Mult(const Vector &u, const Vector &dudx, const Vector 
                   if (bfnfi_marker[k] &&
                       (*bfnfi_marker[k])[bdr_attr-1] == 0) { continue; }
 
-                  bfnfi[k]->AssembleFaceVector(*fe1, *fe2, *tr, el_u, el_dudx, el_dudy, el_dudt);
+                  bfnfi[k]->AssembleFaceVector(*fe1, *fe2, *tr, el_u, el_dudx, el_dudy, cache->thermoTables, el_dudt);
                   pdudt.AddElementVector(vdofs, el_dudt);
                 }
             }
@@ -2647,7 +2647,7 @@ void DGSEMNonlinearForm::Mult(const Vector &u, const Vector &dudx, const Vector 
                   if (bfnfi_marker[k] &&
                       (*bfnfi_marker[k])[bdr_attr-1] == 0) { continue; }
 
-                  bfnfi[k]->AssembleFaceVector(*fe1, *fe2, *tr, el_u, el_dudx, el_dudy, el_dudz, el_dudt);
+                  bfnfi[k]->AssembleFaceVector(*fe1, *fe2, *tr, el_u, el_dudx, el_dudy, el_dudz, cache->thermoTables, el_dudt);
                   pdudt.AddElementVector(vdofs, el_dudt);
                 }
             }

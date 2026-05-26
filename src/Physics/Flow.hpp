@@ -47,15 +47,15 @@ namespace Prandtl {
 
     // This routine takes as input a  *face-oriented* state as input and returns
     // p* for the 1D Riemann problem at the face. 
-    template<typename StateView, typename GasModelT>
+    template<typename StateView, typename GasModelT, typename TabStruct>
     MFEM_HOST_DEVICE
-    inline real_t slipwall_pstar(const StateView &S, const GasModelT &gasModel)
+    inline real_t slipwall_pstar(const StateView &S, const GasModelT &gasModel, const TabStruct &thermoTables)
     {
-      const real_t rho = gasModel.density(S);
-      const real_t c = gasModel.sound_speed(S);
-      const real_t p = gasModel.pressure(S);
-      const real_t v = gasModel.velocity(S, 0);
-      const real_t gamma = gasModel.gamma(S);
+      const real_t rho = gasModel.density(S, thermoTables);
+      const real_t c = gasModel.sound_speed(S, thermoTables);
+      const real_t p = gasModel.pressure(S, thermoTables);
+      const real_t v = gasModel.velocity(S, 0, thermoTables);
+      const real_t gamma = gasModel.gamma(S, thermoTables);
       const real_t gammaP1 = gamma + 1.;
       const real_t gammaM1 = gamma - 1.;
       const real_t gammaP1Inverse = 1.0/gammaP1;
@@ -74,14 +74,14 @@ namespace Prandtl {
     // Ideal Gas: beta = 1/(RTwall)
     // Ideal Mixtures / LTE beta = 1/(Rmix*Twall), where Rmix is depending on the mixture Rmix(Y)
     // NLTE: Potentially this will be OK, but EOS-dependent
-    template<typename StateView, typename GasModelT>
+    template<typename StateView, typename GasModelT, typename TabStruct>
     MFEM_HOST_DEVICE
-    inline real_t isothermal_wall_beta(const StateView &Se, real_t Tw, const GasModelT &gasModel)
+    inline real_t isothermal_wall_beta(const StateView &Se, real_t Tw, const GasModelT &gasModel, const TabStruct &thermoTables)
     {
       // In gas models where R_gas is not constant (e.g. a mixture), we need to pass the *conserved*
       // state to the gasModel.R_gas function. Since we only have ideal atm with fixed R_gas, I am
       // skipping the unnecessary Entropy2Conservative conversion.  
-      return (1.0 / (gasModel.R_gas(Se)*Tw));
+      return (1.0 / (gasModel.R_gas(Se, thermoTables)*Tw));
     }
 
     struct TotalConditions {
@@ -95,15 +95,15 @@ namespace Prandtl {
       real_t energy;
     };
 
-    template<typename ConservedStateView, typename GasModelT>
+    template<typename ConservedStateView, typename GasModelT, typename TabStruct>
     MFEM_HOST_DEVICE
     inline StaticKinematics isentropic_total_to_static(const ConservedStateView &S, const TotalConditions &Ct,
-                                                       const GasModelT &gasModel)
+                                                       const GasModelT &gasModel, const TabStruct &thermoTabless)
     {
       StaticKinematics out{};
-      const real_t p = gasModel.pressure(S);
-      const real_t gamma = gasModel.gamma(S);
-      const real_t cp = gasModel.cp(S);
+      const real_t p = gasModel.pressure(S, thermoTabless);
+      const real_t gamma = gasModel.gamma(S, thermoTabless);
+      const real_t cp = gasModel.cp(S, thermoTabless);
       const real_t gm1 = gamma - 1.0;
       const real_t expo = gm1 / gamma;
 
@@ -115,34 +115,34 @@ namespace Prandtl {
       return out;
     }
 
-    template<typename StateView, typename StateViewRW, typename GasModelT>
+    template<typename StateView, typename StateViewRW, typename GasModelT, typename TabStruct>
     MFEM_HOST_DEVICE
     inline void riemann_invariant_outer_state(const StateView &Si, const StateView &So, StateViewRW &S2, const real_t *n,
-                                              const GasModelT &gasModel)
+                                              const GasModelT &gasModel, const TabStruct &thermoTables)
     {
       const int dim = gasModel.dim();
-      const real_t rho_i = gasModel.density(Si);
-      const real_t rho_o = gasModel.density(So);
-      real_t Vn_i = gasModel.momentum(Si, 0)*n[0];
-      real_t Vn_o = gasModel.momentum(So, 0)*n[0];
+      const real_t rho_i = gasModel.density(Si, thermoTables);
+      const real_t rho_o = gasModel.density(So, thermoTables);
+      real_t Vn_i = gasModel.momentum(Si, 0, thermoTables)*n[0];
+      real_t Vn_o = gasModel.momentum(So, 0, thermoTables)*n[0];
       if (dim > 1){
-        Vn_i += gasModel.momentum(Si, 1)*n[1];
-        Vn_o += gasModel.momentum(So, 1)*n[1];
+        Vn_i += gasModel.momentum(Si, 1, thermoTables)*n[1];
+        Vn_o += gasModel.momentum(So, 1, thermoTables)*n[1];
       }
       if (dim > 2){
-        Vn_i += gasModel.momentum(Si, 2)*n[2];
-        Vn_o += gasModel.momentum(So, 2)*n[2];
+        Vn_i += gasModel.momentum(Si, 2, thermoTables)*n[2];
+        Vn_o += gasModel.momentum(So, 2, thermoTables)*n[2];
       }
 
       Vn_i /= rho_i;
       Vn_o /= rho_o;
 
-      const real_t p_i = gasModel.pressure(Si);
-      const real_t a_i = gasModel.sound_speed(Si);
-      const real_t p_o = gasModel.pressure(So);
-      const real_t a_o = gasModel.sound_speed(So);
+      const real_t p_i = gasModel.pressure(Si, thermoTables);
+      const real_t a_i = gasModel.sound_speed(Si, thermoTables);
+      const real_t p_o = gasModel.pressure(So, thermoTables);
+      const real_t a_o = gasModel.sound_speed(So, thermoTables);
 
-      const real_t gamma = gasModel.gamma(Si);
+      const real_t gamma = gasModel.gamma(Si, thermoTables);
       const real_t gm1 = gamma - 1.0;
       const real_t gm1i = 1.0 / gm1;
       const real_t gi = 1.0/gamma;
@@ -179,7 +179,7 @@ namespace Prandtl {
       real_t vb2 = 0.0;
       const real_t dVn = inflow ? dVn_o : dVn_i;
       for(int idim = 0;idim < dim;idim++){
-        const real_t base = inflow ? gasModel.velocity(So, idim) : gasModel.velocity(Si, idim);
+        const real_t base = inflow ? gasModel.velocity(So, idim, thermoTables) : gasModel.velocity(Si, idim, thermoTables);
         vb[idim] = base + dVn*n[idim];
         vb2 += (vb[idim]*vb[idim]);
         S2.set_momentum(gasModel.L, idim, rho_b*vb[idim]);
@@ -187,12 +187,12 @@ namespace Prandtl {
       S2.set_energy(gasModel.L, p_b * gm1i + 0.5 * rho_b * vb2);
     }
 
-    template<typename PrimStateView, typename ConsStateView, typename GasModelT>
-    MFEM_HOST_DEVICE inline void PrimitiveToConserved(const PrimStateView &prim, ConsStateView &cons, const GasModelT &gasModel){
+    template<typename PrimStateView, typename ConsStateView, typename GasModelT, typename TabStruct>
+    MFEM_HOST_DEVICE inline void PrimitiveToConserved(const PrimStateView &prim, ConsStateView &cons, const GasModelT &gasModel, const TabStruct &thermoTables){
       const real_t rho = prim.mass(gasModel.L);
       const int dim = gasModel.dim();
       // NOTE: This call *should* fail for gas models other than ideal single component
-      const real_t gamma = gasModel.gamma(prim);
+      const real_t gamma = gasModel.gamma(prim, thermoTables);
       real_t v2 = prim.velocity(gasModel.L, 0)*prim.velocity(gasModel.L, 0);
       cons.set_mass(gasModel.L, rho);
       cons.set_momentum(gasModel.L, 0, rho*prim.velocity(gasModel.L, 0));

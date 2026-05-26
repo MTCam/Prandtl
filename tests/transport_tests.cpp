@@ -3,6 +3,7 @@
 #include "Physics.hpp"
 #include "Transport.hpp"
 #include "EOS.hpp"
+#include "GasModel.hpp"
 
 #include <cmath>
 
@@ -12,6 +13,7 @@ using Prandtl::Transport;
 using Prandtl::IdealSingleGasEOS;
 using Prandtl::PointStateView;
 using Prandtl::StateLayout;
+using Prandtl::ThermoTablesView;
 
 TEST(Transport_mu_kappa)
 {
@@ -26,6 +28,7 @@ TEST(Transport_mu_kappa)
 
     IdealSingleGasEOS eos;
     Transport transport;
+    ThermoTablesView thermoTables;
     StateLayout layout{3,1};
     real_t rho = 1.0;
     real_t rhoVx = 0.0;
@@ -59,8 +62,8 @@ TEST(Transport_mu_kappa)
     const real_t mu1_expected = sutherland_mu(T1);
     const real_t mu2_expected = sutherland_mu(T2);
 
-    const real_t mu1 = transport.viscosity(*phys, layout, eos, S1);
-    const real_t mu2 = transport.viscosity(*phys, layout, eos, S2);
+    const real_t mu1 = transport.viscosity(*phys, layout, eos, S1, thermoTables);
+    const real_t mu2 = transport.viscosity(*phys, layout, eos, S2, thermoTables);
 
     // Check viscosity matches Sutherland formula
     EXPECT_CLOSE(mu1, mu1_expected, tol);
@@ -73,8 +76,8 @@ TEST(Transport_mu_kappa)
     const real_t k1_expected = mu1_expected * cp * phys->PrInverse;
     const real_t k2_expected = mu2_expected * cp * phys->PrInverse;
 
-    const real_t k1 = transport.thermal_conductivity(*phys, layout, eos, S1);
-    const real_t k2 = transport.thermal_conductivity(*phys, layout, eos, S2);
+    const real_t k1 = transport.thermal_conductivity(*phys, layout, eos, S1, thermoTables);
+    const real_t k2 = transport.thermal_conductivity(*phys, layout, eos, S2, thermoTables);
 
     EXPECT_CLOSE(k1, k1_expected, tol);
     EXPECT_CLOSE(k2, k2_expected, tol);
@@ -83,8 +86,8 @@ TEST(Transport_mu_kappa)
     // -------------------------------------------------------------------------
     // Constant-transport behavior
     // -------------------------------------------------------------------------
-    const real_t mu1 = transport.viscosity(*phys, layout, eos, S1);
-    const real_t mu2 = transport.viscosity(*phys, layout, eos, S2);
+    const real_t mu1 = transport.viscosity(*phys, layout, eos, S1, thermoTables);
+    const real_t mu2 = transport.viscosity(*phys, layout, eos, S2, thermoTables);
 
     // Viscosity should be equal to phys->mu for any T
     EXPECT_CLOSE(mu1, phys->mu, tol);
@@ -94,8 +97,8 @@ TEST(Transport_mu_kappa)
     // Thermal conductivity: constant k = mu * cp / Pr
     const real_t k_expected = phys->mu * cp * phys->PrInverse;
 
-    const real_t k1 = transport.thermal_conductivity(*phys, layout, eos, S1);
-    const real_t k2 = transport.thermal_conductivity(*phys, layout, eos, S2);
+    const real_t k1 = transport.thermal_conductivity(*phys, layout, eos, S1, thermoTables);
+    const real_t k2 = transport.thermal_conductivity(*phys, layout, eos, S2, thermoTables);
 
     EXPECT_CLOSE(k1, k_expected, tol);
     EXPECT_CLOSE(k2, k_expected, tol);

@@ -53,29 +53,29 @@ namespace Prandtl
   
     const Table& ElementIndextoBdrElementIndex(Mesh &mesh);
   
-  template<typename GasModelT>
-  inline void Conserv2Entropy(const GasModelT &gasModel, const Vector &state, Vector &ent_state)
+  template<typename GasModelT, typename TabStruct>
+  inline void Conserv2Entropy(const GasModelT &gasModel, const TabStruct &thermoTables, const Vector &state, Vector &ent_state)
   {
     PointStateView S{state.GetData()};
     PointStateViewRW E{ent_state.GetData()};
-    gasModel.entropy_state(S, E);
+    gasModel.entropy_state(S, E, thermoTables);
   }
   
-  template<typename GasModelT>
-  inline void Conserv2Entropy(const GasModelT &gasModel, const DenseMatrix &vdof_mat, DenseMatrix &ent_mat)
+  template<typename GasModelT, typename TabStruct>
+  inline void Conserv2Entropy(const GasModelT &gasModel, const TabStruct &thermoTables, const DenseMatrix &vdof_mat, DenseMatrix &ent_mat)
   {
     ent_mat = 0.0;
     Vector state, ent_state(vdof_mat.Width());
     for (int d = 0; d < vdof_mat.Height(); d++)
       {
         vdof_mat.GetRow(d, state);
-        Conserv2Entropy(gasModel, state, ent_state);
+        Conserv2Entropy(gasModel, thermoTables, state, ent_state);
         ent_mat.SetRow(d, ent_state);
       }
   }
   
-  template<typename GasModelT>
-  inline void EntropyGrad2PrimGrad(const GasModelT &gasModel, const DenseMatrix &vdof_mat, DenseMatrix &grad)
+  template<typename GasModelT, typename TabStruct>
+  inline void EntropyGrad2PrimGrad(const GasModelT &gasModel, const TabStruct &thermoTables,const DenseMatrix &vdof_mat, DenseMatrix &grad)
   {
     Vector state, grad_state;
     
@@ -91,17 +91,17 @@ namespace Prandtl
         grad.GetRow(d, grad_state);
         Prandtl::PointStateView S{state.GetData()};
         Prandtl::PointStateView dS{grad_state.GetData()};
-        gasModel.grad_entropy_to_grad_prim(S, dS, dPrim);
+        gasModel.grad_entropy_to_grad_prim(S, dS, dPrim, thermoTables);
         grad.SetRow(d, gradPrim);
       }
   }
   
-  template<typename GasModelT> 
-  inline void Entropy2Conserv(const GasModelT &gasModel, const Vector &ent_state, Vector &state)
+  template<typename GasModelT, typename TabStruct>
+  inline void Entropy2Conserv(const GasModelT &gasModel, const TabStruct &thermoTables, const Vector &ent_state, Vector &state)
   {
     Prandtl::PointStateView Se{ent_state.GetData()};
     Prandtl::PointStateViewRW Sc{state.GetData()};
-    gasModel.entropy_to_conserved(Se, Sc);
+    gasModel.entropy_to_conserved(Se, Sc, thermoTables);
   }
 
   MFEM_HOST_DEVICE inline

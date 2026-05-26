@@ -308,7 +308,9 @@ void LiftingBR1::AssembleLiftingElementVector(const FiniteElement &el, ElementTr
     }
 }
 
-void LiftingBR1::AssembleLiftingBdrFaceVector(BdrFaceIntegrator *bfi, const FiniteElement &el1, const FiniteElement &el2, FaceElementTransformations &Tr, const Vector &el_u, Vector &el_dudx, Vector &el_dudy, Vector &el_dudz)
+void LiftingBR1::AssembleLiftingBdrFaceVector(BdrFaceIntegrator *bfi, const FiniteElement &el1, const FiniteElement &el2,
+                                              FaceElementTransformations &Tr, const Vector &el_u, const ThermoTablesView &thermoTables,
+                                              Vector &el_dudx, Vector &el_dudy, Vector &el_dudz)
 { 
     el_dudx.SetSize(dof1 * num_equations);
     el_dudy.SetSize(dof1 * num_equations);
@@ -333,7 +335,7 @@ void LiftingBR1::AssembleLiftingBdrFaceVector(BdrFaceIntegrator *bfi, const Fini
  
        CalcOrtho(Tr.Jacobian(), nor);
 
-       bfi->ComputeBdrFaceLiftingFlux(state1, f, Tr, ip);
+       bfi->ComputeBdrFaceLiftingFlux(state1, f, Tr, ip, thermoTables);
        h = g = f;
 
        f *= nor(0);
@@ -347,7 +349,9 @@ void LiftingBR1::AssembleLiftingBdrFaceVector(BdrFaceIntegrator *bfi, const Fini
     }
 }
 
-void LiftingBR1::AssembleLiftingBdrFaceVector(BdrFaceIntegrator *bfi, const FiniteElement &el1, const FiniteElement &el2, FaceElementTransformations &Tr, const Vector &el_u, Vector &el_dudx, Vector &el_dudy)
+void LiftingBR1::AssembleLiftingBdrFaceVector(BdrFaceIntegrator *bfi, const FiniteElement &el1, const FiniteElement &el2,
+                                              FaceElementTransformations &Tr, const Vector &el_u, const ThermoTablesView &thermoTables,
+                                              Vector &el_dudx, Vector &el_dudy)
 { 
     el_dudx.SetSize(dof1 * num_equations);
     el_dudy.SetSize(dof1 * num_equations);
@@ -369,7 +373,7 @@ void LiftingBR1::AssembleLiftingBdrFaceVector(BdrFaceIntegrator *bfi, const Fini
  
        CalcOrtho(Tr.Jacobian(), nor);
 
-       bfi->ComputeBdrFaceLiftingFlux(state1, f, Tr, ip);
+       bfi->ComputeBdrFaceLiftingFlux(state1, f, Tr, ip, thermoTables);
        g = f;
 
        f *= nor(0);
@@ -380,7 +384,9 @@ void LiftingBR1::AssembleLiftingBdrFaceVector(BdrFaceIntegrator *bfi, const Fini
     }
 }
 
-void LiftingBR1::AssembleLiftingBdrFaceVector(BdrFaceIntegrator *bfi, const FiniteElement &el1, const FiniteElement &el2, FaceElementTransformations &Tr, const Vector &el_u, Vector &el_dudx)
+void LiftingBR1::AssembleLiftingBdrFaceVector(BdrFaceIntegrator *bfi, const FiniteElement &el1, const FiniteElement &el2,
+                                              FaceElementTransformations &Tr, const Vector &el_u, const ThermoTablesView &thermoTables,
+                                              Vector &el_dudx)
 { 
     el_dudx.SetSize(dof1 * num_equations);
     el_dudx = 0.0;
@@ -399,7 +405,7 @@ void LiftingBR1::AssembleLiftingBdrFaceVector(BdrFaceIntegrator *bfi, const Fini
  
        nor(0) = (Tr.GetElement1IntPoint().x - 0.5) * 2.0;
 
-       bfi->ComputeBdrFaceLiftingFlux(state1, f, Tr, ip);
+       bfi->ComputeBdrFaceLiftingFlux(state1, f, Tr, ip, thermoTables);
 
        f *= nor(0);
        AddMult_a_VWt(+1.0 / (ir->IntPoint(0).weight * J1), shape1, f, el_dudx_mat1);      

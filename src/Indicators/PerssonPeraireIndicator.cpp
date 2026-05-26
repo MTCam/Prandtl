@@ -19,7 +19,7 @@ namespace Prandtl
     ubdegs_row.SetSize(dim);
   }
 
-void PerssonPeraireIndicator::CheckSmoothness(const Vector &x)
+void PerssonPeraireIndicator::CheckSmoothness(const Vector &x, const ThermoTablesView &thermoTables)
 {
     for (int el = 0; el < vfes->GetNE(); el++)
     {
@@ -32,7 +32,7 @@ void PerssonPeraireIndicator::CheckSmoothness(const Vector &x)
         {
             vdof_mat.GetRow(i, state);
             Prandtl::PointStateView S{state.HostRead()};
-            rho_p(i) = gasModel.density(S) * gasModel.pressure(S);
+            rho_p(i) = gasModel.density(S, thermoTables) * gasModel.pressure(S, thermoTables);
         }
         modalBasis->ComputeModes(rho_p, modes);
         modesM1 = modesM2 = modes;

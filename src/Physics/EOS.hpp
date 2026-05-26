@@ -13,18 +13,18 @@ namespace Prandtl
   struct IdealSingleGasEOS
   {
     // ---- helpers on conservative state --------------------------------------
-    template<typename StateView>
+    template<typename StateView, typename TabStruct>
     MFEM_HOST_DEVICE
     inline real_t R_gas(const PhysicsConstants &phys, const StateLayout &L,
-                        const StateView &S) const
+                        const StateView &S, const TabStruct &tables) const
     {
       return phys.R_gas;
     }
  
-    template<typename StateView>
+    template<typename StateView, typename TabStruct>
     MFEM_HOST_DEVICE
     inline real_t density(const PhysicsConstants &phys, const StateLayout &L,
-                          const StateView &S) const
+                          const StateView &S, const TabStruct &tables) const
     {
         return S.mass(L); // this is "rho" (mass density)
     }
@@ -52,135 +52,136 @@ namespace Prandtl
         return m2;
     }
 
-    template<typename StateView>
+    template<typename StateView, typename TabStruct>
     MFEM_HOST_DEVICE
     inline real_t kinetic_energy_density(const PhysicsConstants &phys, const StateLayout &L,
-                                         const StateView &S) const
+                                         const StateView &S, const TabStruct &tables) const
     {
       // 0.5 * rho * |u|^2 = 0.5 * |rho*u|^2 / rho
-      const real_t rho  = density(phys, L, S);
+      const real_t rho  = density(phys, L, S, tables);
       const real_t m2   = momentum_sq(phys, L, S);
       return 0.5 * m2 / rho;
     }
 
-    template<typename StateView>
+    template<typename StateView, typename TabStruct>
     MFEM_HOST_DEVICE
     inline real_t internal_energy_density(const PhysicsConstants &phys, const StateLayout &L,
-                                          const StateView &S) const
+                                          const StateView &S, const TabStruct &tables) const
     {
       // rho*e = rho*E - 0.5*rho*|u|^2
-      return rhoE(phys, L, S) - kinetic_energy_density(phys, L, S);
+      return rhoE(phys, L, S) - kinetic_energy_density(phys, L, S, tables);
     }
 
-    template<typename StateView>
+    template<typename StateView, typename TabStruct>
     MFEM_HOST_DEVICE
     inline real_t internal_energy_from_pressure(const PhysicsConstants &phys, const StateLayout &L,
-                                                const StateView &S, real_t pressure) const
+                                                const StateView &S, real_t pressure, const TabStruct &tables) const
     {
         // rho*e = rho*E - 0.5*rho*|u|^2
       return pressure / (phys.gamma - 1.0);
     }
 
-    template<typename StateView>
+    template<typename StateView, typename TabStruct>
     MFEM_HOST_DEVICE
     inline real_t specific_internal_energy(const PhysicsConstants &phys, const StateLayout &L,
-                                           const StateView &S) const
+                                           const StateView &S, const TabStruct &tables) const
     {
         // e = (rho*e) / rho
-      const real_t rho  = density(phys, L, S);
-      const real_t rhoe = internal_energy_density(phys, L, S);
+      const real_t rho  = density(phys, L, S, tables);
+      const real_t rhoe = internal_energy_density(phys, L, S, tables);
       return rhoe / rho;
     }
 
     // ---- primary EOS interface ----------------------------------------------
 
-    template<typename StateView>
+    template<typename StateView, typename TabStruct>
     MFEM_HOST_DEVICE
     inline real_t pressure(const PhysicsConstants &phys, const StateLayout &L,
-                           const StateView &S) const
+                           const StateView &S, const TabStruct &tables) const
     {
       // p = (gamma - 1) * (rho*E - 0.5*|rho*u|^2 / rho)
-      const real_t rhoe = internal_energy_density(phys, L, S);
+      const real_t rhoe = internal_energy_density(phys, L, S, tables);
       return phys.gammaM1 * rhoe;
     }
 
-    template<typename StateView>
+    template<typename StateView, typename TabStruct>
     MFEM_HOST_DEVICE
     inline real_t gamma(const PhysicsConstants &phys, const StateLayout &L,
-                        const StateView &S) const
+                        const StateView &S, const TabStruct &tables) const
     {
       return phys.gamma;
     }
 
-    template<typename StateView>
+    template<typename StateView, typename TabStruct>
     MFEM_HOST_DEVICE
     inline real_t temperature(const PhysicsConstants &phys, const StateLayout &L,
-                              const StateView &S) const
+                              const StateView &S, const TabStruct &tables) const
     {
       // p = rho*R*T  =>  T = p / (rho*R)
-      const real_t rho = density(phys, L, S);
-      const real_t p   = pressure(phys, L, S);
+      const real_t rho = density(phys, L, S, tables);
+      const real_t p   = pressure(phys, L, S, tables);
       return p / (rho * phys.R_gas);
     }
 
-    template<typename StateView>
+    template<typename StateView, typename TabStruct>
     MFEM_HOST_DEVICE
     inline void grad_temperature(const PhysicsConstants &phys, const StateLayout  &L,
                                  const StateView &S, const real_t *grad_rho,
-                                 const real_t *grad_p, real_t *grad_t) const
+                                 const real_t *grad_p, real_t *grad_t,
+                                 const TabStruct &tables) const
     {
       const int dim = L.dim;
-      const real_t rho = density(phys, L, S);
-      const real_t pressor = pressure(phys, L, S)/rho;
-      const real_t cv = cp(phys, L, S)/phys.gamma;
+      const real_t rho = density(phys, L, S, tables);
+      const real_t pressor = pressure(phys, L, S, tables)/rho;
+      const real_t cv = cp(phys, L, S, tables)/phys.gamma;
       const real_t fac = phys.gammaM1Inverse/(cv*rho);
       for(int i = 0; i < dim; i++){
         grad_t[i] = fac*(grad_p[i] - pressor*grad_rho[i]);
       }
     }
 
-    template<typename StateView>
+    template<typename StateView, typename TabStruct>
     MFEM_HOST_DEVICE
     inline real_t sound_speed(const PhysicsConstants &phys, const StateLayout &L,
-                              const StateView &S) const
+                              const StateView &S, const TabStruct &tables) const
     {
       // a^2 = gamma * p / rho
-      const real_t rho = density(phys, L, S);
-      const real_t p   = pressure(phys, L, S);
+      const real_t rho = density(phys, L, S, tables);
+      const real_t p   = pressure(phys, L, S, tables);
       return std::sqrt(phys.gamma * p / rho);
     }
     
     // cp is constant for ideal gas
-    template<typename StateView>
+    template<typename StateView, typename TabStruct>
     MFEM_HOST_DEVICE
     inline real_t cp(const PhysicsConstants &phys, const StateLayout &L,
-                     const StateView & /*S*/) const
+                     const StateView & /*S*/, const TabStruct &tables) const
     {
         return phys.cp;
     }
 
-    template<typename StateView>
+    template<typename StateView, typename TabStruct>
     MFEM_HOST_DEVICE
     inline real_t entropy(const PhysicsConstants &phys, const StateLayout &L,
-                          const StateView &S) const
+                          const StateView &S, const TabStruct &tables) const
     {
-      const real_t p = pressure(phys, L, S);
+      const real_t p = pressure(phys, L, S, tables);
       const real_t gamma = phys.gamma;
       // TODO: Augment for correct treatment of passive scalars
       return std::log(p) - gamma * std::log(S.mass(L));
     }
 
-    template<typename InStateView, typename OutStateView>
+    template<typename InStateView, typename OutStateView, typename TabStruct>
     MFEM_HOST_DEVICE
     inline void entropy_state(const PhysicsConstants &phys, const StateLayout &L,
-                              const InStateView &S, OutStateView &E) const
+                              const InStateView &S, OutStateView &E, const TabStruct &tables) const
     {
-      const real_t p = pressure(phys, L, S);
+      const real_t p = pressure(phys, L, S, tables);
       const real_t gamma = phys.gamma;
       const real_t rho = S.mass(L);
       const real_t s = std::log(p) - gamma*std::log(rho);
       const real_t beta = rho / p;
-      const real_t v2o2 = kinetic_energy_density(phys, L, S) / rho;
+      const real_t v2o2 = kinetic_energy_density(phys, L, S, tables) / rho;
       const real_t s_rho = (gamma - s)/(gamma - 1) - beta*v2o2;
 
       E.set_mass(L, s_rho);
@@ -200,18 +201,18 @@ namespace Prandtl
       }
     }
 
-    template<typename InStateView, typename OutStateView>
+    template<typename InStateView, typename OutStateView, typename TabStruct>
     MFEM_HOST_DEVICE
     inline void grad_entropy_to_grad_prim(const PhysicsConstants &phys, const StateLayout &L,
                                           const InStateView &S, const InStateView &dE,
-                                          OutStateView &dPrim) const
+                                          OutStateView &dPrim, const TabStruct &tables) const
     {
 
-      const real_t ke = kinetic_energy_density(phys, L, S);
-      const real_t p = pressure(phys, L, S);
+      const real_t ke = kinetic_energy_density(phys, L, S, tables);
+      const real_t p = pressure(phys, L, S, tables);
       const real_t rho = S.mass(L);
       const real_t rhoE = S.energy(L);
-      const real_t ie = internal_energy_density(phys, L, S);
+      const real_t ie = internal_energy_density(phys, L, S, tables);
 
       int dim = L.dim;
       int num_scalars = L.num_scalars;
@@ -229,10 +230,10 @@ namespace Prandtl
       }
     }
 
-    template<typename InStateView, typename OutStateView>
+    template<typename InStateView, typename OutStateView, typename TabStruct>
     MFEM_HOST_DEVICE
     inline void entropy_to_conserved(const PhysicsConstants &phys, const StateLayout &L,
-                                     const InStateView &Se, OutStateView &Sc) const
+                                     const InStateView &Se, OutStateView &Sc, const TabStruct &tables) const
     {
       int dim = L.dim;
       const real_t beta = -Se.energy(L);
@@ -250,6 +251,25 @@ namespace Prandtl
       for(int idim = 0;idim < dim;idim++){
         Sc.set_momentum(L, idim, rho*vel[idim]);
       }
+    }
+
+    template<typename InStateView, typename OutStateView, typename TabStruct>
+    inline void primitive_to_conserved(const PhysicsConstants &phys, const StateLayout &L,
+                                       const InStateView &prim, OutStateView &cons,
+                                       const TabStruct &tables) const
+    {
+      const real_t rho   = prim.mass(L);
+      const int dim    = L.dim;
+      real_t v2        = 0.0;
+
+      cons.set_mass(L, rho);
+      for(int d = 0; d < dim; d++)
+      {
+        cons.set_momentum(L, d, rho*prim.velocity(L, d));
+        v2 += prim.velocity(L,d)*prim.velocity(L,d);
+      }
+      real_t rhoe = prim.pressure(L) / (phys.gamma-1.);
+      cons.set_energy(L, rhoe + 0.5 * rho * v2);
     }
 
     // TODO: Consider whether this is needed/convenient

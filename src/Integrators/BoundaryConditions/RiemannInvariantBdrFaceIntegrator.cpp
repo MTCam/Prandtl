@@ -37,10 +37,10 @@ namespace Prandtl
     if (dim > 2) prim_o(voff+2) = prim_state(voff+2);
     Prandtl::PointPrimitiveView P{prim_o.GetData()};
     Prandtl::PointStateViewRW S{state_o.GetData()};
-    Prandtl::Flow::PrimitiveToConserved(P, S, gasModel);
+    // Prandtl::Flow::PrimitiveToConserved(P, S, gasModel); // CL NOTE : might be redundant and also thermoTables is not available here
 }
 
-void RiemannInvariantBdrFaceIntegrator::ComputeOuterInviscidState(const Vector &state1, Vector &state2, FaceElementTransformations &Tr, const IntegrationPoint &ip)
+void RiemannInvariantBdrFaceIntegrator::ComputeOuterInviscidState(const Vector &state1, Vector &state2, FaceElementTransformations &Tr, const IntegrationPoint &ip, const ThermoTablesView &thermoTables)
 {
     unit_nor = nor;
     Normalize(unit_nor);
@@ -53,34 +53,35 @@ void RiemannInvariantBdrFaceIntegrator::ComputeOuterInviscidState(const Vector &
         prim_state_fun.Eval(prim_o, Tr, ip);
         Prandtl::PointPrimitiveView P{prim_o.GetData()};
         Prandtl::PointStateViewRW S{state_o.GetData()};
-        Prandtl::Flow::PrimitiveToConserved(P, S, gasModel);
+        // Prandtl::Flow::PrimitiveToConserved(P, S, gasModel, thermoTables);
+        gasModel.primitive_to_conserved(P, S, thermoTables);
     }
     Prandtl::PointStateView So{state_o.GetData()};
     Prandtl::PointStateView Si{state1.GetData()};
     Prandtl::PointStateViewRW S2{state2.GetData()};
     real_t n[3] = { unit_nor(0), (dim>1 ? unit_nor(1) : 0.0), (dim>2 ? unit_nor(2) : 0.0) };
 
-    Prandtl::Flow::riemann_invariant_outer_state(Si, So, S2, n, gasModel);
+    Prandtl::Flow::riemann_invariant_outer_state(Si, So, S2, n, gasModel, thermoTables);
 }
 
-void RiemannInvariantBdrFaceIntegrator::ComputeBdrFaceViscousFlux(const Vector &state1, const Vector &state2, const Vector &dqdx_, const Vector &dqdy_, const Vector &dqdz_, Vector &fluxN, const Vector &nor, FaceElementTransformations &Tr, const IntegrationPoint &ip)
+void RiemannInvariantBdrFaceIntegrator::ComputeBdrFaceViscousFlux(const Vector &state1, const Vector &state2, const Vector &dqdx_, const Vector &dqdy_, const Vector &dqdz_, Vector &fluxN, const Vector &nor, FaceElementTransformations &Tr, const IntegrationPoint &ip, const ThermoTablesView &thermoTables)
 {
     dqdx = dqdy = dqdz = 0.0;
-    fluxFunction.ComputeViscousFlux(state2, dqdx, dqdy, dqdz, flux_mat);
+    fluxFunction.ComputeViscousFlux(state2, dqdx, dqdy, dqdz, thermoTables, flux_mat);
     flux_mat.Mult(nor, fluxN);
 }
 
-void RiemannInvariantBdrFaceIntegrator::ComputeBdrFaceViscousFlux(const Vector &state1, const Vector &state2, const Vector &dqdx_, const Vector &dqdy_, Vector &fluxN, const Vector &nor, FaceElementTransformations &Tr, const IntegrationPoint &ip)
+void RiemannInvariantBdrFaceIntegrator::ComputeBdrFaceViscousFlux(const Vector &state1, const Vector &state2, const Vector &dqdx_, const Vector &dqdy_, Vector &fluxN, const Vector &nor, FaceElementTransformations &Tr, const IntegrationPoint &ip, const ThermoTablesView &thermoTables)
 {
     dqdx = dqdy = 0.0;
-    fluxFunction.ComputeViscousFlux(state2, dqdx, dqdy, flux_mat);
+    fluxFunction.ComputeViscousFlux(state2, dqdx, dqdy, thermoTables, flux_mat);
     flux_mat.Mult(nor, fluxN);
 }
 
-void RiemannInvariantBdrFaceIntegrator::ComputeBdrFaceViscousFlux(const Vector &state1, const Vector &state2, const Vector &dqdx_, Vector &fluxN, const Vector &nor, FaceElementTransformations &Tr, const IntegrationPoint &ip)
+void RiemannInvariantBdrFaceIntegrator::ComputeBdrFaceViscousFlux(const Vector &state1, const Vector &state2, const Vector &dqdx_, Vector &fluxN, const Vector &nor, FaceElementTransformations &Tr, const IntegrationPoint &ip, const ThermoTablesView &thermoTables)
 {
     dqdx = 0.0;
-    fluxFunction.ComputeViscousFlux(state2, dqdx, flux_mat);
+    fluxFunction.ComputeViscousFlux(state2, dqdx, thermoTables, flux_mat);
     flux_mat.Mult(nor, fluxN);
 }
 

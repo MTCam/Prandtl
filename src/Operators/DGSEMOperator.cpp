@@ -90,9 +90,9 @@ namespace Prandtl
   }
 
 #ifdef SUBCELL_FV_BLENDING  
-  void DGSEMOperator::ComputeBlendingCoefficient(const Vector &x) const
+  void DGSEMOperator::ComputeBlendingCoefficient(const Vector &x, const ThermoTablesView &thermoTables) const
   {
-    indicator->CheckSmoothness(x);
+    indicator->CheckSmoothness(x, thermoTables);
     for (int el = 0; el < num_elements; el++)
       {
         fes0->GetElementDofs(el, ind_indx);
@@ -120,6 +120,7 @@ namespace Prandtl
     const int nval_restr = operator_cache.restr_v->Height();
     // Copy the device cache so that it is not member data
     auto dc = device_cache;
+    auto thermoTables = dc.thermoTables;
 
     // Device cache parameters
     const int dim = dc.dim;
@@ -152,7 +153,7 @@ namespace Prandtl
       real_t elstate[Prandtl::MAXEQ];
       Kernels::el_gather_state(u_el, ndof, neq, evind, elstate);
       Prandtl::PointStateView S{elstate};
-      ifield_d[vind] = dc.gas.pressure(S) * dc.gas.density(S);
+      ifield_d[vind] = dc.gas.pressure(S, thermoTables) * dc.gas.density(S, thermoTables);
     });
 
   }
@@ -198,7 +199,7 @@ namespace Prandtl
     const int neq = dc.num_equations;
     const real_t *qWts_d = dc.elQWgts_d;
     auto gas = dc.gas;
-    
+    auto thermoTables = dc.thermoTables;
  
     mfem::Vector Ue(nval_restr);
     Ue.UseDevice();
@@ -258,11 +259,11 @@ namespace Prandtl
         Kernels::el_gather_state(u_el, ndof, neq, ep, elstate);
         Prandtl::PointStateView S{elstate};
 
-        real_t rho = gas.density(S);
-        real_t ke = gas.kinetic_energy_density(S);
-        real_t rhoE = gas.energy(S); // energy density
-        real_t press = gas.pressure(S);
-        real_t temper = gas.temperature(S);
+        real_t rho = gas.density(S, thermoTables);
+        real_t ke = gas.kinetic_energy_density(S, thermoTables);
+        real_t rhoE = gas.energy(S, thermoTables); // energy density
+        real_t press = gas.pressure(S, thermoTables);
+        real_t temper = gas.temperature(S, thermoTables);
 
         mass_int += rho * qWgt[ep];
         ke_int += ke * qWgt[ep];
@@ -377,6 +378,7 @@ namespace Prandtl
     MFEM_ASSERT(nval_restr == npts*neq, "Unexpected size in ComputeEntropyState");
 
     auto gas = dc.gas;
+    auto thermoTables = dc.thermoTables;
 
     mfem::Vector restrU(nval_restr);
     restrU.UseDevice();
@@ -406,7 +408,7 @@ namespace Prandtl
 
       real_t elEState[Prandtl::MAXEQ];
       PointStateViewRW E{elEState};
-      gas.entropy_state(S, E);
+      gas.entropy_state(S, E, thermoTables);
       real_t *e_el = eState_d + eoff;
       Kernels::el_scatter_assign(elEState, ndof, neq, ept, 1.0, e_el);
     });
@@ -425,7 +427,7 @@ namespace Prandtl
         vfes->GetElementVDofs(el, vdof_indices);
         u.GetSubVector(vdof_indices, el_vdofs);
         DenseMatrix vdof_mat(el_vdofs.GetData(), Ndofs, num_equations);
-        Conserv2Entropy(gasModel, vdof_mat, ent_mat);
+        Conserv2Entropy(gasModel, operator_cache.thermoTables, vdof_mat, ent_mat);
         global_entropy.SetSubVector(vdof_indices, ent_mat.GetData());
     }
 }
@@ -442,7 +444,7 @@ void DGSEMOperator::ComputeGlobalPrimitiveGradVector(const Vector &u, Vector &du
 
         dudx.GetSubVector(vdof_indices, grad_vdofs);
         DenseMatrix grad_mat(grad_vdofs.GetData(), Ndofs, num_equations);
-        EntropyGrad2PrimGrad(gasModel, vdof_mat, grad_mat);
+        EntropyGrad2PrimGrad(gasModel, operator_cache.thermoTables, vdof_mat, grad_mat);
         dudx.SetSubVector(vdof_indices, grad_mat.GetData());
     }
 }
@@ -467,6 +469,7 @@ void DGSEMOperator::ComputeGradPrimFromGradEntropy(const Vector &u, std::vector<
     MFEM_ASSERT(nval_restr == npts*neq, "Unexpected size in ComputeEntropyState");
     
     auto gas = dc.gas;
+    auto thermoTables = dc.thermoTables;
     
     mfem::Vector restr_state(nval_restr);
     restr_state.UseDevice();
@@ -503,7 +506,7 @@ void DGSEMOperator::ComputeGradPrimFromGradEntropy(const Vector &u, std::vector<
       
       real_t el_gradP[Prandtl::MAXEQ];
       PointStateViewRW dP{el_gradP};
-      gas.grad_entropy_to_grad_prim(CV, dS, dP);
+      gas.grad_entropy_to_grad_prim(CV, dS, dP, thermoTables);
 
       Kernels::el_scatter_assign(el_gradP, ndof, neq, ept, 1.0, grad_prim_el);
 
@@ -527,12 +530,12 @@ void DGSEMOperator::ComputeGlobalPrimitiveGradVector(const Vector &u, Vector &du
 
         dudx.GetSubVector(vdof_indices, grad_vdofs);
         DenseMatrix grad_mat1(grad_vdofs.GetData(), Ndofs, num_equations);
-        EntropyGrad2PrimGrad(gasModel, vdof_mat, grad_mat1);
+        EntropyGrad2PrimGrad(gasModel, operator_cache.thermoTables, vdof_mat, grad_mat1);
         dudx.SetSubVector(vdof_indices, grad_mat1.GetData());
 
         dudy.GetSubVector(vdof_indices, grad_vdofs);
         DenseMatrix grad_mat2(grad_vdofs.GetData(), Ndofs, num_equations);
-        EntropyGrad2PrimGrad(gasModel, vdof_mat, grad_mat2);
+        EntropyGrad2PrimGrad(gasModel, operator_cache.thermoTables, vdof_mat, grad_mat2);
         dudy.SetSubVector(vdof_indices, grad_mat2.GetData());    
         
     }
@@ -549,17 +552,17 @@ void DGSEMOperator::ComputeGlobalPrimitiveGradVector(const Vector &u, Vector &du
 
         dudx.GetSubVector(vdof_indices, grad_vdofs);
         DenseMatrix grad_mat1(grad_vdofs.GetData(), Ndofs, num_equations);
-        EntropyGrad2PrimGrad(gasModel, vdof_mat, grad_mat1);
+        EntropyGrad2PrimGrad(gasModel, operator_cache.thermoTables, vdof_mat, grad_mat1);
         dudx.SetSubVector(vdof_indices, grad_mat1.GetData());
 
         dudy.GetSubVector(vdof_indices, grad_vdofs);
         DenseMatrix grad_mat2(grad_vdofs.GetData(), Ndofs, num_equations);
-        EntropyGrad2PrimGrad(gasModel, vdof_mat, grad_mat2);
+        EntropyGrad2PrimGrad(gasModel, operator_cache.thermoTables, vdof_mat, grad_mat2);
         dudy.SetSubVector(vdof_indices, grad_mat2.GetData());
 
         dudz.GetSubVector(vdof_indices, grad_vdofs);
         DenseMatrix grad_mat3(grad_vdofs.GetData(), Ndofs, num_equations);
-        EntropyGrad2PrimGrad(gasModel, vdof_mat, grad_mat3);
+        EntropyGrad2PrimGrad(gasModel, operator_cache.thermoTables, vdof_mat, grad_mat3);
         dudz.SetSubVector(vdof_indices, grad_mat3.GetData());      
     }
 }
@@ -968,7 +971,7 @@ void DGSEMOperator::Mult(const Vector &u, Vector &dudt) const
       ComputeBlendingCoefficientFromIndicator(indicator_field);
     } else {
       ScopedTimer timer("SubcellBlendingStep_Host");
-      ComputeBlendingCoefficient(Ustate);
+      ComputeBlendingCoefficient(Ustate, operator_cache.thermoTables);
   }
 #endif
 

@@ -164,7 +164,7 @@ namespace Prandtl
                     Kernels::el_gather_state(el_u, dof, neq, id2, state2);
                     const real_t *met2 = elMetric_d + id2*dim*dim;
 
-                    const real_t cs = ctx.iflux.ComputeVolumeFlux(ctx.gas, state1, state2, met1, met2, f);
+                    const real_t cs = ctx.iflux.ComputeVolumeFlux(ctx.gas, ctx.thermoTables, state1, state2, met1, met2, f);
                     max_char_speed = Kernels::rmax(cs, max_char_speed);
 
                     const real_t c1 = Dhat2_d[m + Np_x*i];
@@ -192,7 +192,7 @@ namespace Prandtl
                     Kernels::el_gather_state(el_u, dof, neq, id2, state2);
                     const real_t *met2 = elMetric_d + id2*dim*dim + dim;
                     // ComputeVolumeFlux *overwrites* f, so don't worry about reuse
-                    const real_t cs = ctx.iflux.ComputeVolumeFlux(ctx.gas, state1, state2, met1, met2, f);
+                    const real_t cs = ctx.iflux.ComputeVolumeFlux(ctx.gas, ctx.thermoTables, state1, state2, met1, met2, f);
                     max_char_speed = Kernels::rmax(max_char_speed, cs);
 
                     const real_t c1 = Dhat2_d[m + Np_y*j]; // column j, entry m
@@ -219,7 +219,7 @@ namespace Prandtl
                     Kernels::el_gather_state(el_u, dof, neq, id2, state2);
                     const real_t *met2 = elMetric_d + id2*dim*dim + 2*dim;
 
-                    const real_t cs = ctx.iflux.ComputeVolumeFlux(ctx.gas, state1, state2, met1, met2, f);
+                    const real_t cs = ctx.iflux.ComputeVolumeFlux(ctx.gas, ctx.thermoTables, state1, state2, met1, met2, f);
                     max_char_speed = Kernels::rmax(max_char_speed, cs);
 
                     const real_t c1 = Dhat2_d[m + Np_z*k];
@@ -262,7 +262,7 @@ namespace Prandtl
             qPlus[j] = u_face[ctx.iface_idx(1,i,j)];
           }
           max_char_speed = \
-            Kernels::rmax(max_char_speed, ctx.iflux.ComputeFaceFlux(ctx.gas, qMinus, qPlus,
+            Kernels::rmax(max_char_speed, ctx.iflux.ComputeFaceFlux(ctx.gas, ctx.thermoTables, qMinus, qPlus,
                                                                     nor_d, point_flux));
           for(int j = 0;j < neq;j++){
             rhs_face[ctx.iface_idx(0, i, j)] = wminus * point_flux[j];
@@ -318,17 +318,17 @@ namespace Prandtl
             }
           }
           max_char_speed = \
-            Kernels::rmax(max_char_speed, ctx.iflux.ComputeFaceFlux(ctx.gas, qMinus, qPlus,
+            Kernels::rmax(max_char_speed, ctx.iflux.ComputeFaceFlux(ctx.gas, ctx.thermoTables, qMinus, qPlus,
                                                                     nor_d, point_flux));
 
           // Here, point_flux is +(F_inv * Normal)
 
           // Grab the viscous flux
-          NavierStokesFlux::ComputeViscousFluxKernel(ctx.gas, qMinus,
+          NavierStokesFlux::ComputeViscousFluxKernel(ctx.gas, ctx.thermoTables, qMinus,
                                                      gradPrim_minus[0],
                                                      gradPrim_minus[1],
                                                      gradPrim_minus[2], vflux_minus);
-          NavierStokesFlux::ComputeViscousFluxKernel(ctx.gas, qPlus,
+          NavierStokesFlux::ComputeViscousFluxKernel(ctx.gas, ctx.thermoTables, qPlus,
                                                      gradPrim_plus[0],
                                                      gradPrim_plus[1],
                                                      gradPrim_plus[2], vflux_plus);
@@ -403,7 +403,7 @@ namespace Prandtl
 
                   max_char_speed = \
                     Kernels::rmax(max_char_speed,
-                                  ctx.iflux.ComputeFaceFlux(ctx.gas, state1_local,
+                                  ctx.iflux.ComputeFaceFlux(ctx.gas, ctx.thermoTables, state1_local,
                                                             state2_local, nor, flux_num));
                   for(int q = 0; q < neq;q++){
                     du_subcell[q] -= flux_num[q];
@@ -448,6 +448,7 @@ namespace Prandtl
                       max_char_speed = \
                         Kernels::rmax(max_char_speed,
                                       ctx.iflux.ComputeFaceFlux(ctx.gas,
+                                                                ctx.thermoTables,
                                                                 state1_local,
                                                                 state2_local,
                                                                 nor, flux_num));
@@ -490,7 +491,7 @@ namespace Prandtl
                           const real_t *nor = el_metric_zeta + id2*dim;
                           max_char_speed = \
                             Kernels::rmax(max_char_speed,
-                                          ctx.iflux.ComputeFaceFlux(ctx.gas, state1_local,
+                                          ctx.iflux.ComputeFaceFlux(ctx.gas, ctx.thermoTables, state1_local,
                                                                     state2_local, nor, flux_num));
                           for(int q = 0;q < neq;q++){
                             du_subcell[q] -= flux_num[q];
@@ -572,7 +573,7 @@ namespace Prandtl
                                                     dqx, dqy, dqz);
 
                       const real_t *adj_row = elMetric_d + idl * dim * dim + 0 * dim;
-                      Prandtl::NavierStokesFlux::compute_ref_viscous_flux(ctx.gas, dim, neq, state, dqx, dqy, dqz,
+                      Prandtl::NavierStokesFlux::compute_ref_viscous_flux(ctx.gas, ctx.thermoTables, dim, neq, state, dqx, dqy, dqz,
                                                                           adj_row, f_ref);
                       for (int q = 0; q < neq; ++q)
                         {
@@ -594,7 +595,7 @@ namespace Prandtl
                                                         dqx, dqy, dqz);
 
                           const real_t *adj_row = elMetric_d + idl * dim * dim + 1 * dim;
-                          Prandtl::NavierStokesFlux::compute_ref_viscous_flux(ctx.gas, dim, neq, state,
+                          Prandtl::NavierStokesFlux::compute_ref_viscous_flux(ctx.gas, ctx.thermoTables, dim, neq, state,
                                                                               dqx, dqy, dqz,
                                                                               adj_row, f_ref);
 
@@ -619,7 +620,7 @@ namespace Prandtl
                                                         dqx, dqy, dqz);
 
                           const real_t *adj_row = elMetric_d + idl * dim * dim + 2 * dim;
-                          Prandtl::NavierStokesFlux::compute_ref_viscous_flux(ctx.gas, dim, neq, state,
+                          Prandtl::NavierStokesFlux::compute_ref_viscous_flux(ctx.gas, ctx.thermoTables, dim, neq, state,
                                                                               dqx, dqy, dqz,
                                                                               adj_row, f_ref);
 

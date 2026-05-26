@@ -20,8 +20,10 @@ public:
 
     virtual real_t ComputeVolumeFlux(const Vector &state1, const Vector &state2,
                                      const Vector &metric1, const Vector &metric2,
+                                     const ThermoTablesView &thermoTables,
                                      Vector &F_tilde) = 0;
     virtual real_t ComputeFaceFlux(const Vector &state1, const Vector &state2, const Vector &nor,
+                                   const ThermoTablesView &thermoTables,
                                    Vector &flux) const = 0;
     const NavierStokesFlux &GetFluxFunction() const
     {

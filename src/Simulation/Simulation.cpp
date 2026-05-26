@@ -26,6 +26,9 @@
 #include "Ramp.hpp"
 #include "Nagashima_Ramjet.hpp"
 
+#include "LTEVortex.hpp"
+#include "LTEBlob.hpp"
+
 #include "json.hpp"
 #include <filesystem>
 #include <mpi.h>
@@ -404,26 +407,26 @@ void Simulation::LoadConfig(const std::string &config_file_path)
     T_dist   = runtime.value("T_dist", "log");
     int num_properties = 9; // CL NOTE : Check LTE EOS
 
-    thermoTables.lte_table.SetSize(N_rho * N_T * num_properties);
-    thermoTables.inv_table.SetSize(N_rho * N_T);
+    thermoTabData.lte_table.SetSize(N_rho * N_T * num_properties);
+    thermoTabData.inv_table.SetSize(N_rho * N_T);
     if(rho_dist == "log")
     {
-        log_grid(N_rho, rho_min, rho_max, thermoTables.rho_grid);
+        log_grid(N_rho, rho_min, rho_max, thermoTabData.rho_grid);
     }
     else
     {
-        uniform_grid(N_rho, rho_min, rho_max, thermoTables.rho_grid);
+        uniform_grid(N_rho, rho_min, rho_max, thermoTabData.rho_grid);
     }
 
     if(T_dist == "log")
     {
-        log_grid(N_T, T_min, T_max, thermoTables.T_grid);
+        log_grid(N_T, T_min, T_max, thermoTabData.T_grid);
     }
     else
     {
-        uniform_grid(N_T, T_min, T_max, thermoTables.T_grid);
+        uniform_grid(N_T, T_min, T_max, thermoTabData.T_grid);
     }
-    thermoTables.e_grid.SetSize(N_T);
+    thermoTabData.e_grid.SetSize(N_T);
 
     stateLayout = std::make_shared<StateLayout>(dim, num_dofs_scalar, N_rho, N_T);
     if(Mpi::Root())
@@ -431,18 +434,24 @@ void Simulation::LoadConfig(const std::string &config_file_path)
         std::cout << "Constructing LTE table for " << mixture << " with solver " << solver << std::endl;
         std::string empty_str = "empty";
         plato_initialize(solver.c_str(), mixture.c_str(), empty_str.c_str(), empty_str.c_str(), path.c_str());
-        fill_lte_table(*stateLayout, thermoTables.rho_grid.GetData(), thermoTables.T_grid.GetData(),
-                        thermoTables.lte_table.GetData(), e_min, e_max);
+        fill_lte_table(*stateLayout, thermoTabData.rho_grid.GetData(), thermoTabData.T_grid.GetData(),
+                        thermoTabData.lte_table.GetData(), e_min, e_max);
         std::cout << "Constructing inverse table T = T(rho, e)" << std::endl;
-        uniform_grid(N_T, e_min, e_max, thermoTables.e_grid);
-        fill_inv_table(*stateLayout, thermoTables.rho_grid.GetData(), thermoTables.e_grid.GetData(),
-                        thermoTables.T_grid.GetData(), thermoTables.inv_table.GetData());
+        uniform_grid(N_T, e_min, e_max, thermoTabData.e_grid);
+        fill_inv_table(*stateLayout, thermoTabData.rho_grid.GetData(), thermoTabData.e_grid.GetData(),
+                        thermoTabData.T_grid.GetData(), thermoTabData.inv_table.GetData());
         plato_finalize();
     }
 
-    MPI_Bcast(thermoTables.lte_table.GetData(), N_rho * N_T * num_properties, MPI_DOUBLE, 0, pmesh->GetComm());
-    MPI_Bcast(thermoTables.inv_table.GetData(), N_rho * N_T, MPI_DOUBLE, 0, pmesh->GetComm());
-    MPI_Bcast(thermoTables.e_grid.GetData(), N_T, MPI_DOUBLE, 0, pmesh->GetComm());
+    MPI_Bcast(thermoTabData.lte_table.GetData(), N_rho * N_T * num_properties, MPI_DOUBLE, 0, pmesh->GetComm());
+    MPI_Bcast(thermoTabData.inv_table.GetData(), N_rho * N_T, MPI_DOUBLE, 0, pmesh->GetComm());
+    MPI_Bcast(thermoTabData.e_grid.GetData(), N_T, MPI_DOUBLE, 0, pmesh->GetComm());
+
+    thermoTables = {
+      thermoTabData.lte_table.HostRead(), thermoTabData.inv_table.HostRead(),
+      thermoTabData.rho_grid.HostRead(), thermoTabData.T_grid.HostRead(),
+      thermoTabData.e_grid.HostRead()
+    };
 #else
     stateLayout = std::make_shared<StateLayout>(dim, num_dofs_scalar);
 #endif
@@ -625,7 +634,7 @@ void Simulation::LoadConfig(const std::string &config_file_path)
                                                          *gasModel);
 
     NS = std::make_unique<DGSEMOperator>(vfes, fes0, pmesh, eta, alpha, grad_u, std::move(integrator),
-                                         std::move(indicator), *gasModel, thermoTables, r_gf, alpha_max);
+                                         std::move(indicator), *gasModel, thermoTabData, r_gf, alpha_max);
     NS->UseDevice(use_device_path);
 
     if(myRank == 0 && debug_simulation){
@@ -1198,11 +1207,11 @@ void Simulation::Run()
 #else
           real_t *sol_state = sol->GetData();
           Prandtl::DofStateView dofState{sol_state, i};
-          real_t rhoi = gasModel->density(dofState);
-          real_t ui = gasModel->velocity(dofState, 0);
-          real_t vi = dim > 1 ? gasModel->velocity(dofState, 1) : 0.0;
-          real_t wi = dim > 2 ? gasModel->velocity(dofState, 2) : 0.0;
-          real_t pi = gasModel->pressure(dofState);
+          real_t rhoi = gasModel->density(dofState, thermoTables);
+          real_t ui = gasModel->velocity(dofState, 0, thermoTables);
+          real_t vi = dim > 1 ? gasModel->velocity(dofState, 1, thermoTables) : 0.0;
+          real_t wi = dim > 2 ? gasModel->velocity(dofState, 2, thermoTables) : 0.0;
+          real_t pi = gasModel->pressure(dofState, thermoTables);
           // bug: incorrect calculation of kinetic energy
           //real_t pi = physicsConstants->gammaM1 * (energy(i) - 0.5*rhoi*ui*ui);
 #endif
@@ -1250,16 +1259,16 @@ void Simulation::Run()
         for (int i = 0; i < num_dofs_scalar; i++)
           {
             Prandtl::DofStateView dofState{sol_state, i};
-            (*u)(i) = gasModel->velocity(dofState, 0);
+            (*u)(i) = gasModel->velocity(dofState, 0, thermoTables);
             if (dim > 1)
             {
-              (*v)(i) = gasModel->velocity(dofState, 1);
+              (*v)(i) = gasModel->velocity(dofState, 1, thermoTables);
               if (dim > 2)
                 {
-                  (*w)(i) = gasModel->velocity(dofState, 2);
+                  (*w)(i) = gasModel->velocity(dofState, 2, thermoTables);
                 }
             }
-            (*p)(i) = gasModel->pressure(dofState);
+            (*p)(i) = gasModel->pressure(dofState, thermoTables);
         }
 #endif
 
@@ -1371,16 +1380,16 @@ void Simulation::Run()
         for (int i = 0; i < num_dofs_scalar; i++)
         {       
           Prandtl::DofStateView dofState{sol_state, i};
-          (*u)(i) = gasModel->velocity(dofState, 0);
+          (*u)(i) = gasModel->velocity(dofState, 0, thermoTables);
           if (dim > 1)
             {
-              (*v)(i) = gasModel->velocity(dofState, 1);
+              (*v)(i) = gasModel->velocity(dofState, 1, thermoTables);
               if (dim > 2)
                 {
-                  (*w)(i) = gasModel->velocity(dofState, 2);
+                  (*w)(i) = gasModel->velocity(dofState, 2, thermoTables);
                 }
             }
-          (*p)(i) = gasModel->pressure(dofState);
+          (*p)(i) = gasModel->pressure(dofState, thermoTables);
         }
 #endif
 
