@@ -167,8 +167,9 @@ namespace Prandtl
     {
       const real_t p = pressure(phys, L, S, tables);
       const real_t gamma = phys.gamma;
+      const real_t cv = phys.R_gas * phys.gammaM1Inverse;
       // TODO: Augment for correct treatment of passive scalars
-      return std::log(p) - gamma * std::log(S.mass(L));
+      return cv * ( std::log(p) - gamma * std::log(S.mass(L)) );
     }
 
     template<typename InStateView, typename OutStateView, typename TabStruct>
@@ -176,15 +177,17 @@ namespace Prandtl
     inline void entropy_state(const PhysicsConstants &phys, const StateLayout &L,
                               const InStateView &S, OutStateView &E, const TabStruct &tables) const
     {
-      const real_t p = pressure(phys, L, S, tables);
-      const real_t gamma = phys.gamma;
-      const real_t rho = S.mass(L);
-      const real_t s = std::log(p) - gamma*std::log(rho);
-      const real_t beta = rho / p;
+      const real_t p    = pressure(phys, L, S, tables);
+      const real_t rho  = S.mass(L);
+      const real_t T    = temperature(phys, L, S, tables);
+      const real_t s    = entropy(phys, L, S, tables);
+      const real_t e    = specific_internal_energy(phys, L, S, tables);
       const real_t v2o2 = kinetic_energy_density(phys, L, S, tables) / rho;
-      const real_t s_rho = (gamma - s)/(gamma - 1) - beta*v2o2;
+      const real_t beta = 1.0 / T;
 
-      E.set_mass(L, s_rho);
+      const real_t ent_1 = (e + p/rho - v2o2)*beta - s;
+
+      E.set_mass(L, ent_1);
       int dim = L.dim;
       int num_scalars = L.num_scalars;
       for(int idim = 0;idim < dim;idim++){
@@ -213,18 +216,26 @@ namespace Prandtl
       const real_t rho = S.mass(L);
       const real_t rhoE = S.energy(L);
       const real_t ie = internal_energy_density(phys, L, S, tables);
+      const real_t R_inv = 1.0 / phys.R_gas;
 
       int dim = L.dim;
       int num_scalars = L.num_scalars;
 
+      real_t dE_mass = dE.mass(L)*R_inv;
+      real_t dE_energy = dE.energy(L)*R_inv;
+      real_t dE_mom[dim];
+      for(int idim = 0;idim < dim;idim++){
+        dE_mom[idim] = dE.momentum(L, idim)*R_inv;
+      }
+
       real_t drho = 0.0;
       for(int idim = 0; idim < dim; idim++){
-        dPrim.set_momentum(L, idim, p/rho * (dE.momentum(L, idim) + S.velocity(L, idim)*dE.energy(L)));
+        dPrim.set_momentum(L, idim, p/rho * (dE_mom[idim] + S.velocity(L, idim)*dE_energy));
         drho += S.momentum(L, idim)*dPrim.momentum(L, idim);
       }
-      drho = rho*dE.mass(L) - dE.energy(L)*(ke - ie) + rho*drho/p;
+      drho = rho*dE_mass - dE_energy*(ke - ie) + rho*drho/p;
       dPrim.set_mass(L, drho);
-      dPrim.set_energy(L, p/rho * (dPrim.mass(L) + p*dE.energy(L)));
+      dPrim.set_energy(L, p/rho * (dPrim.mass(L) + p*dE_energy));
       for(int isp = 0; isp < num_scalars; isp++){
         dPrim.set_scalar(L, isp, 0.0); // just a placeholder for now
       }
@@ -236,6 +247,8 @@ namespace Prandtl
                                      const InStateView &Se, OutStateView &Sc, const TabStruct &tables) const
     {
       int dim = L.dim;
+      const real_t R_gas = phys.R_gas;
+      const real_t cv    = R_gas * phys.gammaM1Inverse;
       const real_t beta = -Se.energy(L);
       real_t k = 0.0;
       real_t vel[3];
@@ -244,10 +257,10 @@ namespace Prandtl
         k += vel[idim]*vel[idim];
       }
       const real_t gamma = phys.gamma;
-      const real_t s = gamma - (Se.mass(L) + 0.5*k*beta)*(gamma - 1.);
-      const real_t rho = std::pow(std::exp(-s)/beta, 1.0/(gamma - 1));
+      const real_t s = gamma*R_gas/(gamma - 1.) - (Se.mass(L) + 0.5*k*beta);
+      const real_t rho = std::pow(R_gas*std::exp(-s/cv)/beta, 1.0/(gamma - 1));
       Sc.set_mass(L, rho);
-      Sc.set_energy(L, rho*(1.0/(beta*(gamma-1.)) + 0.5*k));
+      Sc.set_energy(L, rho*(cv/(beta) + 0.5*k));
       for(int idim = 0;idim < dim;idim++){
         Sc.set_momentum(L, idim, rho*vel[idim]);
       }

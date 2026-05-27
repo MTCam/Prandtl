@@ -331,7 +331,8 @@ TEST(IdealGas_EOS_Entropy)
         const real_t p1 = eos.pressure(*phys, layout, S1, thermoTables);
         EXPECT_CLOSE(p1, p, tol);
 
-        const real_t s_expected = std::log(p) - gamma * std::log(rho);
+        const real_t cv = eos.cp(*phys, layout, S1, thermoTables) / gamma;
+        const real_t s_expected = cv * ( std::log(p) - gamma * std::log(rho) );
         const real_t s1 = eos.entropy(*phys, layout, S1, thermoTables);
         EXPECT_CLOSE(s1, s_expected, tol);
 
@@ -411,13 +412,13 @@ TEST(IdealGas_EOS_EntropyState)
         eos.entropy_state(*phys, layout, S, E, thermoTables);
 
         // Expected values
-        const real_t beta = rho / p;
+        const real_t beta = 1 / eos.temperature(*phys, layout, S, thermoTables);
         real_t u2 = 0.0;
         for (int d = 0; d < dim; ++d) { u2 += u[d]*u[d]; }
         const real_t v2o2 = 0.5 * u2;
 
         const real_t s = std::log(p) - gamma * std::log(rho);
-        const real_t w_rho = (gamma - s) / (gamma - 1.0) - beta * v2o2;
+        const real_t w_rho = R_gas * (gamma - s) / (gamma - 1.0) - beta * v2o2;
 
         EXPECT_CLOSE(E.mass(layout), w_rho, tol);
 
