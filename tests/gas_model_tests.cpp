@@ -6,7 +6,7 @@
 #include <vector>
 #include <cmath>
 
-using namespace Prandtl;
+using namespace Theseus;
 
 // -----------------------------------------------------------------------------
 // GasModel thermo test: pressure, temperature, sound-speed, density, and

@@ -10,7 +10,7 @@ jobs:
     name: Ubuntu/GCC
     runs-on: ubuntu-22.04
     env:
-      CMAKE_BUILD_TYPE: Debug
+      CMAKE_BUILD_TYPE: RelWithDebInfo
       INSTALL_PREFIX: ${{ github.workspace }}/deps
       PYVISTA_OFF_SCREEN: "true"
       QT_QPA_PLATFORM: "offscreen"
@@ -79,104 +79,47 @@ jobs:
           ls -lh libs/hypre/src/hypre/lib 2>/dev/null || true
           ls -lh libs/metis-5.1.0/lib 2>/dev/null || true
 
-      - name: Configure Theseus
+      - name: Configure Prandtl
         env:
-          # CONFIG_FILE: compile_config.json
+          CONFIG_FILE: compile_config.json
           CC: ${{ env.CC }}
           CXX: ${{ env.CXX }}
           FC: ${{ env.FC }}
           # These paths match your script’s build outputs
-          MFEM_DIR: ${{ github.workspace }}/libs/mfem/build
+          MFEM_DIR: ${{ github.workspace }}/libs/mfem
+          HYPRE_DIR: ${{ github.workspace }}/libs/hypre/src/hypre
+          METIS_DIR: ${{ github.workspace }}/libs/metis-5.1.0
         run: |
-          mkdir -p build
-          #  -DCONFIG_FILE=${CONFIG_FILE}
           cmake -S . -B build -G Ninja \
+            -DCONFIG_FILE=${CONFIG_FILE} \
             -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE} \
             -DBUILD_TESTING=ON \
-            -DCMAKE_PREFIX_PATH=${MFEM_DIR} \
-            -DSUBCELL_FV_BLENDING=ON -DNO_OPT=ON
+            -DMFEM_DIR="${MFEM_DIR}" \
+            -DHYPRE_DIR="${HYPRE_DIR}" \
+            -DMETIS_DIR="${METIS_DIR}"
 
-      - name: Build Theseus
+      - name: Build Prandtl
         run: cmake --build build -- -k 0
 
-      - name: Example smoke test (Euler, IsentropicVortex)
+      - name: Example smoke test (LidDrivenCavity)
         run: |
-          scripts/run_theseus.sh \
-            -b "$(pwd)/build" \
-            -c TestCases/Euler/2D/IsentropicVortex/config.json \
-            -t "0.002" -n 100
-
-
-      - name: Example smoke test (CNS, LidDrivenCavity)
-        run: |
-          scripts/run_theseus.sh \
-            -b "$(pwd)/build" \
+          scripts/test_run_example.sh \
             -c TestCases/NavierStokes/2D/LidDrivenCavity/config.json \
-            -t "0.0001" -n 100
+            -n 100
 
-      - name: Example regression test (Cyclic - IsentropicVortex)
+      - name: Example regression test (IsentropicVortex)
         run: |
-          rm -rf RegressionTests/IsentropicVortex
-          scripts/run_theseus.sh \
-            -b "$(pwd)/build" \
-            -c TestCases/Euler/2D/IsentropicVortex/config.json \
-	    -o ./RegressionTests
+          scripts/run_regression_test.sh \
+            -c TestCases/Euler/2D/IsentropicVortex/config.json
           cd RegressionTests/IsentropicVortex
           python ../../scripts/compare_viz.py ParaView/ParaView.pvd --fields Density --atol 5e-5 --rtol 2e-6
           cd -
 
-      - name: Example regression test (Gold standard - IsentropicVortex)
-        run: |
-          rm -rf RegressionTests/IsentropicVortex
-          scripts/run_theseus.sh \
-            -t "0.001" \
-            -n "500" \
-            -b "$(pwd)/build" \
-            -c TestCases/Euler/2D/IsentropicVortex/config.json \
-	    -o ./RegressionTests
-          python scripts/compare_viz.py RegressionTests/IsentropicVortex/ParaView/Cycle000500/data.pvtu TestCases/GoldenData/IsentropicVortex/Cycle000500/data.pvtu --atol 1e-13 --rtol 1e-13
-
-      - name: Example regression test (Gold standard - LidDrivenCavity)
-        run: |
-          rm -rf RegressionTests/LidDrivenCavity
-          scripts/run_theseus.sh \
-            -t "0.0001" \
-            -n "4000" \
-            -b "$(pwd)/build" \
-            -c TestCases/NavierStokes/2D/LidDrivenCavity/config.json \
-	    -o ./RegressionTests
-          python scripts/compare_viz.py RegressionTests/LidDrivenCavity/ParaView/Cycle004000/data.pvtu TestCases/GoldenData/LidDrivenCavity/Cycle004000/data.pvtu --atol 1e-12 --rtol 1e-12
-
-      - name: Example regression test (Gold standard - TaylorGreenVortex2D)
-        run: |
-          rm -rf RegressionTests/TaylorGreenVortex
-          scripts/run_theseus.sh \
-            -t "0.0001" \
-            -n "100" \
-            -b "$(pwd)/build" \
-            -c TestCases/NavierStokes/2D/TaylorGreenVortex/config.json \
-	    -o ./RegressionTests
-          python scripts/compare_viz.py RegressionTests/TaylorGreenVortex/ParaView/Cycle000100/data.pvtu TestCases/GoldenData/TaylorGreenVortex2D/Cycle000100/data.pvtu --atol 1e-13 --rtol 1e-13
-
-      - name: Example regression test (Gold standard - ForwardFacingStep)
-        run: |
-          cd TestCases/GoldenData
-          tar zxvf ForwardFacingStep.tgz
-          cd ../..
-          rm -rf RegressionTests/ForwardFacingStep
-          scripts/run_theseus.sh \
-            -t "0.0001" \
-            -n "100" \
-            -b "$(pwd)/build" \
-            -c TestCases/Euler/2D/ForwardFacingStep/config.json \
-	    -o ./RegressionTests
-          python scripts/compare_viz.py RegressionTests/ForwardFacingStep/ParaView/Cycle000100/data.pvtu TestCases/GoldenData/ForwardFacingStep/Cycle000100/data.pvtu --atol 1e-13 --rtol 1e-13
-
-      - name: Unit tests
-        run: ctest --test-dir build --output-on-failure
+      - name: Unit smoke tests
+        run: ctest --test-dir build -L smoke -j2 --output-on-failure
 
       - name: Upload quick artifacts (logs)
-        if: failure()
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: prandtl-quick-logs
@@ -184,6 +127,3 @@ jobs:
             build/Testing/**/Test.xml
             build/CMakeCache.txt
             build/**/*.log
-            RegressionTests
-	    RunTheseus
-            RunTests

@@ -8,7 +8,7 @@
 class GasStateSemanticsAdapter
 {
 public:
-    using real_t = Prandtl::real_t;
+    using real_t = Theseus::real_t;
 
     GasStateSemanticsAdapter(int dim, int num_dofs_scalar)
         : layout_(dim, num_dofs_scalar),
@@ -54,7 +54,7 @@ public:
     }
 
 private:
-    Prandtl::StateLayout layout_;
+    Theseus::StateLayout layout_;
     std::vector<real_t> data_;
-    Prandtl::FieldStateView view_;
+    Theseus::FieldStateView view_;
 };

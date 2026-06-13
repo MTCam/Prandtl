@@ -27,6 +27,7 @@
         "cfl": 0.1,
         "final_time": 10.0,
 
+	"flow_model": "cns",
         "Pr": 0.72,
         "mu": 6.25e-4,
         "R_gas": 287.05,

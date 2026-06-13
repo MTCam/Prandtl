@@ -2,7 +2,7 @@
 #include "mfem.hpp"
 #include "GasState.hpp"
 
-using Prandtl::real_t;
+using Theseus::real_t;
 
 // Helper to fill a single-DOF conservative state in `U`.
 //
@@ -11,7 +11,7 @@ using Prandtl::real_t;
 //   eq_mom[d] -> rho * u_d
 //   eq_energy -> rhoE = e_int_density + 0.5 * rho * |u|^2
 static void
-fill_single_dof_state(Prandtl::StateLayout &layout,
+fill_single_dof_state(Theseus::StateLayout &layout,
                       std::vector<real_t> &U,
                       int dim,
                       real_t rho,

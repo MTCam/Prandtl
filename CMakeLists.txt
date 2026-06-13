@@ -4,31 +4,31 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-project(Prandtl)
+project(Theseus)
 
 option(BUILD_TESTING "Build unit tests" ON)
-option(PARABOLIC "Enable Compressible Navier-Stokes Solver" OFF)
+# option(PARABOLIC "Enable Compressible Navier-Stokes Solver" OFF)
 option(SUBCELL_FV_BLENDING "Enable subcell blending" ON)
 option(AXISYMMETRIC "Enable Axisymmetric domain solver" OFF)
 option(SUTHERLAND "Enable Sutherland transport model" OFF)
 option(ENABLE_TIMERS "Enable performance timers." OFF)
-option(PRANDTL_USE_CUDA "Compile CUDA kernels" OFF)
+option(ENABLE_CUDA "Compile CUDA kernels" OFF)
 
 find_package(MFEM REQUIRED CONFIG) 
 if (TARGET MFEM::mfem)
-  set(PRANDTL_MFEM_TARGET MFEM::mfem)
+  set(THESEUS_MFEM_TARGET MFEM::mfem)
 elseif (TARGET mfem)
-  set(PRANDTL_MFEM_TARGET mfem)
+  set(THESEUS_MFEM_TARGET mfem)
 else()
   message(FATAL_ERROR "MFEM package found, but no MFEM target (MFEM::mfem or mfem) was provided.")
 endif()
 
 find_package(MPI REQUIRED COMPONENTS CXX)
 
-add_executable(${PROJECT_NAME} main.cpp)
+add_executable(theseus src/main.cpp)
 
-if (PRANDTL_USE_CUDA)
-   message(STATUS "Building Prandtl for CUDA platform.")
+if (ENABLE_CUDA)
+   message(STATUS "Building ${PROJECT_NAME} for CUDA platform.")
    set(CMAKE_CUDA_HOST_COMPILER ${MPI_CXX_COMPILER})
    enable_language(CUDA)
    set_source_files_properties(
@@ -36,11 +36,11 @@ if (PRANDTL_USE_CUDA)
      src/Operators/NonlinearForm/DGSEMNonlinearForm.cpp
      PROPERTIES LANGUAGE CUDA
    )
-   set_property(TARGET ${PROJECT_NAME} PROPERTY CUDA_ARCHITECTURES 80)
-   target_include_directories(${PROJECT_NAME} PRIVATE
+   set_property(TARGET theseus PROPERTY CUDA_ARCHITECTURES 80)
+   target_include_directories(theseus PRIVATE
      $<$<COMPILE_LANGUAGE:CUDA>:${MPI_CXX_INCLUDE_DIRS}>
    )
-   target_compile_options(${PROJECT_NAME} PRIVATE
+   target_compile_options(theseus PRIVATE
      $<$<COMPILE_LANGUAGE:CUDA>:--expt-extended-lambda --expt-relaxed-constexpr>
    )
 endif()
@@ -64,7 +64,7 @@ if(NOT "${CONFIG_FILE}" STREQUAL "")
     string(REPLACE "\n" ";" COMPILE_DEFINES_LIST "${COMPILE_DEFINES}")
     message(STATUS "COMPILE_DEFINES_LIST = ${COMPILE_DEFINES_LIST}")
 
-    target_compile_definitions(${PROJECT_NAME}
+    target_compile_definitions(theseus
         PRIVATE ${COMPILE_DEFINES_LIST}
     )
 else()
@@ -73,31 +73,24 @@ endif()
 
 if(ENABLE_TIMERS)
   message(STATUS "Enabling performance timers.")
-  target_compile_definitions(${PROJECT_NAME} PRIVATE ENABLE_TIMERS)
-endif()
-
-if(PARABOLIC)
-  message(STATUS "Building Prandtl for: Compressible Navier-Stokes equations")
-  target_compile_definitions(${PROJECT_NAME} PRIVATE PARABOLIC)
-else()
-  message(STATUS "Building Prandtl for: Euler equations")
+  target_compile_definitions(theseus PRIVATE ENABLE_TIMERS)
 endif()
 
 if(SUBCELL_FV_BLENDING)
-  message(STATUS "Building Prandtl with: Subcell FV Blending enabled")
-  target_compile_definitions(${PROJECT_NAME} PRIVATE SUBCELL_FV_BLENDING)
+  message(STATUS "Building ${PROJECT_NAME} with: Subcell FV Blending enabled")
+  target_compile_definitions(theseus PRIVATE SUBCELL_FV_BLENDING)
 else()
-  message(STATUS "Building Prandtl with: Subcell FV Blending OFF")
+  message(STATUS "Building ${PROJECT_NAME} with: Subcell FV Blending OFF")
 endif()
 
 if(SUTHERLAND)
-  message(STATUS "Building Prandtl with: Sutherland transport model enabled")
-  target_compile_definitions(${PROJECT_NAME} PRIVATE SUTHERLAND)
+  message(STATUS "Building ${PROJECT_NAME} with: Sutherland transport model enabled")
+  target_compile_definitions(theseus PRIVATE SUTHERLAND)
 endif()
 
 if(AXISYMMETRIC)
-  message(STATUS "Building Prandtl with: Axisymmetric domain enabled")
-  target_compile_definitions(${PROJECT_NAME} PRIVATE AXISYMMETRIC)
+  message(STATUS "Building ${PROJECT_NAME} with: Axisymmetric domain enabled")
+  target_compile_definitions(theseus PRIVATE AXISYMMETRIC)
 endif()
 
 # -------------------------------------------------------------------------------
@@ -108,7 +101,7 @@ option(ENABLE_ASAN_UBSAN "Enable ASan+UBSan for the main executable" OFF)
 option(NO_OPT "Disable optimizations for testing" OFF)
 
 
-target_compile_definitions(${PROJECT_NAME} PRIVATE
+target_compile_definitions(theseus PRIVATE
   "$<$<OR:$<CONFIG:Debug>,$<BOOL:${NO_OPT}>,$<BOOL:${ENABLE_ASAN_UBSAN}>>:MFEM_DEBUG>"
 )
 
@@ -116,7 +109,7 @@ if (ENABLE_ASAN_UBSAN AND CMAKE_CXX_COMPILER_ID MATCHES "Clang|AppleClang|GNU")
   message(STATUS "Enabling ASan+UBSan on target: ${PROJECT_NAME}")
 
   # Compile flags
-  target_compile_options(${PROJECT_NAME} PRIVATE
+  target_compile_options(theseus PRIVATE
     -O1
     -g
     -fno-fast-math
@@ -130,21 +123,21 @@ if (ENABLE_ASAN_UBSAN AND CMAKE_CXX_COMPILER_ID MATCHES "Clang|AppleClang|GNU")
   )
 
   # Link flags
-  target_link_options(${PROJECT_NAME} PRIVATE
+  target_link_options(theseus PRIVATE
     -fsanitize=address,undefined
   )
 
   # Prefer hard-fail on first UB to get the cleanest stack trace
   if (CMAKE_CXX_COMPILER_ID MATCHES "Clang|AppleClang")
-    target_compile_options(${PROJECT_NAME} PRIVATE -fno-sanitize-recover=all)
+    target_compile_options(theseus PRIVATE -fno-sanitize-recover=all)
   endif()
 endif()
 
 if (NO_OPT AND CMAKE_CXX_COMPILER_ID MATCHES "Clang|AppleClang|GNU")
-  message(STATUS "Disabling all optimizations on target: ${PROJECT_NAME}")
+  message(STATUS "Disabling all optimizations on target: theseus")
 
   # Compile flags
-  target_compile_options(${PROJECT_NAME} PRIVATE
+  target_compile_options(theseus PRIVATE
     -O0
     -g
     -fno-fast-math
@@ -158,83 +151,19 @@ if (NO_OPT AND CMAKE_CXX_COMPILER_ID MATCHES "Clang|AppleClang|GNU")
 
 endif()
 
-target_sources(${PROJECT_NAME}
-    PRIVATE src/Operators/DGSEMOperator.cpp 
-    PRIVATE src/Integrators/DGSEMIntegrator/DGSEMIntegrator.cpp
-    PRIVATE src/Integrators/Lifting/LiftingScheme.cpp
-    PRIVATE src/Integrators/Lifting/LiftingBR1/LiftingBR1.cpp
-    PRIVATE src/RiemannSolvers/RoeFlux.cpp
-    PRIVATE src/RiemannSolvers/LaxFriedrichsFlux.cpp
-    PRIVATE src/RiemannSolvers/HLLFlux.cpp
-    PRIVATE src/RiemannSolvers/ChandrashekarFlux.cpp
-    PRIVATE src/BasicOperations/BasicOperations.cpp
-    PRIVATE src/Filters/EntropyFilter.cpp
-    PRIVATE src/Integrators/BoundaryConditions/BdrFaceIntegrator.cpp
-    PRIVATE src/Integrators/BoundaryConditions/NoSlipAdiabWallBdrFaceIntegrator.cpp
-    PRIVATE src/Integrators/BoundaryConditions/NoSlipIsothWallBdrFaceIntegrator.cpp
-    PRIVATE src/Integrators/BoundaryConditions/SpecifiedStateBdrFaceIntegrator.cpp
-    PRIVATE src/Integrators/BoundaryConditions/SlipWallBdrFaceIntegrator.cpp
-    PRIVATE src/Integrators/BoundaryConditions/RiemannInvariantBdrFaceIntegrator.cpp
-    PRIVATE src/Integrators/BoundaryConditions/SubsonicInflowPtTtAngBdrFaceIntegrator.cpp
-    PRIVATE src/Integrators/BoundaryConditions/SubsonicInflowRVBdrFaceIntegrator.cpp
-    PRIVATE src/Integrators/BoundaryConditions/SubsonicOutflowPBdrFaceIntegrator.cpp
-    PRIVATE src/Integrators/BoundaryConditions/SupersonicInflowBdrFaceIntegrator.cpp
-    PRIVATE src/Integrators/BoundaryConditions/SupersonicOutflowBdrFaceIntegrator.cpp
-    PRIVATE src/Integrators/BoundaryConditions/SymmetryBdrFaceIntegrator.cpp
-    PRIVATE src/Fluxes/NavierStokesFlux.cpp
-    PRIVATE src/ModalBasis/ModalBasis.cpp
-    PRIVATE src/Limiters/MinmodLimiter.cpp
-    PRIVATE src/Indicators/Indicator.cpp
-    PRIVATE src/Indicators/PerssonPeraireIndicator.cpp
-    PRIVATE src/Simulation/Simulation.cpp
-    PRIVATE src/Operators/NonlinearForm/DGSEMNonlinearForm.cpp
+target_sources(theseus
+    PRIVATE src/ModalBasis.cpp
+    PRIVATE src/Indicator.cpp
+    PRIVATE src/PerssonPeraireIndicator.cpp
+    PRIVATE src/Simulation.cpp
+    PRIVATE src/DGSEMNonlinearForm.cpp
     )
 
-target_include_directories(${PROJECT_NAME}
-    PUBLIC ${CMAKE_SOURCE_DIR}/src/Device
-    PUBLIC ${CMAKE_SOURCE_DIR}/src/Operators/NonlinearForm
-    PUBLIC ${CMAKE_SOURCE_DIR}/src/Operators
-    PUBLIC ${CMAKE_SOURCE_DIR}/src/RiemannSolvers
-    PUBLIC ${CMAKE_SOURCE_DIR}/src/BasicOperations
-    PUBLIC ${CMAKE_SOURCE_DIR}/src/Filters
-    PUBLIC ${CMAKE_SOURCE_DIR}/src/Integrators/BoundaryConditions
-    PUBLIC ${CMAKE_SOURCE_DIR}/src/Integrators/Lifting/LiftingBR1
-    PUBLIC ${CMAKE_SOURCE_DIR}/src/Integrators/Lifting
-    PUBLIC ${CMAKE_SOURCE_DIR}/src/Integrators/DGSEMIntegrator
-    PUBLIC ${CMAKE_SOURCE_DIR}/src/ModalBasis
-    PUBLIC ${CMAKE_SOURCE_DIR}/src/Physics
-    PUBLIC ${CMAKE_SOURCE_DIR}/src/Limiters
-    PUBLIC ${CMAKE_SOURCE_DIR}/src/Indicators
-    PUBLIC ${CMAKE_SOURCE_DIR}/src/Simulation
-    PUBLIC ${CMAKE_SOURCE_DIR}/src/Include
-    PUBLIC ${CMAKE_SOURCE_DIR}/src/Fluxes
-    PUBLIC ${CMAKE_SOURCE_DIR}/TestCases/NavierStokes/2D/LidDrivenCavity
-    PUBLIC ${CMAKE_SOURCE_DIR}/TestCases/NavierStokes/2D/TaylorGreenVortex
-    PUBLIC ${CMAKE_SOURCE_DIR}/TestCases/NavierStokes/3D/TaylorGreenVortex
-    PUBLIC ${CMAKE_SOURCE_DIR}/TestCases/Euler/1D/SodShockTube
-    PUBLIC ${CMAKE_SOURCE_DIR}/TestCases/Euler/1D/ModifiedSodShockTube
-    PUBLIC ${CMAKE_SOURCE_DIR}/TestCases/Euler/1D/LaxShockTube
-    PUBLIC ${CMAKE_SOURCE_DIR}/TestCases/Euler/1D/LeBlancShockTube
-    PUBLIC ${CMAKE_SOURCE_DIR}/TestCases/Euler/1D/Problem123
-    PUBLIC ${CMAKE_SOURCE_DIR}/TestCases/Euler/1D/WoodwardColellaBlastWave
-    PUBLIC ${CMAKE_SOURCE_DIR}/TestCases/Euler/1D/WoodwardColellaBlastWaveLeft
-    PUBLIC ${CMAKE_SOURCE_DIR}/TestCases/Euler/1D/WoodwardColellaBlastWaveRight
-    PUBLIC ${CMAKE_SOURCE_DIR}/TestCases/Euler/1D/WoodwardColellaBlastWaveCollision
-    PUBLIC ${CMAKE_SOURCE_DIR}/TestCases/Euler/1D/ShuOsherShock
-    PUBLIC ${CMAKE_SOURCE_DIR}/TestCases/Euler/1D/AcousticWave
-    PUBLIC ${CMAKE_SOURCE_DIR}/TestCases/Euler/2D/DoubleMachReflection
-    PUBLIC ${CMAKE_SOURCE_DIR}/TestCases/Euler/2D/ForwardFacingStep
-    PUBLIC ${CMAKE_SOURCE_DIR}/TestCases/Euler/2D/BackwardFacingStep
-    PUBLIC ${CMAKE_SOURCE_DIR}/TestCases/Euler/2D/TriplePointShockInteraction
-    PUBLIC ${CMAKE_SOURCE_DIR}/TestCases/Euler/2D/KelvinHelmholtzInstability
-    PUBLIC ${CMAKE_SOURCE_DIR}/TestCases/Euler/2D/IsentropicVortex
-    PUBLIC ${CMAKE_SOURCE_DIR}/TestCases/Euler/2D/Ramp
-    PUBLIC ${CMAKE_SOURCE_DIR}/TestCases/Euler/2D/Nagashima_Ramjet
-    )
+target_include_directories(theseus PUBLIC ${CMAKE_SOURCE_DIR}/include)
 
-target_link_libraries(${PROJECT_NAME}
+target_link_libraries(theseus
     PRIVATE
-    ${PRANDTL_MFEM_TARGET}
+    ${THESEUS_MFEM_TARGET}
     MPI::MPI_CXX
 )
 

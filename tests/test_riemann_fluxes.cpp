@@ -7,7 +7,7 @@
 
 #include <cmath>
 
-using real_t = Prandtl::real_t;
+using real_t = Theseus::real_t;
 
 static void set_state_2d(mfem::Vector &q,
                          real_t rho,
@@ -52,19 +52,20 @@ static void compute_physical_normal_flux_2d(const mfem::Vector &q,
     flux(3) = (E + p) * un;
 }
 
-template <typename FluxT>
+template <typename FluxT, typename GasT>
 static void run_face_flux_consistency_2d(const FluxT &num_flux,
-                                         real_t gamma)
+                                         const GasT &gas)
 {
     mfem::Vector q(4), nor(2), flux(4), expected(4);
 
-    set_state_2d(q, 1.2, 31.0, -7.0, 101325.0, gamma);
+    set_state_2d(q, 1.2, 31.0, -7.0, 101325.0, gas.phys.gamma);
 
     nor(0) = 0.6;
     nor(1) = 0.8;
 
-    num_flux.ComputeFaceFlux(q, q, nor, flux);
-    compute_physical_normal_flux_2d(q, nor, gamma, expected);
+    num_flux.ComputeFaceFlux(gas, q.HostRead(), q.HostRead(), nor.HostRead(),
+			     flux.HostWrite());
+    compute_physical_normal_flux_2d(q, nor, gas.phys.gamma, expected);
 
     for (int eq = 0; eq < 4; ++eq)
     {
@@ -72,12 +73,13 @@ static void run_face_flux_consistency_2d(const FluxT &num_flux,
     }
 }
 
-template <typename FluxT>
+template <typename FluxT, typename GasT>
 static void run_face_flux_normal_reversal_2d(const FluxT &num_flux,
-                                             real_t gamma)
+                                             const GasT &gas)
 {
     mfem::Vector qL(4), qR(4), n(2), minus_n(2);
     mfem::Vector flux_n(4), flux_minus_n_swapped(4);
+    double gamma = gas.phys.gamma;
 
     set_state_2d(qL, 1.0,  20.0,  3.0, 100000.0, gamma);
     set_state_2d(qR, 0.8, -10.0, -2.0,  90000.0, gamma);
@@ -88,8 +90,10 @@ static void run_face_flux_normal_reversal_2d(const FluxT &num_flux,
     minus_n(0) = -n(0);
     minus_n(1) = -n(1);
 
-    num_flux.ComputeFaceFlux(qL, qR, n,       flux_n);
-    num_flux.ComputeFaceFlux(qR, qL, minus_n, flux_minus_n_swapped);
+    num_flux.ComputeFaceFlux(gas, qL.HostRead(), qR.HostRead(), n.HostRead(),
+			     flux_n.HostWrite());
+    num_flux.ComputeFaceFlux(gas, qR.HostRead(), qL.HostRead(), minus_n.HostRead(),
+			     flux_minus_n_swapped.HostWrite());
 
     for (int eq = 0; eq < 4; ++eq)
     {
@@ -100,19 +104,20 @@ static void run_face_flux_normal_reversal_2d(const FluxT &num_flux,
     }
 }
 
-template <typename FluxT>
+template <typename FluxT, typename GasT>
 static void run_zero_normal_velocity_pressure_flux_2d(const FluxT &num_flux,
-                                                      real_t gamma)
+                                                      const GasT  &gas)
 {
     mfem::Vector q(4), n(2), flux(4);
-
+    double gamma = gas.phys.gamma;
     // Velocity tangential to x-normal face.
     set_state_2d(q, 1.0, 0.0, 12.0, 100000.0, gamma);
 
     n(0) = 1.0;
     n(1) = 0.0;
 
-    num_flux.ComputeFaceFlux(q, q, n, flux);
+    num_flux.ComputeFaceFlux(gas, q.HostRead(), q.HostRead(), n.HostRead(),
+			     flux.HostWrite());
 
     EXPECT_CLOSE(flux(0),      0.0, 1.0e-12);
     EXPECT_CLOSE(flux(1), 100000.0, 1.0e-8);
@@ -120,19 +125,20 @@ static void run_zero_normal_velocity_pressure_flux_2d(const FluxT &num_flux,
     EXPECT_CLOSE(flux(3),      0.0, 1.0e-8);
 }
 
-template <typename FluxT>
+template <typename FluxT, typename GasT>
 static void run_face_flux_finite_strong_state_2d(const FluxT &num_flux,
-                                                 real_t gamma)
+                                                 const GasT &gas)
 {
     mfem::Vector qL(4), qR(4), n(2), flux(4);
 
-    set_state_2d(qL, 1.0,  800.0,  50.0, 101325.0, gamma);
-    set_state_2d(qR, 0.2, -300.0, -20.0,  20000.0, gamma);
+    set_state_2d(qL, 1.0,  800.0,  50.0, 101325.0, gas.phys.gamma);
+    set_state_2d(qR, 0.2, -300.0, -20.0,  20000.0, gas.phys.gamma);
 
     n(0) = 0.6;
     n(1) = 0.8;
 
-    num_flux.ComputeFaceFlux(qL, qR, n, flux);
+    num_flux.ComputeFaceFlux(gas, qL.HostRead(),
+			     qR.HostRead(), n.HostRead(), flux.HostWrite());
 
     for (int eq = 0; eq < 4; ++eq)
     {
@@ -145,23 +151,23 @@ TEST(RiemannFlux_Consistency_2D)
   const int dim = 2;
   const int ndofs = 1;
 
-  Prandtl::PhysicsConstants phys(
+  Theseus::PhysicsConstants phys(
                                  /* gamma = */ 1.4,
                                  /* Pr    = */ 0.72,
                                  /* R_gas = */ 287.05,
                                  /* mu    = */ 0.02);
   
-  Prandtl::StateLayout layout(dim, ndofs);
-  Prandtl::ActiveGasModel gasModel(phys, layout);
-  Prandtl::NavierStokesFlux physicalFlux(gasModel);
+  Theseus::StateLayout layout(dim, ndofs);
+  Theseus::ActiveGasModel gasModel(phys, layout);
+  //  Theseus::NavierStokesFlux physicalFlux(gasModel);
   
-  Prandtl::ChandrashekarFlux chan(physicalFlux, gasModel);
-  Prandtl::LaxFriedrichsFlux llf(physicalFlux, gasModel);
-  Prandtl::HLLFlux           hll(physicalFlux, gasModel);
+  Theseus::ChandrashekarFlux::InviscidFlux chan;
+  Theseus::LaxFriedrichsFlux::InviscidFlux llf;
+  Theseus::HLLFlux::InviscidFlux           hll;
 
-  run_face_flux_consistency_2d(chan, phys.gamma);
-  run_face_flux_consistency_2d(llf,  phys.gamma);
-  run_face_flux_consistency_2d(hll,  phys.gamma);
+  run_face_flux_consistency_2d(chan, gasModel);
+  run_face_flux_consistency_2d(llf,  gasModel);
+  run_face_flux_consistency_2d(hll,  gasModel);
   
     return 0;
 }
@@ -171,18 +177,18 @@ TEST(RiemannFlux_NormalReversal_2D)
     const int dim = 2;
     const int ndofs = 1;
 
-    Prandtl::PhysicsConstants phys(1.4, 0.72, 287.05, 0.02);
-    Prandtl::StateLayout layout(dim, ndofs);
-    Prandtl::ActiveGasModel gasModel(phys, layout);
-    Prandtl::NavierStokesFlux physicalFlux(gasModel);
+    Theseus::PhysicsConstants phys(1.4, 0.72, 287.05, 0.02);
+    Theseus::StateLayout layout(dim, ndofs);
+    Theseus::ActiveGasModel gasModel(phys, layout);
+    // Theseus::NavierStokesFlux physicalFlux(gasModel);
 
-    Prandtl::ChandrashekarFlux chan(physicalFlux, gasModel);
-    Prandtl::LaxFriedrichsFlux llf(physicalFlux, gasModel);
-    Prandtl::HLLFlux           hll(physicalFlux, gasModel);
+    Theseus::ChandrashekarFlux::InviscidFlux chan;
+    Theseus::LaxFriedrichsFlux::InviscidFlux llf;
+    Theseus::HLLFlux::InviscidFlux           hll;
 
-    run_face_flux_normal_reversal_2d(chan, phys.gamma);
-    run_face_flux_normal_reversal_2d(llf,  phys.gamma);
-    run_face_flux_normal_reversal_2d(hll,  phys.gamma);
+    run_face_flux_normal_reversal_2d(chan, gasModel);
+    run_face_flux_normal_reversal_2d(llf,  gasModel);
+    run_face_flux_normal_reversal_2d(hll,  gasModel);
 
     return 0;
 }
@@ -192,18 +198,18 @@ TEST(RiemannFlux_ZeroNormalVelocityPressureFlux_2D)
     const int dim = 2;
     const int ndofs = 1;
 
-    Prandtl::PhysicsConstants phys(1.4, 0.72, 287.05, 0.02);
-    Prandtl::StateLayout layout(dim, ndofs);
-    Prandtl::ActiveGasModel gasModel(phys, layout);
-    Prandtl::NavierStokesFlux physicalFlux(gasModel);
+    Theseus::PhysicsConstants phys(1.4, 0.72, 287.05, 0.02);
+    Theseus::StateLayout layout(dim, ndofs);
+    Theseus::ActiveGasModel gasModel(phys, layout);
+    //Theseus::NavierStokesFlux physicalFlux(gasModel);
 
-    Prandtl::ChandrashekarFlux chan(physicalFlux, gasModel);
-    Prandtl::LaxFriedrichsFlux llf(physicalFlux, gasModel);
-    Prandtl::HLLFlux           hll(physicalFlux, gasModel);
+    Theseus::ChandrashekarFlux::InviscidFlux chan;
+    Theseus::LaxFriedrichsFlux::InviscidFlux llf;
+    Theseus::HLLFlux::InviscidFlux           hll;
 
-    run_zero_normal_velocity_pressure_flux_2d(chan, phys.gamma);
-    run_zero_normal_velocity_pressure_flux_2d(llf,  phys.gamma);
-    run_zero_normal_velocity_pressure_flux_2d(hll,  phys.gamma);
+    run_zero_normal_velocity_pressure_flux_2d(chan, gasModel);
+    run_zero_normal_velocity_pressure_flux_2d(llf,  gasModel);
+    run_zero_normal_velocity_pressure_flux_2d(hll,  gasModel);
 
     return 0;
 }
@@ -213,18 +219,18 @@ TEST(RiemannFlux_FiniteStrongState_2D)
     const int dim = 2;
     const int ndofs = 1;
 
-    Prandtl::PhysicsConstants phys(1.4, 0.72, 287.05, 0.02);
-    Prandtl::StateLayout layout(dim, ndofs);
-    Prandtl::ActiveGasModel gasModel(phys, layout);
-    Prandtl::NavierStokesFlux physicalFlux(gasModel);
+    Theseus::PhysicsConstants phys(1.4, 0.72, 287.05, 0.02);
+    Theseus::StateLayout layout(dim, ndofs);
+    Theseus::ActiveGasModel gasModel(phys, layout);
+    // Theseus::NavierStokesFlux physicalFlux(gasModel);
 
-    Prandtl::ChandrashekarFlux chan(physicalFlux, gasModel);
-    Prandtl::LaxFriedrichsFlux llf(physicalFlux, gasModel);
-    Prandtl::HLLFlux           hll(physicalFlux, gasModel);
+    Theseus::ChandrashekarFlux::InviscidFlux chan;
+    Theseus::LaxFriedrichsFlux::InviscidFlux llf;
+    Theseus::HLLFlux::InviscidFlux           hll;
 
-    run_face_flux_finite_strong_state_2d(chan, phys.gamma);
-    run_face_flux_finite_strong_state_2d(llf,  phys.gamma);
-    run_face_flux_finite_strong_state_2d(hll,  phys.gamma);
+    run_face_flux_finite_strong_state_2d(chan, gasModel);
+    run_face_flux_finite_strong_state_2d(llf,  gasModel);
+    run_face_flux_finite_strong_state_2d(hll,  gasModel);
 
     return 0;
 }

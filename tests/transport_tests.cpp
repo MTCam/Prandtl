@@ -6,12 +6,12 @@
 
 #include <cmath>
 
-using Prandtl::real_t;
-using Prandtl::PhysicsConstants;
-using Prandtl::Transport;
-using Prandtl::IdealSingleGasEOS;
-using Prandtl::PointStateView;
-using Prandtl::StateLayout;
+using Theseus::real_t;
+using Theseus::PhysicsConstants;
+using Theseus::Transport;
+using Theseus::IdealSingleGasEOS;
+using Theseus::PointStateView;
+using Theseus::StateLayout;
 
 TEST(Transport_mu_kappa)
 {

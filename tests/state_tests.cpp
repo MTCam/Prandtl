@@ -5,7 +5,7 @@
 #include "GasState.hpp"
 #include "gas_state_adapter.hpp"
 
-using real_t = Prandtl::real_t;
+using real_t = Theseus::real_t;
 
 TEST(LegacyState_MassMomentumEnergy_2D)
 {
@@ -56,7 +56,7 @@ TEST(StateLayout_Indexing_NoScalars_2D)
     const int dim   = 2;
     const int ndofs = 5;
 
-    Prandtl::StateLayout layout(dim, ndofs);
+    Theseus::StateLayout layout(dim, ndofs);
 
     // Basic metadata
     EXPECT_CLOSE(layout.dim,             dim,     0.0);
@@ -90,7 +90,7 @@ TEST(StateLayout_Indexing_WithScalars_3D)
     const int ndofs      = 4;
     const int num_scalars = 2;
 
-    Prandtl::StateLayout layout(dim, ndofs, num_scalars);
+    Theseus::StateLayout layout(dim, ndofs, num_scalars);
 
     EXPECT_CLOSE(layout.dim,             dim,                  0.0);
     EXPECT_CLOSE(layout.num_dofs_scalar, ndofs,                0.0);
@@ -134,7 +134,7 @@ TEST(DofStateView_ReadsExpectedComponents)
     const int ndofs = 4;
     const int nscalars = 2;
 
-    Prandtl::StateLayout layout(dim, ndofs, nscalars);
+    Theseus::StateLayout layout(dim, ndofs, nscalars);
     const int num_eq = dim + 2 + nscalars;             // rho, dim*mom, E, scalars
 
     std::vector<real_t> U(num_eq * ndofs);
@@ -151,7 +151,7 @@ TEST(DofStateView_ReadsExpectedComponents)
 
     for (int i = 0; i < ndofs; ++i)
     {
-        Prandtl::DofStateView S{U.data(), i};
+        Theseus::DofStateView S{U.data(), i};
 
         // Mass
         EXPECT_EQ(S.mass(layout), 10.0 * layout.eq_mass + i + 1);
@@ -206,7 +206,7 @@ TEST(PointStateView_ReadsExpectedComponents)
   const int ndofs = 4;
   const int nscalars = 2;
   
-  Prandtl::StateLayout layout(dim, ndofs, nscalars);
+  Theseus::StateLayout layout(dim, ndofs, nscalars);
   const int num_eq = dim + 2 + nscalars;             // rho, dim*mom, E, scalars
   
   std::vector<real_t> U(num_eq);
@@ -218,7 +218,7 @@ TEST(PointStateView_ReadsExpectedComponents)
       U[eq] = 10.0 * eq + 2;
     }
   
-  Prandtl::PointStateView S{U.data()};
+  Theseus::PointStateView S{U.data()};
   
   // Mass
   EXPECT_EQ(S.mass(layout), 10.0 * layout.eq_mass + 2);
@@ -266,11 +266,11 @@ TEST(FieldStateView_ReadWriteRoundTrip)
     const int ndofs      = 3;
     const int num_scalars = 2;
 
-    Prandtl::StateLayout layout(dim, ndofs, num_scalars);
+    Theseus::StateLayout layout(dim, ndofs, num_scalars);
     const int num_eq = dim + 2 + num_scalars;
 
     std::vector<real_t> U(num_eq * ndofs, 0.0);
-    Prandtl::FieldStateView S{U.data()};
+    Theseus::FieldStateView S{U.data()};
 
     // Write using named accessors
     for (int i = 0; i < ndofs; ++i)
@@ -309,12 +309,12 @@ TEST(PointStateViewRW_WritesExpectedComponents)
     const int ndofs = 1;
     const int nscalars = 2;
 
-    Prandtl::StateLayout layout(dim, ndofs, nscalars);
+    Theseus::StateLayout layout(dim, ndofs, nscalars);
     const int num_eq = dim + 2 + nscalars;
 
     std::vector<real_t> U(num_eq, -1.0);
 
-    Prandtl::PointStateViewRW E{U.data()};
+    Theseus::PointStateViewRW E{U.data()};
 
     // Write via setters
     E.set_mass(layout, 2.0);
@@ -335,7 +335,7 @@ TEST(PointStateViewRW_WritesExpectedComponents)
     EXPECT_EQ(E.scalar(layout,1), 12.0);
 
     // Cross-check via const view over same buffer
-    Prandtl::PointStateView S{U.data()};
+    Theseus::PointStateView S{U.data()};
 
     EXPECT_EQ(S.mass(layout), 2.0);
     EXPECT_EQ(S.momentum(layout, 0), 3.0);
@@ -351,11 +351,11 @@ TEST(PointStateViewRW_WritesExpectedComponents)
 
 TEST(PointStateViewRW_WritesToMFEMVector)
 {
-  Prandtl::StateLayout layout(/*dim=*/2, /*ndofs=*/1, /*num_scalars=*/0);
+  Theseus::StateLayout layout(/*dim=*/2, /*ndofs=*/1, /*num_scalars=*/0);
   mfem::Vector v(layout.nequations());
   v = 0.0;
 
-  Prandtl::PointStateViewRW E(v.GetData());
+  Theseus::PointStateViewRW E(v.GetData());
   E.set_mass(layout, 2.0);
   E.set_momentum(layout, 0, 3.0);
   E.set_momentum(layout, 1, -4.0);

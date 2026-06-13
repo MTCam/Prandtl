@@ -1,0 +1,17 @@
+
+    - name: Configure & build MFEM
+        run: |
+          cmake -S "$MFEM_SRC" -B "$MFEM_SRC/build" -G Ninja \
+            -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE} \
+            -DCMAKE_INSTALL_PREFIX="${INSTALL_PREFIX}" \
+            -DMFEM_USE_MPI=ON \
+            -DMFEM_USE_METIS=ON \
+            -DMFEM_USE_HYPRE=ON \
+            -DMETIS_DIR=/usr \
+            -DHYPRE_DIR=/usr
+          cmake --build "$MFEM_SRC/build" --target install -j2
+        env:
+          CC: ${{ env.CC }}
+          CXX: ${{ env.CXX }}
+          FC: ${{ env.FC }}
+

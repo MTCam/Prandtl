@@ -8,7 +8,7 @@
 #include <vector>
 #include <cmath>
 
-using namespace Prandtl;
+using namespace Theseus;
 
 // -----------------------------------------------------------------------------
 // EOS test: pressure, temperature, and sound-speed for an ideal single gas.
