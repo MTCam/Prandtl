@@ -13,6 +13,7 @@ option(AXISYMMETRIC "Enable Axisymmetric domain solver" OFF)
 option(SUTHERLAND "Enable Sutherland transport model" OFF)
 option(ENABLE_TIMERS "Enable performance timers." OFF)
 option(PRANDTL_USE_CUDA "Compile CUDA kernels" OFF)
+option(LTE_EOS "Enable LTE EOS" OFF)
 
 find_package(MFEM REQUIRED CONFIG) 
 if (TARGET MFEM::mfem)
@@ -24,6 +25,8 @@ else()
 endif()
 
 find_package(MPI REQUIRED COMPONENTS CXX)
+
+set(PLATO_DIR "${CMAKE_SOURCE_DIR}/libs/plato/install")
 
 add_executable(${PROJECT_NAME} main.cpp)
 
@@ -93,6 +96,11 @@ endif()
 if(SUTHERLAND)
   message(STATUS "Building Prandtl with: Sutherland transport model enabled")
   target_compile_definitions(${PROJECT_NAME} PRIVATE SUTHERLAND)
+endif()
+
+if(LTE_EOS)
+  message(STATUS "Building Prandtl with: LTE EOS enabled")
+  target_compile_definitions(${PROJECT_NAME} PRIVATE LTE_EOS)
 endif()
 
 if(AXISYMMETRIC)
@@ -230,12 +238,24 @@ target_include_directories(${PROJECT_NAME}
     PUBLIC ${CMAKE_SOURCE_DIR}/TestCases/Euler/2D/IsentropicVortex
     PUBLIC ${CMAKE_SOURCE_DIR}/TestCases/Euler/2D/Ramp
     PUBLIC ${CMAKE_SOURCE_DIR}/TestCases/Euler/2D/Nagashima_Ramjet
+    PUBLIC ${CMAKE_SOURCE_DIR}/TestCases/LTE/Euler/LTEVortex
+    PUBLIC ${CMAKE_SOURCE_DIR}/TestCases/LTE/Euler/LTEBlob
     )
+
+target_include_directories(${PROJECT_NAME}
+    PRIVATE ${PLATO_DIR}/include
+)
+
+target_link_directories(${PROJECT_NAME}
+    PRIVATE ${PLATO_DIR}/lib
+)
 
 target_link_libraries(${PROJECT_NAME}
     PRIVATE
     ${PRANDTL_MFEM_TARGET}
     MPI::MPI_CXX
+    plato
+    gfortran
 )
 
 if (BUILD_TESTING)

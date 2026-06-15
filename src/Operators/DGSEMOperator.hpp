@@ -107,6 +107,7 @@ public:
                   std::unique_ptr<DGSEMIntegrator> integrator,
                   std::unique_ptr<Indicator> indicator,
                   const ActiveGasModel &gasModel_,
+                  const ThermoTablesData &thermoTabData_,
                   std::shared_ptr<ParGridFunction> r_gf = nullptr,
                   const real_t alpha_max = 0.5, const real_t alpha_min = 0.001);
     
@@ -117,7 +118,7 @@ public:
   }
 
 #ifdef SUBCELL_FV_BLENDING
-    void ComputeBlendingCoefficient(const Vector &u) const;
+    void ComputeBlendingCoefficient(const Vector &u, const ThermoTablesView &thermoTables) const;
     void ComputeBlendingCoefficientFromIndicator(const Vector &indicator_field) const;
     void ComputeIndicatorField(const Vector &u, Vector &indicator_field) const;
 #endif

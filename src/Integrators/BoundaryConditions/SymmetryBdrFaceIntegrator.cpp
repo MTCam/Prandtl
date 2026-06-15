@@ -12,7 +12,8 @@ namespace Prandtl
   
 
 real_t SymmetryBdrFaceIntegrator::ComputeBdrFaceInviscidFlux(const Vector &state1, Vector &state2,
-    Vector &fluxN, const Vector &nor, FaceElementTransformations &Tr, const IntegrationPoint &ip)
+    Vector &fluxN, const Vector &nor, FaceElementTransformations &Tr, const IntegrationPoint &ip,
+    const ThermoTablesView &thermoTables)
 {
     unit_nor = nor;
     if (unit_nor.Norml2() == 0.0)
@@ -30,7 +31,7 @@ real_t SymmetryBdrFaceIntegrator::ComputeBdrFaceInviscidFlux(const Vector &state
     const real_t mn = mom * unit_nor;
     mom.Add(-2.0 * mn, unit_nor);
 
-    return rsolver.ComputeFaceFlux(state1, state2, nor, fluxN);
+    return rsolver.ComputeFaceFlux(state1, state2, nor, thermoTables, fluxN);
 }
 
 }

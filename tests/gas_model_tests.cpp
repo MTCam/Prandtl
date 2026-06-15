@@ -44,6 +44,7 @@ TEST(GasModel_IdealGas_EOS)
         const int ndofs = 1;
         StateLayout layout(dim, ndofs);  // no scalars
         IdealGasModel gas(*phys, layout);
+        ThermoTablesView thermoTables;
 
         const int num_eq = layout.eq_energy + 1; // dim+2
 
@@ -71,26 +72,26 @@ TEST(GasModel_IdealGas_EOS)
         DofStateView S(U.data(), 0);
 
         // Pressure
-        const real_t p = gas.pressure(S);
+        const real_t p = gas.pressure(S, thermoTables);
         EXPECT_CLOSE(p, 1.0, tol);
 
         // Temperature: p = rho * R * T => T = p / (rho * R)
         const real_t T_expected = p / (rho * R_gas);
-        const real_t T = gas.temperature(S);
+        const real_t T = gas.temperature(S, thermoTables);
         EXPECT_CLOSE(T, T_expected, tol);
 
         // Sound speed: a^2 = gamma * p / rho
         const real_t a_expected = std::sqrt(gamma * p / rho);
-        const real_t a = gas.sound_speed(S);
+        const real_t a = gas.sound_speed(S, thermoTables);
         EXPECT_CLOSE(a, a_expected, tol);
 
         // Density should just be rho
-        const real_t rho_out = gas.density(S);
+        const real_t rho_out = gas.density(S, thermoTables);
         EXPECT_CLOSE(rho_out, rho, tol);
 
         // Specific internal energy e = e_int_density / rho
         const real_t e_expected = e_int_density / rho;
-        const real_t e_si = gas.specific_internal_energy(S);
+        const real_t e_si = gas.specific_internal_energy(S, thermoTables);
         EXPECT_CLOSE(e_si, e_expected, tol);
     }
 
@@ -126,6 +127,7 @@ TEST(GasModel_IdealGas_Transport)
 
     IdealSingleGasEOS  eos;
     Transport          transport;
+    ThermoTablesView thermoTables;
 
     const real_t tol = 1.0e-12;
 
@@ -150,14 +152,14 @@ TEST(GasModel_IdealGas_Transport)
     DofStateView S(U.data(), 0);
 
     // Use the EOS + Transport directly to compute the expected results
-    const real_t T  = eos.temperature(*phys, layout, S);
-    const real_t cp = eos.cp(*phys, layout, S);
+    const real_t T  = eos.temperature(*phys, layout, S, thermoTables);
+    const real_t cp = eos.cp(*phys, layout, S, thermoTables);
 
-    const real_t mu_expected = transport.viscosity(*phys, layout, eos, S);
-    const real_t k_expected  = transport.thermal_conductivity(*phys, layout, eos, S);
+    const real_t mu_expected = transport.viscosity(*phys, layout, eos, S, thermoTables);
+    const real_t k_expected  = transport.thermal_conductivity(*phys, layout, eos, S, thermoTables);
 
-    const real_t mu_gas = gas.viscosity(S);
-    const real_t k_gas  = gas.thermal_conductivity(S);
+    const real_t mu_gas = gas.viscosity(S, thermoTables);
+    const real_t k_gas  = gas.thermal_conductivity(S, thermoTables);
 
     EXPECT_EQ(mu_gas, mu_expected);
     EXPECT_EQ(k_gas,  k_expected);
@@ -191,6 +193,15 @@ legacy_entropy_grad_to_prim_grad(const real_t* Q,
                                  real_t gamma)
 {
     const real_t rho = Q[0];
+    const real_t R_gas = 287.0;
+
+    real_t dE_mass = dE[0]/R_gas;
+    real_t dE_mom[dim];
+    for (int i = 0; i < dim; ++i)
+    {
+        dE_mom[i] = dE[1 + i]/R_gas;
+    }
+    real_t dE_energy = dE[dim + 1]/R_gas;
 
     // Velocity
     real_t u[3] = {0, 0, 0};
@@ -214,17 +225,17 @@ legacy_entropy_grad_to_prim_grad(const real_t* Q,
     real_t mom_dot = 0;
     for (int i = 0; i < dim; ++i)
     {
-        const real_t out_i = (p / rho) * (dE[1 + i] + u[i] * dE_last);
+        const real_t out_i = (p / rho) * (dE_mom[i] + u[i] * dE_energy);
         out[1 + i] = out_i;
         mom_dot += Q[1 + i] * out_i; // (rho*u_i) * out_i
     }
 
     // out_mass
-    const real_t out_mass = rho * dE[0] - dE_last * (KE - ie) + (rho / p) * mom_dot;
+    const real_t out_mass = rho * dE_mass - dE_energy * (KE - ie) + (rho / p) * mom_dot;
     out[0] = out_mass;
 
     // out_last
-    out[dim + 1] = (p / rho) * (out_mass + p * dE_last);
+    out[dim + 1] = (p / rho) * (out_mass + p * dE_energy);
 }
 
 TEST(GasModel_IdealGas_GradEntropyToGradPrim_MatchesLegacy)
@@ -244,6 +255,7 @@ TEST(GasModel_IdealGas_GradEntropyToGradPrim_MatchesLegacy)
         const int ndofs = 1;
         StateLayout layout(dim, ndofs); // no scalars
         IdealGasModel gas(*phys, layout);
+        ThermoTablesView thermoTables;
         const int num_eq = layout.nequations();
 
         std::vector<real_t> Q(num_eq);
@@ -272,7 +284,7 @@ TEST(GasModel_IdealGas_GradEntropyToGradPrim_MatchesLegacy)
         PointStateView   dE_view{dE.data()};
         PointStateViewRW out_view{out.data()};
 
-        gas.grad_entropy_to_grad_prim(S, dE_view, out_view);
+        gas.grad_entropy_to_grad_prim(S, dE_view, out_view, thermoTables);
 
         // Compare slots.
         for (int eq = 0; eq < num_eq; ++eq){

@@ -1,4 +1,5 @@
 // tests/riemann_flux_tests.cpp
+#include "mfem.hpp"
 #include "unit_test.hpp"
 #include "GasModel.hpp"
 #include "ChandrashekarFlux.hpp"
@@ -8,6 +9,7 @@
 #include <cmath>
 
 using real_t = Prandtl::real_t;
+using Prandtl::ThermoTablesView;
 
 static void set_state_2d(mfem::Vector &q,
                          real_t rho,
@@ -63,7 +65,8 @@ static void run_face_flux_consistency_2d(const FluxT &num_flux,
     nor(0) = 0.6;
     nor(1) = 0.8;
 
-    num_flux.ComputeFaceFlux(q, q, nor, flux);
+    ThermoTablesView thermoTables;
+    num_flux.ComputeFaceFlux(q, q, nor, thermoTables, flux);
     compute_physical_normal_flux_2d(q, nor, gamma, expected);
 
     for (int eq = 0; eq < 4; ++eq)
@@ -88,8 +91,9 @@ static void run_face_flux_normal_reversal_2d(const FluxT &num_flux,
     minus_n(0) = -n(0);
     minus_n(1) = -n(1);
 
-    num_flux.ComputeFaceFlux(qL, qR, n,       flux_n);
-    num_flux.ComputeFaceFlux(qR, qL, minus_n, flux_minus_n_swapped);
+    ThermoTablesView thermoTables;
+    num_flux.ComputeFaceFlux(qL, qR, n, thermoTables, flux_n);
+    num_flux.ComputeFaceFlux(qR, qL, minus_n, thermoTables, flux_minus_n_swapped);
 
     for (int eq = 0; eq < 4; ++eq)
     {
@@ -112,7 +116,8 @@ static void run_zero_normal_velocity_pressure_flux_2d(const FluxT &num_flux,
     n(0) = 1.0;
     n(1) = 0.0;
 
-    num_flux.ComputeFaceFlux(q, q, n, flux);
+    ThermoTablesView thermoTables;
+    num_flux.ComputeFaceFlux(q, q, n, thermoTables, flux);
 
     EXPECT_CLOSE(flux(0),      0.0, 1.0e-12);
     EXPECT_CLOSE(flux(1), 100000.0, 1.0e-8);
@@ -132,7 +137,8 @@ static void run_face_flux_finite_strong_state_2d(const FluxT &num_flux,
     n(0) = 0.6;
     n(1) = 0.8;
 
-    num_flux.ComputeFaceFlux(qL, qR, n, flux);
+    ThermoTablesView thermoTables;
+    num_flux.ComputeFaceFlux(qL, qR, n, thermoTables, flux);
 
     for (int eq = 0; eq < 4; ++eq)
     {

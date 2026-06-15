@@ -313,7 +313,11 @@ void EntropyFilter::ComputeBdrStateMinima(const DenseMatrix &vdof_mat,
                         } 
 
                         state2 = 0.0;
-                        bfnfi[n]->ComputeOuterInviscidState(state1, state2, *Tr_face, ip);
+                        ThermoTablesView thermoTables; // CL ALERT : Just a placeholder to avail the function call
+#ifdef LTE_EOS
+    MFEM_ABORT("CL ALERT : Entropy Filer is not functional with LTE_EOS");
+#endif
+                        bfnfi[n]->ComputeOuterInviscidState(state1, state2, *Tr_face, ip, thermoTables);
                         ComputeMinima(state2, mode);
                     }
                 }

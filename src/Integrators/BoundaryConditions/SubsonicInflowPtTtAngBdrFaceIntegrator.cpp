@@ -53,7 +53,7 @@ SubsonicInflowPtTtAngBdrFaceIntegrator::SubsonicInflowPtTtAngBdrFaceIntegrator(s
     }
 }
 
-void SubsonicInflowPtTtAngBdrFaceIntegrator::ComputeOuterInviscidState(const Vector &state1, Vector &state2, FaceElementTransformations &Tr, const IntegrationPoint &ip)
+void SubsonicInflowPtTtAngBdrFaceIntegrator::ComputeOuterInviscidState(const Vector &state1, Vector &state2, FaceElementTransformations &Tr, const IntegrationPoint &ip, const ThermoTablesView &thermoTables)
 {
     if (!constant)
     {
@@ -67,7 +67,7 @@ void SubsonicInflowPtTtAngBdrFaceIntegrator::ComputeOuterInviscidState(const Vec
     }
     Prandtl::PointStateView S1{state1.GetData()};
     Prandtl::PointStateViewRW S2{state2.GetData()};
-    auto tot = Prandtl::Flow::isentropic_total_to_static(S1, {p0, T0}, gasModel);
+    auto tot = Prandtl::Flow::isentropic_total_to_static(S1, {p0, T0}, gasModel, thermoTables);
     S2.set_mass(gasModel.L, tot.rho);
     const real_t v = std::sqrt(tot.v2);
     S2.set_momentum(gasModel.L, 0, tot.rho*v*V_comps(0));
@@ -80,21 +80,21 @@ void SubsonicInflowPtTtAngBdrFaceIntegrator::ComputeOuterInviscidState(const Vec
     S2.set_energy(gasModel.L, tot.energy);
 }
 
-void SubsonicInflowPtTtAngBdrFaceIntegrator::ComputeBdrFaceViscousFlux(const Vector &state1, const Vector &state2, const Vector &dqdx, const Vector &dqdy, const Vector &dqdz, Vector &fluxN, const Vector &nor, FaceElementTransformations &Tr, const IntegrationPoint &ip)
+void SubsonicInflowPtTtAngBdrFaceIntegrator::ComputeBdrFaceViscousFlux(const Vector &state1, const Vector &state2, const Vector &dqdx, const Vector &dqdy, const Vector &dqdz, Vector &fluxN, const Vector &nor, FaceElementTransformations &Tr, const IntegrationPoint &ip, const ThermoTablesView &thermoTables)
 {
-    fluxFunction.ComputeViscousFlux(state2, dqdx, dqdy, dqdz, flux_mat);
+    fluxFunction.ComputeViscousFlux(state2, dqdx, dqdy, dqdz, thermoTables, flux_mat);
     flux_mat.Mult(nor, fluxN);
 }
 
-void SubsonicInflowPtTtAngBdrFaceIntegrator::ComputeBdrFaceViscousFlux(const Vector &state1, const Vector &state2, const Vector &dqdx, const Vector &dqdy, Vector &fluxN, const Vector &nor, FaceElementTransformations &Tr, const IntegrationPoint &ip)
+void SubsonicInflowPtTtAngBdrFaceIntegrator::ComputeBdrFaceViscousFlux(const Vector &state1, const Vector &state2, const Vector &dqdx, const Vector &dqdy, Vector &fluxN, const Vector &nor, FaceElementTransformations &Tr, const IntegrationPoint &ip, const ThermoTablesView &thermoTables)
 {
-    fluxFunction.ComputeViscousFlux(state2, dqdx, dqdy, flux_mat);
+    fluxFunction.ComputeViscousFlux(state2, dqdx, dqdy, thermoTables, flux_mat);
     flux_mat.Mult(nor, fluxN);
 }
 
-void SubsonicInflowPtTtAngBdrFaceIntegrator::ComputeBdrFaceViscousFlux(const Vector &state1, const Vector &state2, const Vector &dqdx, Vector &fluxN, const Vector &nor, FaceElementTransformations &Tr, const IntegrationPoint &ip)
+void SubsonicInflowPtTtAngBdrFaceIntegrator::ComputeBdrFaceViscousFlux(const Vector &state1, const Vector &state2, const Vector &dqdx, Vector &fluxN, const Vector &nor, FaceElementTransformations &Tr, const IntegrationPoint &ip, const ThermoTablesView &thermoTables)
 {
-    fluxFunction.ComputeViscousFlux(state2, dqdx, flux_mat);
+    fluxFunction.ComputeViscousFlux(state2, dqdx, thermoTables, flux_mat);
     flux_mat.Mult(nor, fluxN);
 }
 

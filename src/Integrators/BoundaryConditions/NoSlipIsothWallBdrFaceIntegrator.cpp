@@ -21,26 +21,32 @@ NoSlipIsothWallBdrFaceIntegrator::NoSlipIsothWallBdrFaceIntegrator(std::shared_p
   T(T), V(V), T_wall(std::function<real_t(const Vector&)>()), V_wall(dim, std::function<void(const Vector&, Vector&)>())
 {}
   
-void NoSlipIsothWallBdrFaceIntegrator::ComputeBdrFaceViscousFlux(const Vector &state1, const Vector &state2, const Vector &dqdx, const Vector &dqdy, const Vector &dqdz, Vector &fluxN, const Vector &nor, FaceElementTransformations &Tr, const IntegrationPoint &ip)
+void NoSlipIsothWallBdrFaceIntegrator::ComputeBdrFaceViscousFlux(const Vector &state1, const Vector &state2, const Vector &dqdx, const Vector &dqdy,
+                                                                 const Vector &dqdz, Vector &fluxN, const Vector &nor, FaceElementTransformations &Tr,
+                                                                 const IntegrationPoint &ip, const ThermoTablesView &thermoTables)
 {
-    fluxFunction.ComputeViscousFlux(state1, dqdx, dqdy, dqdz, flux_mat);
+    fluxFunction.ComputeViscousFlux(state1, dqdx, dqdy, dqdz, thermoTables, flux_mat);
     flux_mat.Mult(nor, fluxN);
 }
 
-void NoSlipIsothWallBdrFaceIntegrator::ComputeBdrFaceViscousFlux(const Vector &state1, const Vector &state2, const Vector &dqdx, const Vector &dqdy, Vector &fluxN, const Vector &nor, FaceElementTransformations &Tr, const IntegrationPoint &ip)
+void NoSlipIsothWallBdrFaceIntegrator::ComputeBdrFaceViscousFlux(const Vector &state1, const Vector &state2, const Vector &dqdx, const Vector &dqdy,
+                                                                 Vector &fluxN, const Vector &nor, FaceElementTransformations &Tr,
+                                                                 const IntegrationPoint &ip, const ThermoTablesView &thermoTables)
 {
-    fluxFunction.ComputeViscousFlux(state1, dqdx, dqdy, flux_mat);
+    fluxFunction.ComputeViscousFlux(state1, dqdx, dqdy, thermoTables, flux_mat);
     flux_mat.Mult(nor, fluxN);
 }
 
-void NoSlipIsothWallBdrFaceIntegrator::ComputeBdrFaceViscousFlux(const Vector &state1, const Vector &state2, const Vector &dqdx, Vector &fluxN, const Vector &nor, FaceElementTransformations &Tr, const IntegrationPoint &ip)
+void NoSlipIsothWallBdrFaceIntegrator::ComputeBdrFaceViscousFlux(const Vector &state1, const Vector &state2, const Vector &dqdx,
+                                                                 Vector &fluxN, const Vector &nor, FaceElementTransformations &Tr,
+                                                                 const IntegrationPoint &ip, const ThermoTablesView &thermoTables)
 {
-    fluxFunction.ComputeViscousFlux(state1, dqdx, flux_mat);
+    fluxFunction.ComputeViscousFlux(state1, dqdx, thermoTables, flux_mat);
     flux_mat.Mult(nor, fluxN);
 }
 
 void NoSlipIsothWallBdrFaceIntegrator::ComputeBdrFaceLiftingFlux(const Vector &state1, Vector &fluxN, FaceElementTransformations &Tr,
-                                                                 const IntegrationPoint &ip)
+                                                                 const IntegrationPoint &ip, const ThermoTablesView &thermoTables)
 {
     if (!constant)
     {
@@ -51,8 +57,8 @@ void NoSlipIsothWallBdrFaceIntegrator::ComputeBdrFaceLiftingFlux(const Vector &s
         V_wall.Eval(V, Tr, ip);
     }
     Prandtl::PointStateView Se{state1.GetData()};
-    const real_t beta = Prandtl::Flow::isothermal_wall_beta(Se, T, gasModel);
-    fluxN(mass_eq) = gasModel.mass(Se);
+    const real_t beta = Prandtl::Flow::isothermal_wall_beta(Se, T, gasModel, thermoTables);
+    fluxN(mass_eq) = gasModel.mass(Se, thermoTables);
     fluxN(mom_eq) = V(0) * beta;
     if (dim > 1)
     {

@@ -15,17 +15,20 @@ namespace Prandtl
   public:
     explicit NavierStokesFlux(const ActiveGasModel &gasModel_)
       : mfem::FluxFunction(gasModel_.num_equations(), gasModel_.dim()), gasModel(gasModel_){};
-    void ComputeViscousFlux(const mfem::Vector &state, const mfem::Vector &dqdx,
+      void ComputeViscousFlux(const mfem::Vector &state, const mfem::Vector &dqdx,
                             const mfem::Vector &dqdy, const mfem::Vector &dqdz,
+                            const ThermoTablesView &thermoTables,
                             mfem::DenseMatrix &flux) const;
     void ComputeViscousFlux(const mfem::Vector &state, const mfem::Vector &dqdx,
-                            const mfem::Vector &dqdy, mfem::DenseMatrix &flux) const;
-    void ComputeViscousFlux(const mfem::Vector &state, const mfem::Vector &dqdx,
+                            const mfem::Vector &dqdy, const ThermoTablesView &thermoTables,
                             mfem::DenseMatrix &flux) const;
-    MFEM_HOST_DEVICE inline real_t pressure(const real_t *state) const
+    void ComputeViscousFlux(const mfem::Vector &state, const mfem::Vector &dqdx,
+                            const ThermoTablesView &thermoTables,
+                            mfem::DenseMatrix &flux) const;
+    MFEM_HOST_DEVICE inline real_t pressure(const real_t *state, const ThermoTablesView &thermoTables) const
     {
       Prandtl::PointStateView S{state};
-      return gasModel.pressure(S);
+      return gasModel.pressure(S, thermoTables);
     }
 
     // These inviscid flux routines were lifted directly out of MFEM so
@@ -61,6 +64,7 @@ namespace Prandtl
     template<typename GasT>
     MFEM_HOST_DEVICE inline static void
     ComputeInviscidFluxKernel(const GasT &gas,
+                              const ThermoTablesView &thermoTables,
                               const real_t *state,
                               real_t inv_flux[Prandtl::MAXEQ][Prandtl::MAXDIM])
     { 
@@ -68,16 +72,16 @@ namespace Prandtl
       
       // 1. Get states
       const int dim = gas.dim();
-      const real_t density = gas.density(S);
+      const real_t density = gas.density(S, thermoTables);
       const real_t spec_vol = 1.0/density;
       real_t momentum[Prandtl::MAXDIM] = {0.,0.,0.};
       for(int idim = 0;idim < dim;idim++){
-        momentum[idim] = gas.momentum(S, idim);
+        momentum[idim] = gas.momentum(S, idim, thermoTables);
       }
 
-      const real_t energy = gas.energy(S);
-      const real_t pressure = gas.pressure(S);
-      const real_t ke = gas.kinetic_energy_density(S);
+      const real_t energy = gas.energy(S, thermoTables);
+      const real_t pressure = gas.pressure(S, thermoTables);
+      const real_t ke = gas.kinetic_energy_density(S, thermoTables);
       const int eq_mass = gas.L.eq_mass;
       const int eq_mom0 = gas.L.eq_mom0;
       const int eq_ener = gas.L.eq_energy;
@@ -97,7 +101,7 @@ namespace Prandtl
           inv_flux[eq_mom0+d][d] += pressure;
           inv_flux[eq_ener][d] = momentum[d]*H;
           for(int s = 0;s < gas.L.num_scalars;s++){
-            inv_flux[eq_spec+s][d] = gas.scalar(S, s) * momentum[d] * spec_vol;
+            inv_flux[eq_spec+s][d] = gas.scalar(S, s, thermoTables) * momentum[d] * spec_vol;
           }
         }
       // 3. Compute maximum characteristic speed 
@@ -111,6 +115,7 @@ namespace Prandtl
     template<typename GasT>
     MFEM_HOST_DEVICE inline
     static void ComputeViscousFluxKernel(const GasT &gas,
+                                         const ThermoTablesView &thermoTables,
                                          const real_t *state,
                                          const real_t *dprim_x,
                                          const real_t *dprim_y,
@@ -130,9 +135,9 @@ namespace Prandtl
       PointStateView S{state};
  
       // Access some physical constants
-      const real_t mu = gas.viscosity(S);
-      const real_t kappa = gas.thermal_conductivity(S);
-      const real_t mu_bulk = gas.bulk_viscosity(S);
+      const real_t mu = gas.viscosity(S, thermoTables);
+      const real_t kappa = gas.thermal_conductivity(S, thermoTables);
+      const real_t mu_bulk = gas.bulk_viscosity(S, thermoTables);
 
       // State structure constants
       const int eq_mass = gas.L.eq_mass;
@@ -166,11 +171,11 @@ namespace Prandtl
         }
       }
 
-      gas.grad_temperature(S, grad_rho, grad_p, grad_t);
+      gas.grad_temperature(S, grad_rho, grad_p, grad_t, thermoTables);
       real_t vel[Prandtl::MAXDIM] = {0.0, 0.0, 0.0};
       real_t div_vel = 0.0;
       for(int i = 0;i < dim;i++){
-        vel[i] = gas.velocity(S, i);
+        vel[i] = gas.velocity(S, i, thermoTables);
         div_vel += grad_vel[i][i];
       }
 
@@ -210,6 +215,7 @@ namespace Prandtl
     template<typename GasT>
     MFEM_HOST_DEVICE inline
     static void compute_ref_viscous_flux(const GasT &gas,
+                                         const ThermoTablesView &thermoTables,
                                          const int dim,
                                          const int neq,
                                          const real_t *state,
@@ -222,7 +228,7 @@ namespace Prandtl
       real_t flux_phys[Prandtl::MAXEQ][Prandtl::MAXDIM] = {{0.}};
 
       // Grab the physical flux
-      ComputeViscousFluxKernel(gas, state, dqx, dqy, dqz, flux_phys);
+      ComputeViscousFluxKernel(gas, thermoTables, state, dqx, dqy, dqz, flux_phys);
       
       for (int q = 0; q < neq; ++q)
         {

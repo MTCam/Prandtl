@@ -69,6 +69,8 @@ namespace Prandtl
       mutable mfem::Vector ifWaveSpeed; // size ninterior faces
       mutable mfem::Vector bndWaveSpeed; // size nbnd faces
       ActiveGasModel gas;
+      const ThermoTablesData &thermoTabData;
+      ThermoTablesView thermoTables;
       //ActivePhysics::InviscidFlux iflux;
       // Prandtl::ChandrashekarFlux::InviscidFlux iflux;
       Prandtl::LaxFriedrichsFlux::InviscidFlux iflux;
@@ -81,6 +83,7 @@ namespace Prandtl
       std::shared_ptr<mfem::ParGridFunction> alpha;
 #endif
 
+      DGSEMOperatorCache(const ThermoTablesData &thermoTabData_) : thermoTabData(thermoTabData_) {}
       // Grab the face dof from the restriction (face,point) index
       // This answers: what is the facial dof that corresponds to
       // the facial point index for a given face in the restriction?
@@ -138,7 +141,8 @@ namespace Prandtl
     real_t *elWaveSpeed_d = nullptr;
     real_t *ifWaveSpeed_d = nullptr;
     real_t *bndWaveSpeed_d = nullptr;
-    IdealGasModel gas;
+    ActiveGasModel gas;
+    ThermoTablesView thermoTables;
     //ActivePhysics::InviscidFlux iflux;
 
     // Prandtl::ChandrashekarFlux::InviscidFlux iflux;

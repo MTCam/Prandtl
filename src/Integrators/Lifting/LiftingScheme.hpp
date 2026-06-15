@@ -1,6 +1,7 @@
 #pragma once
 
 #include "mfem.hpp"
+#include "GasModel.hpp"
 
 namespace Prandtl
 {
@@ -32,9 +33,9 @@ public:
     virtual void AssembleLiftingElementVector(const FiniteElement &el, ElementTransformation &Tr, const Vector &el_u, Vector &el_dudx, Vector &el_dudy) = 0;
     virtual void AssembleLiftingElementVector(const FiniteElement &el, ElementTransformation &Tr, const Vector &el_u, Vector &el_dudx) = 0;
 
-    virtual void AssembleLiftingBdrFaceVector(BdrFaceIntegrator *bfi, const FiniteElement &el1, const FiniteElement &el2, FaceElementTransformations &Tr, const Vector &el_u, Vector &el_dudx, Vector &el_dudy, Vector &el_dudz) = 0;
-    virtual void AssembleLiftingBdrFaceVector(BdrFaceIntegrator *bfi, const FiniteElement &el1, const FiniteElement &el2, FaceElementTransformations &Tr, const Vector &el_u, Vector &el_dudx, Vector &el_dudy) = 0;
-    virtual void AssembleLiftingBdrFaceVector(BdrFaceIntegrator *bfi, const FiniteElement &el1, const FiniteElement &el2, FaceElementTransformations &Tr, const Vector &el_u, Vector &el_dudx) = 0;
+    virtual void AssembleLiftingBdrFaceVector(BdrFaceIntegrator *bfi, const FiniteElement &el1, const FiniteElement &el2, FaceElementTransformations &Tr, const Vector &el_u, const ThermoTablesView &thermoTables, Vector &el_dudx, Vector &el_dudy, Vector &el_dudz) = 0;
+    virtual void AssembleLiftingBdrFaceVector(BdrFaceIntegrator *bfi, const FiniteElement &el1, const FiniteElement &el2, FaceElementTransformations &Tr, const Vector &el_u, const ThermoTablesView &thermoTables, Vector &el_dudx, Vector &el_dudy) = 0;
+    virtual void AssembleLiftingBdrFaceVector(BdrFaceIntegrator *bfi, const FiniteElement &el1, const FiniteElement &el2, FaceElementTransformations &Tr, const Vector &el_u, const ThermoTablesView &thermoTables, Vector &el_dudx) = 0;
 };
     
 } // namespace Prandtl

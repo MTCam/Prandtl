@@ -64,7 +64,8 @@ constexpr bool debug_boundary = false;
 
 void BdrFaceIntegrator::AssembleFaceVector(const FiniteElement &el1, const FiniteElement &el2,
                                            FaceElementTransformations &Tr,
-                                           const Vector &el_u, Vector &el_dudt)
+                                           const Vector &el_u,
+                                           Vector &el_dudt)
 {
    if (debug_boundary) // && (time >= 2.99999 || time == 0))
    {
@@ -100,7 +101,8 @@ void BdrFaceIntegrator::AssembleFaceVector(const FiniteElement &el1, const Finit
          CalcOrtho(Tr.Jacobian(), nor);
       }
 
-      max_char_speed = std::max(max_char_speed, ComputeBdrFaceInviscidFlux(state1, state2, dU_face1, nor, Tr, ip));
+      ThermoTablesView thermoTables; // CL ALERT : Placeholder for now, can't get it as an input because this is a virtual function of NonlinearFormIntegrator.
+      max_char_speed = std::max(max_char_speed, ComputeBdrFaceInviscidFlux(state1, state2, dU_face1, nor, Tr, ip, thermoTables));
 
         if (debug_boundary)
         {
@@ -129,22 +131,31 @@ void BdrFaceIntegrator::AssembleFaceVector(const FiniteElement &el1, const Finit
 }
 
 
-void BdrFaceIntegrator::AssembleLiftingFaceVector(const FiniteElement &el1, const FiniteElement &el2, FaceElementTransformations &Tr, const Vector &el_u, Vector &el_dudx, Vector &el_dudy, Vector &el_dudz)
+void BdrFaceIntegrator::AssembleLiftingFaceVector(const FiniteElement &el1, const FiniteElement &el2, FaceElementTransformations &Tr, const Vector &el_u,
+                                                  const ThermoTablesView &thermoTables,
+                                                  Vector &el_dudx, Vector &el_dudy, Vector &el_dudz)
 {
-   liftingScheme->AssembleLiftingBdrFaceVector(this, el1, el2, Tr, el_u, el_dudx, el_dudy, el_dudz);
+   liftingScheme->AssembleLiftingBdrFaceVector(this, el1, el2, Tr, el_u, thermoTables, el_dudx, el_dudy, el_dudz);
 }
 
-void BdrFaceIntegrator::AssembleLiftingFaceVector(const FiniteElement &el1, const FiniteElement &el2, FaceElementTransformations &Tr, const Vector &el_u, Vector &el_dudx, Vector &el_dudy)
+void BdrFaceIntegrator::AssembleLiftingFaceVector(const FiniteElement &el1, const FiniteElement &el2, FaceElementTransformations &Tr, const Vector &el_u,
+                                                  const ThermoTablesView &thermoTables,
+                                                  Vector &el_dudx, Vector &el_dudy)
 {
-   liftingScheme->AssembleLiftingBdrFaceVector(this, el1, el2, Tr, el_u, el_dudx, el_dudy);
+   liftingScheme->AssembleLiftingBdrFaceVector(this, el1, el2, Tr, el_u, thermoTables, el_dudx, el_dudy);
 }
 
-void BdrFaceIntegrator::AssembleLiftingFaceVector(const FiniteElement &el1, const FiniteElement &el2, FaceElementTransformations &Tr, const Vector &el_u, Vector &el_dudx)
+void BdrFaceIntegrator::AssembleLiftingFaceVector(const FiniteElement &el1, const FiniteElement &el2, FaceElementTransformations &Tr, const Vector &el_u,
+                                                  const ThermoTablesView &thermoTables,
+                                                  Vector &el_dudx)
 {
-   liftingScheme->AssembleLiftingBdrFaceVector(this, el1, el2, Tr, el_u, el_dudx);
+   liftingScheme->AssembleLiftingBdrFaceVector(this, el1, el2, Tr, el_u, thermoTables, el_dudx);
 }
 
-void BdrFaceIntegrator::AssembleFaceVector(const FiniteElement &el1, const FiniteElement &el2, FaceElementTransformations &Tr, const Vector &el_u, const Vector &el_dudx, const Vector &el_dudy, const Vector &el_dudz, Vector &el_dudt)
+void BdrFaceIntegrator::AssembleFaceVector(const FiniteElement &el1, const FiniteElement &el2, FaceElementTransformations &Tr, const Vector &el_u,
+                                           const Vector &el_dudx, const Vector &el_dudy, const Vector &el_dudz,
+                                           const ThermoTablesView &thermoTables,
+                                           Vector &el_dudt)
 {
    el_dudt.SetSize(dof1 * num_equations);
    el_dudt = 0.0;
@@ -169,10 +180,10 @@ void BdrFaceIntegrator::AssembleFaceVector(const FiniteElement &el1, const Finit
 
       CalcOrtho(Tr.Jacobian(), nor);
 
-      max_char_speed = std::max(max_char_speed, ComputeBdrFaceInviscidFlux(state1, state2, dU_face1, nor, Tr, ip));
+      max_char_speed = std::max(max_char_speed, ComputeBdrFaceInviscidFlux(state1, state2, dU_face1, nor, Tr, ip, thermoTables));
       dU_face1.Neg();
 
-      ComputeBdrFaceViscousFlux(state1, state2, dqdx, dqdy, dqdz, flux_num, nor, Tr, ip);
+      ComputeBdrFaceViscousFlux(state1, state2, dqdx, dqdy, dqdz, flux_num, nor, Tr, ip, thermoTables);
    
       dU_face1 += flux_num;
 
@@ -182,7 +193,9 @@ void BdrFaceIntegrator::AssembleFaceVector(const FiniteElement &el1, const Finit
 
 void BdrFaceIntegrator::AssembleFaceVector(const FiniteElement &el1, const FiniteElement &el2,
                                            FaceElementTransformations &Tr, const Vector &el_u,
-                                           const Vector &el_dudx, const Vector &el_dudy, Vector &el_dudt)
+                                           const Vector &el_dudx, const Vector &el_dudy,
+                                           const ThermoTablesView &thermoTables,
+                                           Vector &el_dudt)
 {
    el_dudt.SetSize(dof1 * num_equations);
    el_dudt = 0.0;
@@ -205,11 +218,11 @@ void BdrFaceIntegrator::AssembleFaceVector(const FiniteElement &el1, const Finit
 
       CalcOrtho(Tr.Jacobian(), nor);
 
-      max_char_speed = std::max(max_char_speed, ComputeBdrFaceInviscidFlux(state1, state2, dU_face1, nor, Tr, ip));
+      max_char_speed = std::max(max_char_speed, ComputeBdrFaceInviscidFlux(state1, state2, dU_face1, nor, Tr, ip, thermoTables));
       dU_face1.Neg();
 
-      ComputeBdrFaceViscousFlux(state1, state2, dqdx, dqdy, flux_num, nor, Tr, ip);
-   
+      ComputeBdrFaceViscousFlux(state1, state2, dqdx, dqdy, flux_num, nor, Tr, ip, thermoTables);
+
       dU_face1 += flux_num;
 
       AddMult_a_VWt(+1.0 / (ir->IntPoint(0).weight * J1), shape1, dU_face1, el_dudt_mat1);
@@ -217,7 +230,10 @@ void BdrFaceIntegrator::AssembleFaceVector(const FiniteElement &el1, const Finit
 }
 
 void BdrFaceIntegrator::AssembleFaceVector(const FiniteElement &el1, const FiniteElement &el2, FaceElementTransformations &Tr,
-                                           const Vector &el_u, const Vector &el_dudx, Vector &el_dudt)
+                                           const Vector &el_u,
+                                           const Vector &el_dudx,
+                                           const ThermoTablesView &thermoTables,
+                                           Vector &el_dudt)
 {
    const int dof1 = el1.GetDof();
 
@@ -242,10 +258,10 @@ void BdrFaceIntegrator::AssembleFaceVector(const FiniteElement &el1, const Finit
 
       nor(0) = (Tr.GetElement1IntPoint().x - 0.5) * 2.0;
 
-      max_char_speed = std::max(max_char_speed, ComputeBdrFaceInviscidFlux(state1, state2, dU_face1, nor, Tr, ip));
+      max_char_speed = std::max(max_char_speed, ComputeBdrFaceInviscidFlux(state1, state2, dU_face1, nor, Tr, ip, thermoTables));
       dU_face1.Neg();
 
-      ComputeBdrFaceViscousFlux(state1, state2, dqdx, flux_num, nor, Tr, ip);
+      ComputeBdrFaceViscousFlux(state1, state2, dqdx, flux_num, nor, Tr, ip, thermoTables);
    
       dU_face1 += flux_num;
 
@@ -254,47 +270,50 @@ void BdrFaceIntegrator::AssembleFaceVector(const FiniteElement &el1, const Finit
 }
 
 void BdrFaceIntegrator::ComputeOuterInviscidState(const Vector &state1, Vector &state2, FaceElementTransformations &Tr,
-                                                  const IntegrationPoint &ip)
+                                                  const IntegrationPoint &ip, const ThermoTablesView &thermoTables)
 {
    mfem_error("BdrFaceIntegrator::ComputeOuterInviscidState() is not overridden!");
 }
 
 real_t BdrFaceIntegrator::ComputeBdrFaceInviscidFlux(const Vector &state1, Vector &state2, Vector &fluxN, const Vector &nor,
-                                                     FaceElementTransformations &Tr, const IntegrationPoint &ip)
+                                                     FaceElementTransformations &Tr, const IntegrationPoint &ip,
+                                                     const ThermoTablesView &thermoTables)
 {
-   ComputeOuterInviscidState(state1, state2, Tr, ip);
+   ComputeOuterInviscidState(state1, state2, Tr, ip, thermoTables);
    // Compute F(u+, x) and F(u-, x) with maximum characteristic speed
    // Compute hat(F) using evaluated quantities
-   return rsolver.ComputeFaceFlux(state1, state2, nor, fluxN);
+   return rsolver.ComputeFaceFlux(state1, state2, nor, thermoTables, fluxN);
 }
 
 void BdrFaceIntegrator::ComputeBdrFaceViscousFlux(const Vector &state1, const Vector &state2, const Vector &dqdx,
                                                   const Vector &dqdy, const Vector &dqdz, Vector &fluxN, const Vector &nor,
-                                                  FaceElementTransformations &Tr, const IntegrationPoint &ip)
+                                                  FaceElementTransformations &Tr, const IntegrationPoint &ip,
+                                                  const ThermoTablesView &thermoTables)
 {
    mfem_error("BdrFaceIntegrator::ComputeBdrFaceViscousFlux() is not overridden!");
 }
 
 void BdrFaceIntegrator::ComputeBdrFaceViscousFlux(const Vector &state1, const Vector &state2, const Vector &dqdx,
                                                   const Vector &dqdy, Vector &fluxN, const Vector &nor,
-                                                  FaceElementTransformations &Tr, const IntegrationPoint &ip)
+                                                  FaceElementTransformations &Tr, const IntegrationPoint &ip,
+                                                  const ThermoTablesView &thermoTables)
 {
    mfem_error("BdrFaceIntegrator::ComputeBdrFaceViscousFlux() is not overridden!");
 }
 
 void BdrFaceIntegrator::ComputeBdrFaceViscousFlux(const Vector &state1, const Vector &state2, const Vector &dqdx,
                                                   Vector &fluxN, const Vector &nor, FaceElementTransformations &Tr,
-                                                  const IntegrationPoint &ip)
+                                                  const IntegrationPoint &ip, const ThermoTablesView &thermoTables)
 {
    mfem_error("BdrFaceIntegrator::ComputeBdrFaceViscousFlux() is not overridden!");
 }
 
   void BdrFaceIntegrator::ComputeBdrFaceLiftingFlux(const Vector &state1, Vector &fluxN, FaceElementTransformations &Tr,
-                                                    const IntegrationPoint &ip)
+                                                    const IntegrationPoint &ip, const ThermoTablesView &thermoTables)
   {
-    Entropy2Conserv(gasModel, state1, conserv_state);
-    ComputeOuterInviscidState(conserv_state, state2, Tr, ip);
-    Conserv2Entropy(gasModel, state2, fluxN);
+    Entropy2Conserv(gasModel, thermoTables, state1, conserv_state);
+    ComputeOuterInviscidState(conserv_state, state2, Tr, ip, thermoTables);
+    Conserv2Entropy(gasModel, thermoTables, state2, fluxN);
     fluxN -= state1;
     fluxN *= 0.5; 
   }

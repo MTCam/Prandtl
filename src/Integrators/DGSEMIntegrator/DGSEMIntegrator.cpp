@@ -186,7 +186,7 @@ void DGSEMIntegrator::AssembleFaceVector(const mfem::FiniteElement &el1, const m
         {
           CalcOrtho(Tr.Jacobian(), nor);
         }
-      max_char_speed = std::max(max_char_speed, rsolver.ComputeFaceFlux(state1, state2, nor, flux_num));
+      max_char_speed = std::max(max_char_speed, rsolver.ComputeFaceFlux(state1, state2, nor, operator_cache->thermoTables, flux_num));
       
 #ifdef AXISYMMETRIC
       mfem::Vector phys(dim);
@@ -279,7 +279,7 @@ void DGSEMIntegrator::AssembleFaceVector(const mfem::FiniteElement &el1, const m
                     adj2.GetRow(0, metric2);
         
               
-                max_char_speed = std::max(max_char_speed, rsolver.ComputeVolumeFlux(state1, state2, metric1, metric2, f));
+                max_char_speed = std::max(max_char_speed, rsolver.ComputeVolumeFlux(state1, state2, metric1, metric2, operator_cache->thermoTables, f));
                 
                 mfem::IntegrationPoint ipm = ip1;
                 ipm.x = 0.5*(ip1.x + ip2.x);
@@ -326,7 +326,7 @@ void DGSEMIntegrator::AssembleFaceVector(const mfem::FiniteElement &el1, const m
                         adj2 = Tr.AdjugateJacobian();
                         adj2.GetRow(1, metric2);
 
-                max_char_speed = std::max(max_char_speed, rsolver.ComputeVolumeFlux(state1, state2, metric1, metric2, g));
+                max_char_speed = std::max(max_char_speed, rsolver.ComputeVolumeFlux(state1, state2, metric1, metric2, operator_cache->thermoTables, g));
 
                 mfem::IntegrationPoint ipm = ip1;
                 ipm.y = 0.5*(ip1.y + ip3.y);
@@ -372,7 +372,7 @@ void DGSEMIntegrator::AssembleFaceVector(const mfem::FiniteElement &el1, const m
                             Tr.SetIntPoint(&ip4);
                             adj2 = Tr.AdjugateJacobian();
                             adj2.GetRow(2, metric2);
-                            max_char_speed = std::max(max_char_speed, rsolver.ComputeVolumeFlux(state1, state2, metric1, metric2, h));
+                            max_char_speed = std::max(max_char_speed, rsolver.ComputeVolumeFlux(state1, state2, metric1, metric2, operator_cache->thermoTables, h));
                             H_inviscid(id1).SetCol(m, h);
                             H_inviscid(id2).SetCol(k, h);
                         }
@@ -484,17 +484,17 @@ void DGSEMIntegrator::AssembleFaceVector(const mfem::FiniteElement &el1, const m
         el_dudx_mat1.MultTranspose(shape1, dqdx);
         el_dudy_mat1.MultTranspose(shape1, dqdy);
         el_dudz_mat1.MultTranspose(shape1, dqdz);
-        fluxFunction.ComputeViscousFlux(state1, dqdx, dqdy, dqdz, flux_mat1);
+        fluxFunction.ComputeViscousFlux(state1, dqdx, dqdy, dqdz, operator_cache->thermoTables, flux_mat1);
 
         el_u_mat2.MultTranspose(shape2, state2);
         el_dudx_mat2.MultTranspose(shape2, dqdx);
         el_dudy_mat2.MultTranspose(shape2, dqdy);
         el_dudz_mat2.MultTranspose(shape2, dqdz);   
-        fluxFunction.ComputeViscousFlux(state2, dqdx, dqdy, dqdz, flux_mat2);
+        fluxFunction.ComputeViscousFlux(state2, dqdx, dqdy, dqdz, operator_cache->thermoTables, flux_mat2);
 
         CalcOrtho(Tr.Jacobian(), nor);
 
-        max_char_speed = std::max(max_char_speed, rsolver.ComputeFaceFlux(state1, state2, nor, flux_num));
+        max_char_speed = std::max(max_char_speed, rsolver.ComputeFaceFlux(state1, state2, nor, operator_cache->thermoTables, flux_num));
         dU_face1 = dU_face2 = flux_num;
         dU_face1.Neg();
 
@@ -540,16 +540,16 @@ void DGSEMIntegrator::AssembleFaceVector(const mfem::FiniteElement &el1, const m
         el_u_mat1.MultTranspose(shape1, state1);
         el_dudx_mat1.MultTranspose(shape1, dqdx);
         el_dudy_mat1.MultTranspose(shape1, dqdy);
-        fluxFunction.ComputeViscousFlux(state1, dqdx, dqdy, flux_mat1);
+        fluxFunction.ComputeViscousFlux(state1, dqdx, dqdy, operator_cache->thermoTables, flux_mat1);
 
         el_u_mat2.MultTranspose(shape2, state2);
         el_dudx_mat2.MultTranspose(shape2, dqdx);
         el_dudy_mat2.MultTranspose(shape2, dqdy);
-        fluxFunction.ComputeViscousFlux(state2, dqdx, dqdy, flux_mat2);
+        fluxFunction.ComputeViscousFlux(state2, dqdx, dqdy, operator_cache->thermoTables, flux_mat2);
 
         CalcOrtho(Tr.Jacobian(), nor);
 
-        max_char_speed = std::max(max_char_speed, rsolver.ComputeFaceFlux(state1, state2, nor, flux_num));
+        max_char_speed = std::max(max_char_speed, rsolver.ComputeFaceFlux(state1, state2, nor, operator_cache->thermoTables, flux_num));
         dU_face1 = dU_face2 = flux_num;
         dU_face1.Neg();
 
@@ -591,15 +591,15 @@ void DGSEMIntegrator::AssembleFaceVector(const mfem::FiniteElement &el1, const m
 
         el_u_mat1.MultTranspose(shape1, state1);
         el_dudx_mat1.MultTranspose(shape1, dqdx);
-        fluxFunction.ComputeViscousFlux(state1, dqdx, flux_mat1);
+        fluxFunction.ComputeViscousFlux(state1, dqdx, operator_cache->thermoTables, flux_mat1);
 
         el_u_mat2.MultTranspose(shape2, state2);
         el_dudx_mat2.MultTranspose(shape2, dqdx);
-        fluxFunction.ComputeViscousFlux(state2, dqdx, flux_mat2);  
+        fluxFunction.ComputeViscousFlux(state2, dqdx, operator_cache->thermoTables, flux_mat2);  
 
         nor(0) = (Tr.GetElement1IntPoint().x - 0.5) * 2.0;
 
-        max_char_speed = std::max(max_char_speed, rsolver.ComputeFaceFlux(state1, state2, nor, flux_num));
+        max_char_speed = std::max(max_char_speed, rsolver.ComputeFaceFlux(state1, state2, nor, operator_cache->thermoTables, flux_num));
         dU_face1 = dU_face2 = flux_num;
         dU_face1.Neg();
 
@@ -649,7 +649,7 @@ void DGSEMIntegrator::AssembleElementVector(const mfem::FiniteElement &el, mfem:
 
         el_dudz_mat.GetRow(i, dqdz);      
 
-        fluxFunction.ComputeViscousFlux(state1, dqdx, dqdy, dqdz, flux_mat1);
+        fluxFunction.ComputeViscousFlux(state1, dqdx, dqdy, dqdz, operator_cache->thermoTables, flux_mat1);
 
         mfem::MultABt(adj1, flux_mat1, flux_mat);
         flux_mat.GetRow(0, f);
@@ -688,7 +688,7 @@ void DGSEMIntegrator::AssembleElementVector(const mfem::FiniteElement &el, mfem:
                     Tr.SetIntPoint(&ip2);
                     adj2 = Tr.AdjugateJacobian();
                     adj2.GetRow(0, metric2);
-                    max_char_speed = std::max(max_char_speed, rsolver.ComputeVolumeFlux(state1, state2, metric1, metric2, f));
+                    max_char_speed = std::max(max_char_speed, rsolver.ComputeVolumeFlux(state1, state2, metric1, metric2, operator_cache->thermoTables, f));
                     F_inviscid(id1).SetCol(m, f);
                     F_inviscid(id2).SetCol(i, f);
                 }
@@ -705,7 +705,7 @@ void DGSEMIntegrator::AssembleElementVector(const mfem::FiniteElement &el, mfem:
                     Tr.SetIntPoint(&ip3);
                     adj2 = Tr.AdjugateJacobian();
                     adj2.GetRow(1, metric2);
-                    max_char_speed = std::max(max_char_speed, rsolver.ComputeVolumeFlux(state1, state2, metric1, metric2, g));
+                    max_char_speed = std::max(max_char_speed, rsolver.ComputeVolumeFlux(state1, state2, metric1, metric2, operator_cache->thermoTables, g));
                     G_inviscid(id1).SetCol(m, g);
                     G_inviscid(id2).SetCol(j, g);
                 }
@@ -722,7 +722,7 @@ void DGSEMIntegrator::AssembleElementVector(const mfem::FiniteElement &el, mfem:
                     Tr.SetIntPoint(&ip4);
                     adj2 = Tr.AdjugateJacobian();
                     adj2.GetRow(2, metric2);
-                    max_char_speed = std::max(max_char_speed, rsolver.ComputeVolumeFlux(state1, state2, metric1, metric2, h));
+                    max_char_speed = std::max(max_char_speed, rsolver.ComputeVolumeFlux(state1, state2, metric1, metric2, operator_cache->thermoTables, h));
                     H_inviscid(id1).SetCol(m, h);
                     H_inviscid(id2).SetCol(k, h);
                 }
@@ -810,7 +810,7 @@ void DGSEMIntegrator::AssembleElementVector(const mfem::FiniteElement &el, mfem:
 
         el_dudy_mat.GetRow(i, dqdy);
 
-        fluxFunction.ComputeViscousFlux(state1, dqdx, dqdy, flux_mat1);
+        fluxFunction.ComputeViscousFlux(state1, dqdx, dqdy, operator_cache->thermoTables, flux_mat1);
 
         mfem::MultABt(adj1, flux_mat1, flux_mat);
         flux_mat.GetRow(0, f);
@@ -844,7 +844,7 @@ void DGSEMIntegrator::AssembleElementVector(const mfem::FiniteElement &el, mfem:
                 Tr.SetIntPoint(&ip2);
                 adj2 = Tr.AdjugateJacobian();
                 adj2.GetRow(0, metric2);
-                max_char_speed = std::max(max_char_speed, rsolver.ComputeVolumeFlux(state1, state2, metric1, metric2, f));
+                max_char_speed = std::max(max_char_speed, rsolver.ComputeVolumeFlux(state1, state2, metric1, metric2, operator_cache->thermoTables, f));
                 F_inviscid(id1).SetCol(m, f);
                 F_inviscid(id2).SetCol(i, f);
             }
@@ -860,7 +860,7 @@ void DGSEMIntegrator::AssembleElementVector(const mfem::FiniteElement &el, mfem:
                 Tr.SetIntPoint(&ip3);
                 adj2 = Tr.AdjugateJacobian();
                 adj2.GetRow(1, metric2);
-                max_char_speed = std::max(max_char_speed, rsolver.ComputeVolumeFlux(state1, state2, metric1, metric2, g));
+                max_char_speed = std::max(max_char_speed, rsolver.ComputeVolumeFlux(state1, state2, metric1, metric2, operator_cache->thermoTables, g));
                 G_inviscid(id1).SetCol(m, g);
                 G_inviscid(id2).SetCol(j, g);
             }
@@ -930,7 +930,7 @@ void DGSEMIntegrator::AssembleElementVector(const mfem::FiniteElement &el, mfem:
 
         el_dudx_mat.GetRow(i, dqdx);
 
-        fluxFunction.ComputeViscousFlux(state1, dqdx, flux_mat1);
+        fluxFunction.ComputeViscousFlux(state1, dqdx, operator_cache->thermoTables, flux_mat1);
 
         mfem::MultABt(adj1, flux_mat1, flux_mat);
         flux_mat.GetRow(0, f);
@@ -956,7 +956,7 @@ void DGSEMIntegrator::AssembleElementVector(const mfem::FiniteElement &el, mfem:
             Tr.SetIntPoint(&ip2);
             adj2 = Tr.AdjugateJacobian();
             adj2.GetRow(0, metric2);
-            max_char_speed = std::max(max_char_speed, rsolver.ComputeVolumeFlux(state1, state2, metric1, metric2, f));
+            max_char_speed = std::max(max_char_speed, rsolver.ComputeVolumeFlux(state1, state2, metric1, metric2, operator_cache->thermoTables, f));
             F_inviscid(i).SetCol(m, f);
             F_inviscid(m).SetCol(i, f);
         }
@@ -1070,7 +1070,7 @@ void DGSEMIntegrator::ComputeFVFluxes(const mfem::DenseMatrix &el_u_mat, real_t 
                 int id2 = id1 + 1;
                 el_u_mat.GetRow(id2, state2);
                 SubcellMetricXi(Tr.ElementNo).GetColumn(id2, nor);
-                max_char_speed = std::max(max_char_speed, rsolver.ComputeFaceFlux(state1, state2, nor, flux_num));
+                max_char_speed = std::max(max_char_speed, rsolver.ComputeFaceFlux(state1, state2, nor, operator_cache->thermoTables, flux_num));
 
                 real_t r_hat  = mid_r(id1, id2, 0);
 
@@ -1151,7 +1151,7 @@ void DGSEMIntegrator::ComputeFVFluxes(const mfem::DenseMatrix &el_u_mat, real_t 
                     int id2 = k * Np_y * Np_x + (j + 1) * Np_x + i;
                     el_u_mat.GetRow(id2, state2);
                     SubcellMetricEta(Tr.ElementNo).GetColumn(id2, nor);
-                    max_char_speed = std::max(max_char_speed, rsolver.ComputeFaceFlux(state1, state2, nor, flux_num));
+                    max_char_speed = std::max(max_char_speed, rsolver.ComputeFaceFlux(state1, state2, nor, operator_cache->thermoTables, flux_num));
 
                     real_t r_hat  = mid_r(id1, id2, 1);
                     
@@ -1234,7 +1234,7 @@ void DGSEMIntegrator::ComputeFVFluxes(const mfem::DenseMatrix &el_u_mat, real_t 
                         int id2 = (k + 1) * Np_y * Np_x + j * Np_x + i;
                         el_u_mat.GetRow(id2, state2);
                         SubcellMetricZeta(Tr.ElementNo).GetColumn(id2, nor);
-                        max_char_speed = std::max(max_char_speed, rsolver.ComputeFaceFlux(state1, state2, nor, flux_num));
+                        max_char_speed = std::max(max_char_speed, rsolver.ComputeFaceFlux(state1, state2, nor, operator_cache->thermoTables, flux_num));
                         Tr.SetIntPoint(&ir_vol->IntPoint(id1));
 
                         dU_subcell -= flux_num;
