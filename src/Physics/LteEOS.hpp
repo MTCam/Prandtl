@@ -109,7 +109,7 @@ namespace Prandtl
 
         denom = f_new - f_old;
 
-        if( std::abs(f_new) < tol || std::abs(denom) < 1e-12)
+        if( Kernels::rabs(f_new) < tol || Kernels::rabs(denom) < 1e-12)
         {
           break;
         }
@@ -322,12 +322,17 @@ namespace Prandtl
         res = (e - e_guess)/cv;
 
         T = T + res;
-        res = std::abs(res)/T;
+        res = Kernels::rabs(res)/T;
 
         iter++;
         if(iter > 100)
         {
+#ifdef __CUDA_ARCH__
+          printf("Newton method did not converge in temp_from_internal_energy");
+          asm("trap;");
+#else
           MFEM_ABORT("Newton method did not converge in temp_from_internal_energy");
+#endif
         }
       }
       
@@ -358,11 +363,19 @@ namespace Prandtl
 
       if(l_x < 0 || u_x >= L.nx || l_y < 0 || u_y >= L.ny)
       {
+#ifdef __CUDA_ARCH__
+        printf(" CL ALERT : Out of bounds in LTE table lookup! \n");
+        printf("l_x : %d l_y : %d \n", l_x, l_y);
+        printf("rho : %e < %e < %e \n", thermoTables.rho_grid[0], rho, thermoTables.rho_grid[L.nx-1]);
+        printf("e : %e < %e < %e \n", thermoTables.e_grid[0], e, thermoTables.e_grid[L.ny-1]);
+        asm("trap;");
+#else
         std::cout << " CL ALERT : Out of bounds in LTE table lookup! "<<std::endl;
         std::cout << "l_x : " << l_x << "l_y : " << l_y << std::endl;
         std::cout << "rho : " << thermoTables.rho_grid[0] << " < " << rho << " < " << thermoTables.rho_grid[L.nx-1] << std::endl;
         std::cout << "e : " << thermoTables.e_grid[0] << " < " << e << " < " << thermoTables.e_grid[L.ny-1] << std::endl;
         std::exit(1);
+#endif
       }
 
       // Get the lower and upper x and y coordinates of the cell
@@ -381,8 +394,8 @@ namespace Prandtl
 
 
       // Clamp to [0, 1]
-      wx = std::max(real_t(0), std::min(real_t(1), wx));
-      wy = std::max(real_t(0), std::min(real_t(1), wy));
+      wx = Kernels::rmax(real_t(0), Kernels::rmin(real_t(1), wx));
+      wy = Kernels::rmax(real_t(0), Kernels::rmin(real_t(1), wy));
 
 
       return Q00 * ((1 - wx) * (1 - wy)) + Q01 * ((1 - wx) * wy) +
@@ -427,8 +440,8 @@ namespace Prandtl
 
 
       // Clamp to [0, 1]
-      wx = std::max(real_t(0), std::min(real_t(1), wx));
-      wy = std::max(real_t(0), std::min(real_t(1), wy));
+      wx = Kernels::rmax(real_t(0), Kernels::rmin(real_t(1), wx));
+      wy = Kernels::rmax(real_t(0), Kernels::rmin(real_t(1), wy));
 
 
       return Q00 * ((1 - wx) * (1 - wy)) + Q01 * ((1 - wx) * wy) +

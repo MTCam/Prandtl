@@ -223,7 +223,7 @@ namespace Prandtl
 
       real_t dE_mass = dE.mass(L)*R_inv;
       real_t dE_energy = dE.energy(L)*R_inv;
-      real_t dE_mom[dim];
+      real_t dE_mom[Prandtl::MAXDIM];
       for(int idim = 0;idim < dim;idim++){
         dE_mom[idim] = dE.momentum(L, idim)*R_inv;
       }
